@@ -2,8 +2,9 @@
 // Lift — Firebase Config (shared by Member App + Trainer App)
 // ─────────────────────────────────────────────────────────────────────────────
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -19,7 +20,18 @@ const firebaseConfig = {
 // Prevent re-initializing on hot reload
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
+// Auth with AsyncStorage persistence — user stays logged in until explicit sign-out
+let auth: ReturnType<typeof getAuth>;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} catch {
+  // Already initialized (hot reload)
+  auth = getAuth(app);
+}
+
+export { auth };
 export const db      = getFirestore(app);
-export const auth    = getAuth(app);
 export const storage = getStorage(app);
 export default app;

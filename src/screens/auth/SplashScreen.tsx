@@ -47,7 +47,6 @@ export default function SplashScreen({ navigation }: SplashProps) {
     <View style={ss.container}>
       <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
         <Text style={ss.wordmark}>LIFT</Text>
-        <Text style={ss.tagline}>The Complete Fitness Ecosystem for Kerala</Text>
         <ActivityIndicator color={C.primary} style={{ marginTop: 32 }} />
       </Animated.View>
     </View>
