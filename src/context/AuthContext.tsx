@@ -1,35 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Lift Trainer App — AuthContext
-//
-// Provides trainerId, accessToken, trainerProfile, and auth actions to every
-// screen.  Replace the `TRAINER_ID = 'trainer-001'` / `TOKEN = ''` stubs in
-// each screen with:
-//
-//   const { trainerId, token } = useAuth();
-//
-// Install:  npx expo install expo-secure-store
+// Lift Trainer App — AuthContext (Firebase)
+// Same interface as before — screens unchanged
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as SecureStore from 'expo-secure-store';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useRef,
-    useState,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
 } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import { AuthAPI, ProfileAPI } from '../services/trainer.api';
+import { auth, db } from '../firebase/config';
+import { ProfileAPI } from '../services/trainer.api';
 import { TrainerProfile } from '../types/trainer.types';
-
-// ─── Storage keys ─────────────────────────────────────────────────────────────
-
-const KEYS = {
-  ACCESS_TOKEN: 'lift_trainer_access_token',
-  REFRESH_TOKEN: 'lift_trainer_refresh_token',
-  TRAINER_ID: 'lift_trainer_id',
-} as const;
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
@@ -39,13 +24,13 @@ interface AuthState {
   refreshToken: string | null;
   gymId: string | null;
   isFreelance: boolean;
+  adminAccess: boolean;
   profile: TrainerProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
 
 interface AuthActions {
-  /** Call after successful OTP verification */
   setSession: (params: {
     trainerId: string;
     accessToken: string;
@@ -53,11 +38,8 @@ interface AuthActions {
     gymId: string | null;
     isFreelance: boolean;
   }) => Promise<void>;
-  /** Clears all stored credentials */
   logout: () => Promise<void>;
-  /** Reload profile from API (call after profile edits) */
   reloadProfile: () => Promise<void>;
-  /** Silently refresh the access token using the stored refresh token */
   silentRefresh: () => Promise<string | null>;
 }
 
@@ -74,147 +56,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshToken: null,
     gymId: null,
     isFreelance: false,
+    adminAccess: false,
     profile: null,
     isAuthenticated: false,
     isLoading: true,
   });
 
-  // Track timer for silent token refresh
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ── Persist helpers ──────────────────────────────────────────────────────────
-
-  const saveTokens = async (
-    accessToken: string,
-    refreshToken: string,
-    trainerId: string,
-  ) => {
-    await Promise.all([
-      SecureStore.setItemAsync(KEYS.ACCESS_TOKEN, accessToken),
-      SecureStore.setItemAsync(KEYS.REFRESH_TOKEN, refreshToken),
-      SecureStore.setItemAsync(KEYS.TRAINER_ID, trainerId),
-    ]);
-  };
-
-  const clearTokens = async () => {
-    await Promise.all([
-      SecureStore.deleteItemAsync(KEYS.ACCESS_TOKEN),
-      SecureStore.deleteItemAsync(KEYS.REFRESH_TOKEN),
-      SecureStore.deleteItemAsync(KEYS.TRAINER_ID),
-    ]);
-  };
-
-  // ── Token expiry parser ──────────────────────────────────────────────────────
-
-  /** Decode JWT payload without verifying signature (client-side only) */
-  const decodeJWT = (token: string): { exp?: number } => {
-    try {
-      const payload = token.split('.')[1];
-      const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-      return JSON.parse(decoded);
-    } catch {
-      return {};
-    }
-  };
-
-  /** Schedule silent refresh 5 minutes before token expiry */
-  const scheduleRefresh = useCallback((accessToken: string) => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    const { exp } = decodeJWT(accessToken);
-    if (!exp) return;
-    const msUntilExpiry = exp * 1000 - Date.now();
-    const msUntilRefresh = Math.max(msUntilExpiry - 5 * 60 * 1000, 0);
-    refreshTimerRef.current = setTimeout(silentRefresh, msUntilRefresh);
-  }, []);
-
-  // ── Silent refresh ───────────────────────────────────────────────────────────
-
-  const silentRefresh = useCallback(async (): Promise<string | null> => {
-    const storedRefresh = await SecureStore.getItemAsync(KEYS.REFRESH_TOKEN).catch(() => null);
-    if (!storedRefresh) return null;
-
-    try {
-      const res = await AuthAPI.refreshToken(storedRefresh);
-      await saveTokens(
-        res.accessToken,
-        res.refreshToken,
-        (await SecureStore.getItemAsync(KEYS.TRAINER_ID)) ?? '',
-      );
-      setState(prev => ({
-        ...prev,
-        token: res.accessToken,
-        refreshToken: res.refreshToken,
-      }));
-      scheduleRefresh(res.accessToken);
-      return res.accessToken;
-    } catch {
-      // Refresh failed — user must re-authenticate
-      await clearTokens();
-      setState(prev => ({
-        ...prev,
-        token: null,
-        refreshToken: null,
-        isAuthenticated: false,
-      }));
-      return null;
-    }
-  }, [scheduleRefresh]);
-
-  // ── Bootstrap on mount ───────────────────────────────────────────────────────
+  // ── Firebase auth state listener ──────────────────────────────────────────
 
   useEffect(() => {
-    const bootstrap = async () => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setState(prev => ({
+          ...prev,
+          trainerId: null,
+          token: null,
+          gymId: null,
+          isFreelance: false,
+          adminAccess: false,
+          profile: null,
+          isAuthenticated: false,
+          isLoading: false,
+        }));
+        return;
+      }
+
       try {
-        const [storedToken, storedRefresh, storedId] = await Promise.all([
-          SecureStore.getItemAsync(KEYS.ACCESS_TOKEN),
-          SecureStore.getItemAsync(KEYS.REFRESH_TOKEN),
-          SecureStore.getItemAsync(KEYS.TRAINER_ID),
-        ]);
+        const token = await user.getIdToken();
 
-        if (!storedToken || !storedId) {
-          setState(prev => ({ ...prev, isLoading: false }));
+        // Check if trainer profile exists in Firestore
+        const snap = await getDoc(doc(db, 'trainers', user.uid));
+
+        if (!snap.exists()) {
+          // New trainer — profile will be created in RegistrationScreen
+          setState(prev => ({
+            ...prev,
+            trainerId: user.uid,
+            token,
+            gymId: null,
+            isFreelance: false,
+            adminAccess: false,
+            profile: null,
+            isAuthenticated: true,
+            isLoading: false,
+          }));
           return;
         }
 
-        // Check if token is still valid
-        const { exp } = decodeJWT(storedToken);
-        let activeToken = storedToken;
-
-        if (exp && exp * 1000 < Date.now()) {
-          // Token expired — try refresh
-          const newToken = await silentRefresh();
-          if (!newToken) {
-            setState(prev => ({ ...prev, isLoading: false }));
-            return;
-          }
-          activeToken = newToken;
-        }
-
-        // Validate with server and get role/gymId
-        const validation = await AuthAPI.validateToken(activeToken);
-
-        if (validation.role !== 'TRAINER') {
-          await clearTokens();
-          setState(prev => ({ ...prev, isLoading: false }));
-          return;
-        }
-
-        // Load profile
+        const data = snap.data();
         let profile: TrainerProfile | null = null;
         try {
-          profile = await ProfileAPI.getProfile(storedId, activeToken);
-        } catch {
-          // Non-fatal — profile loads later
-        }
-
-        scheduleRefresh(activeToken);
+          profile = await ProfileAPI.getProfile(user.uid);
+        } catch {}
 
         setState({
-          trainerId: storedId,
-          token: activeToken,
-          refreshToken: storedRefresh,
-          gymId: validation.gymId,
-          isFreelance: validation.isFreelance,
+          trainerId: user.uid,
+          token,
+          refreshToken: null,
+          gymId: data.gymId ?? null,
+          isFreelance: data.isFreelance ?? false,
+          adminAccess: data.adminAccess ?? false,
           profile,
           isAuthenticated: true,
           isLoading: false,
@@ -222,97 +123,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         setState(prev => ({ ...prev, isLoading: false }));
       }
-    };
-
-    bootstrap();
-  }, []);
-
-  // ── Refresh on foreground ────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active' && state.isAuthenticated) {
-        silentRefresh();
-      }
     });
-    return () => sub.remove();
-  }, [state.isAuthenticated, silentRefresh]);
 
-  // Cleanup timer on unmount
-  useEffect(() => {
+    // Timeout fallback
+    const timeout = setTimeout(() => {
+      setState(prev => {
+        if (prev.isLoading) return { ...prev, isLoading: false };
+        return prev;
+      });
+    }, 8000);
+
     return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      unsub();
+      clearTimeout(timeout);
     };
   }, []);
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
+  // ── Actions ───────────────────────────────────────────────────────────────
 
-  const setSession = useCallback(
-    async ({
+  // Called after OTP verification — used by OTPScreen / SplashScreen
+  const setSession = useCallback(async ({
+    trainerId,
+    accessToken,
+    refreshToken,
+    gymId,
+    isFreelance,
+  }: {
+    trainerId: string;
+    accessToken: string;
+    refreshToken: string;
+    gymId: string | null;
+    isFreelance: boolean;
+  }) => {
+    let profile: TrainerProfile | null = null;
+    try {
+      profile = await ProfileAPI.getProfile(trainerId);
+    } catch {}
+
+    const snap = await getDoc(doc(db, 'trainers', trainerId)).catch(() => null);
+    const adminAccess = snap?.data()?.adminAccess ?? false;
+
+    setState(prev => ({
+      ...prev,
       trainerId,
-      accessToken,
+      token: accessToken,
       refreshToken,
       gymId,
       isFreelance,
-    }: {
-      trainerId: string;
-      accessToken: string;
-      refreshToken: string;
-      gymId: string | null;
-      isFreelance: boolean;
-    }) => {
-      await saveTokens(accessToken, refreshToken, trainerId);
-      scheduleRefresh(accessToken);
-
-      let profile: TrainerProfile | null = null;
-      try {
-        profile = await ProfileAPI.getProfile(trainerId, accessToken);
-      } catch {}
-
-      setState({
-        trainerId,
-        token: accessToken,
-        refreshToken,
-        gymId,
-        isFreelance,
-        profile,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    },
-    [scheduleRefresh],
-  );
+      adminAccess,
+      profile,
+      isAuthenticated: true,
+      isLoading: false,
+    }));
+  }, []);
 
   const logout = useCallback(async () => {
-    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     try {
-      if (state.token) {
-        // FCM token cleared server-side
-        await AuthAPI.logout(state.trainerId ?? '', '', state.token);
-      }
+      await signOut(auth);
     } catch {}
-    await clearTokens();
     setState({
       trainerId: null,
       token: null,
       refreshToken: null,
       gymId: null,
       isFreelance: false,
+      adminAccess: false,
       profile: null,
       isAuthenticated: false,
       isLoading: false,
     });
-  }, [state.token, state.trainerId]);
+  }, []);
 
   const reloadProfile = useCallback(async () => {
-    if (!state.trainerId || !state.token) return;
+    if (!state.trainerId) return;
     try {
-      const profile = await ProfileAPI.getProfile(state.trainerId, state.token);
+      const profile = await ProfileAPI.getProfile(state.trainerId);
       setState(prev => ({ ...prev, profile }));
     } catch {}
-  }, [state.trainerId, state.token]);
+  }, [state.trainerId]);
 
-  // ── Context value ────────────────────────────────────────────────────────────
+  // Firebase handles token refresh automatically
+  const silentRefresh = useCallback(async (): Promise<string | null> => {
+    const user = auth.currentUser;
+    if (!user) return null;
+    try {
+      const token = await user.getIdToken(true);
+      setState(prev => ({ ...prev, token }));
+      return token;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ── Context value ─────────────────────────────────────────────────────────
 
   const value: AuthContextValue = {
     ...state,
@@ -334,23 +237,14 @@ export function useAuth(): AuthContextValue {
 }
 
 // ─── HOC: requireAuth ─────────────────────────────────────────────────────────
-/**
- * Wraps any component and redirects to Auth stack if unauthenticated.
- * Usage: export default requireAuth(MyScreen);
- */
+
 export function requireAuth<P extends object>(
   Component: React.ComponentType<P>,
 ): React.FC<P> {
   return function ProtectedComponent(props: P) {
     const { isAuthenticated, isLoading } = useAuth();
-
-    if (isLoading) return null; // Splash handles the loading state
-
-    if (!isAuthenticated) {
-      // useNavigation can't be called conditionally; handle in navigator
-      return null;
-    }
-
+    if (isLoading) return null;
+    if (!isAuthenticated) return null;
     return <Component {...props} />;
   };
 }

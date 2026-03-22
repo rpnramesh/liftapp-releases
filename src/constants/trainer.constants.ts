@@ -159,3 +159,6 @@ export const I18N = {
 
 // Razorpay payout lag
 export const RAZORPAY_PAYOUT_DAYS = 2; // T+2 banking days
+
+// Rest presets (seconds)
+export const REST_PRESETS = [30, 45, 60, 75, 90, 120] as const;

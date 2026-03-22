@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { VideosStackParamList } from '../../navigation/TrainerNavigator';
-import { VideoAPI } from '../../services/mockApi';
+import { VideoAPI } from '../../services/trainer.api';
 import { UPLOAD_LIMITS, VIDEO_CATEGORIES } from '../../constants/trainer.constants';
 import { PrimaryButton } from '../../components/common';
 
@@ -49,7 +49,7 @@ export default function UploadVideoScreen({ navigation, route }: Props) {
         category,
         memberId: isPersonalized ? memberId : undefined,
         expiresAt: expiresAt || undefined,
-      }, TOKEN);
+      });
       Alert.alert('Upload Started', 'Your video is being uploaded and processed. You\'ll be notified when it\'s ready.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -61,7 +61,7 @@ export default function UploadVideoScreen({ navigation, route }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>

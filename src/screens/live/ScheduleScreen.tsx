@@ -1,25 +1,32 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-012 Schedule & Host Live Classes
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Alert, ScrollView, TextInput, Modal,
-} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ScheduleStackParamList } from '../../navigation/TrainerNavigator';
-import { LiveClassAPI } from '../../services/mockApi';
+import React, { useCallback, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { EmptyState, LiveBadge, PrimaryButton, SkeletonCard } from '../../components/common';
 import { CLASS_CATEGORIES, CLASS_DURATIONS, LIVE_CLASS } from '../../constants/trainer.constants';
-import { SkeletonCard, EmptyState, PrimaryButton, LiveBadge } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
-import { LiveClass, CreateClassPayload, ClassCategory } from '../../types/trainer.types';
-import { formatDateTime, daysUntil } from '../../utils/trainer.utils';
+import { ScheduleStackParamList } from '../../navigation/TrainerNavigator';
+import { LiveClassAPI } from '../../services/trainer.api';
+import { ClassCategory, CreateClassPayload, LiveClass } from '../../types/trainer.types';
+import { formatDateTime } from '../../utils/trainer.utils';
 
-const TRAINER_ID = 'trainer-001';
+import { getTrainerId } from '../../services/session';
 const GYM_ID = 'gym-001';
-const TOKEN = '';
 
 type Props = NativeStackScreenProps<ScheduleStackParamList, 'ScheduleList'>;
 
@@ -27,8 +34,8 @@ export default function ScheduleScreen({ navigation }: Props) {
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
   const [showCreate, setShowCreate] = useState(false);
 
-  const fetchUpcoming = useCallback(() => LiveClassAPI.getUpcomingClasses(TRAINER_ID, TOKEN), []);
-  const fetchPast = useCallback(() => LiveClassAPI.getPastClasses(TRAINER_ID, 1, TOKEN).then(r => r.classes), []);
+  const fetchUpcoming = useCallback(() => LiveClassAPI.getUpcomingClasses(getTrainerId()), []);
+  const fetchPast = useCallback(() => LiveClassAPI.getPastClasses(getTrainerId(), 1).then(r => r.classes), []);
   const upcoming = useAsync<LiveClass[]>(fetchUpcoming);
   const past = useAsync<LiveClass[]>(fetchPast);
 
@@ -41,7 +48,7 @@ export default function ScheduleScreen({ navigation }: Props) {
         text: 'Cancel Class', style: 'destructive',
         onPress: async () => {
           try {
-            await LiveClassAPI.cancelClass(cls.id, TOKEN);
+            await LiveClassAPI.cancelClass(cls.id);
             upcoming.refresh();
           } catch (e: any) { Alert.alert('Error', e.message); }
         },
@@ -188,7 +195,7 @@ function CreateClassModal({ visible, onClose, onCreated }: {
     }
     setLoading(true);
     try {
-      await LiveClassAPI.createClass(form, TRAINER_ID, GYM_ID, TOKEN_STUB);
+      await LiveClassAPI.createClass(form, getTrainerId(), GYM_ID);
       onCreated();
     } catch (e: any) { Alert.alert('Error', e.message); }
     finally { setLoading(false); }

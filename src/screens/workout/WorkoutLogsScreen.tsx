@@ -1,23 +1,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-009 View Client Workout Logs & Add Notes
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  TextInput, Alert, Modal, RefreshControl,
-} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
-import { WorkoutAPI } from '../../services/mockApi';
-import { SkeletonCard, EmptyState, StatusBadge, PrimaryButton } from '../../components/common';
+import React, { useCallback, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Modal, RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { EmptyState, PrimaryButton, SkeletonCard, StatusBadge } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
+import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
+import { WorkoutAPI } from '../../services/trainer.api';
 import { WorkoutLog } from '../../types/trainer.types';
 import { formatDateTime } from '../../utils/trainer.utils';
 
-const TRAINER_ID = 'trainer-001';
-const TOKEN = '';
+import { getTrainerId } from '../../services/session';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'WorkoutLogs'>;
 
@@ -28,7 +33,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   const [savingNote, setSavingNote] = useState(false);
 
   const fetchLogs = useCallback(
-    () => WorkoutAPI.getWorkoutLogs(TRAINER_ID, clientId, 1, TOKEN).then(r => r.logs),
+    () => WorkoutAPI.getWorkoutLogs(getTrainerId(), clientId, 1).then(r => r.logs),
     [clientId],
   );
   const { data: logs, loading, refresh } = useAsync<WorkoutLog[]>(fetchLogs);
@@ -42,7 +47,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
     if (!noteModal || !noteText.trim()) return;
     setSavingNote(true);
     try {
-      await WorkoutAPI.addNoteOnLog(TRAINER_ID, clientId, noteModal.logId, noteText.trim(), TOKEN);
+      await WorkoutAPI.addNoteOnLog(getTrainerId(), clientId, noteModal.logId, noteText.trim());
       setNoteModal(null);
       refresh();
     } catch (e: any) {

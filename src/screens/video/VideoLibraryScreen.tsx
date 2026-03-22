@@ -1,30 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-010 Video Library | TS-011 Upload Personalised Video
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, RefreshControl, Alert,
+  Alert,
+  FlatList,
+  Image, RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { VideosStackParamList } from '../../navigation/TrainerNavigator';
-import { VideoAPI } from '../../services/mockApi';
-import { SkeletonCard, EmptyState, StatusBadge } from '../../components/common';
+import { EmptyState, SkeletonCard, StatusBadge } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
+import { VideoAPI } from '../../services/trainer.api';
 import { TrainerVideo } from '../../types/trainer.types';
-import { watchStatusLabel, watchStatusColor, durationLabel, formatDate } from '../../utils/trainer.utils';
+import { durationLabel, formatDate, watchStatusColor, watchStatusLabel } from '../../utils/trainer.utils';
 
-const TRAINER_ID = 'trainer-001';
-const TOKEN = '';
+import { getTrainerId } from '../../services/session';
 
-type Props = NativeStackScreenProps<VideosStackParamList, 'VideoLibrary'>;
-
-export default function VideoLibraryScreen({ navigation }: Props) {
+// Accept optional hideHeader for use inside Library sub-tab
+export default function VideoLibraryScreen({ navigation, hideHeader }: { navigation?: any; hideHeader?: boolean }) {
   const [filter, setFilter] = useState<'all' | 'general' | 'personal'>('all');
 
-  const fetchVideos = useCallback(() => VideoAPI.getVideos(TRAINER_ID, TOKEN), []);
+  const fetchVideos = useCallback(() => VideoAPI.getVideos(getTrainerId()), []);
   const { data: videos, loading, refresh } = useAsync<TrainerVideo[]>(fetchVideos);
 
   const filtered = (videos ?? []).filter(v => {
@@ -40,7 +41,7 @@ export default function VideoLibraryScreen({ navigation }: Props) {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await VideoAPI.deleteVideo(videoId, TOKEN);
+            await VideoAPI.deleteVideo(videoId);
             refresh();
           } catch (e: any) { Alert.alert('Error', e.message); }
         },
@@ -84,15 +85,17 @@ export default function VideoLibraryScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
+      {!hideHeader && (
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Video Library</Text>
         <TouchableOpacity
           style={styles.uploadBtn}
-          onPress={() => navigation.navigate('UploadVideo', {})}
+          onPress={() => navigation?.navigate('UploadVideo', {})}
         >
           <Text style={styles.uploadBtnText}>+ Upload</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Filter tabs */}
       <View style={styles.filterRow}>

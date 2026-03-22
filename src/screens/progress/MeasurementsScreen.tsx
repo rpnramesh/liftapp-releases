@@ -7,14 +7,15 @@ import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
-import { ProgressAPI } from '../../services/mockApi';
+import { ProgressAPI } from '../../services/trainer.api';
 
 import { SkeletonLoader, EmptyState } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
 import { BodyMeasurement } from '../../types/trainer.types';
 import { formatDate } from '../../utils/trainer.utils';
+import { getTrainerId } from '../../services/session';
 
-const TRAINER_ID = 'trainer-001';
+const TRAINER_ID = getTrainerId();
 const TOKEN = '';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'Measurements'>;
@@ -33,7 +34,7 @@ const MEASUREMENT_FIELDS: { key: keyof BodyMeasurement; label: string }[] = [
 
 export default function MeasurementsScreen({ navigation, route }: Props) {
   const { clientId, clientName } = route.params;
-  const fetchMeasurements = useCallback(() => ProgressAPI.getMeasurements(TRAINER_ID, clientId, TOKEN), [clientId]);
+  const fetchMeasurements = useCallback(() => ProgressAPI.getMeasurements(getTrainerId(), clientId), [clientId]);
   const { data: measurements, loading } = useAsync<BodyMeasurement[]>(fetchMeasurements);
 
   const latest = measurements?.[0];

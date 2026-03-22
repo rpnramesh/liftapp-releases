@@ -1,22 +1,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-018 Notification Centre
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, Alert,
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { NotificationsAPI } from '../../services/mockApi';
-import { NOTIFICATION_TYPE_LABELS } from '../../constants/trainer.constants';
 import { EmptyState, SkeletonCard } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
+import { NotificationsAPI } from '../../services/trainer.api';
 import { TrainerNotification } from '../../types/trainer.types';
 import { timeAgo } from '../../utils/trainer.utils';
 
-const TRAINER_ID = 'trainer-001';
-const TOKEN = '';
+import { getTrainerId } from '../../services/session';
 
 const TYPE_ICONS: Record<string, string> = {
   workout_logged: '💪',
@@ -33,21 +36,21 @@ const TYPE_ICONS: Record<string, string> = {
 
 export default function NotificationsScreen() {
   const fetchNotifs = useCallback(
-    () => NotificationsAPI.getNotifications(TRAINER_ID, 1, TOKEN).then(r => r.notifications),
+    () => NotificationsAPI.getNotifications(getTrainerId(), 1).then(r => r.notifications),
     [],
   );
   const { data: notifications, loading, refresh } = useAsync<TrainerNotification[]>(fetchNotifs);
 
   const markAllRead = async () => {
     try {
-      await NotificationsAPI.markAllRead(TRAINER_ID, TOKEN);
+      await NotificationsAPI.markAllRead(getTrainerId());
       refresh();
     } catch (e: any) { Alert.alert('Error', e.message); }
   };
 
   const deleteNotif = async (id: string) => {
     try {
-      await NotificationsAPI.deleteNotification(TRAINER_ID, id, TOKEN);
+      await NotificationsAPI.deleteNotification(getTrainerId(), id);
       refresh();
     } catch (e: any) { Alert.alert('Error', e.message); }
   };

@@ -10,14 +10,15 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
-import { ProgressAPI } from '../../services/mockApi';
+import { ProgressAPI } from '../../services/trainer.api';
 
 import { EmptyState, PrimaryButton } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
 import { ProgressPhoto } from '../../types/trainer.types';
 import { formatDate } from '../../utils/trainer.utils';
+import { getTrainerId } from '../../services/session';
 
-const TRAINER_ID = 'trainer-001';
+const TRAINER_ID = getTrainerId();
 const TOKEN = '';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'ProgressPhotos'>;
@@ -28,12 +29,12 @@ export default function ProgressPhotosScreen({ navigation, route }: Props) {
   const [commentText, setCommentText] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const fetchPhotos = useCallback(() => ProgressAPI.getProgressPhotos(TRAINER_ID, clientId, TOKEN), [clientId]);
+  const fetchPhotos = useCallback(() => ProgressAPI.getProgressPhotos(getTrainerId(), clientId), [clientId]);
   const { data: photos, loading, refresh } = useAsync<ProgressPhoto[]>(fetchPhotos);
 
   const requestAccess = async () => {
     try {
-      await ProgressAPI.requestPhotoAccess(TRAINER_ID, clientId, TOKEN);
+      await ProgressAPI.requestPhotoAccess(getTrainerId(), clientId);
       Alert.alert('Request Sent', `An access request has been sent to ${clientName}. It expires after 1 hour.`);
     } catch (e: any) { Alert.alert('Error', e.message); }
   };
@@ -42,7 +43,7 @@ export default function ProgressPhotosScreen({ navigation, route }: Props) {
     if (!commentModal || !commentText.trim()) return;
     setSaving(true);
     try {
-      await ProgressAPI.commentOnPhoto(TRAINER_ID, clientId, commentModal.photoId, commentText.trim(), TOKEN);
+      await ProgressAPI.commentOnPhoto(getTrainerId(), clientId, commentModal.photoId, commentText.trim());
       setCommentModal(null);
       refresh();
     } catch (e: any) { Alert.alert('Error', e.message); }

@@ -2,48 +2,46 @@
 // Lift Trainer App — TS-006 Trainer Home Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useNavigation } from '@react-navigation/native';
 import React, { useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
   RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { DashboardAPI } from '../../services/mockApi';
+import { DashboardAPI } from '../../services/trainer.api';
 
-import { C, T, S, R, GS } from '../../constants/theme';
 import {
+  Avatar,
+  EmptyState,
+  OfflineBanner,
   SkeletonCard,
   SkeletonLoader,
-  OfflineBanner,
-  Avatar,
   StatusBadge,
-  EmptyState,
 } from '../../components/common';
 import {
   ActivityFeedItem,
-  PendingActionChip,
   EarningsStrip,
+  PendingActionChip,
 } from '../../components/trainer';
-import { useAsync, useAppForeground, useGreeting, useNetworkStatus } from '../../hooks/useTrainer';
-import { TrainerDashboard, ScheduledSession } from '../../types/trainer.types';
-import { timeAgo } from '../../utils/trainer.utils';
+import { C } from '../../constants/theme';
+import { useAppForeground, useAsync, useGreeting, useNetworkStatus } from '../../hooks/useTrainer';
+import { ScheduledSession, TrainerDashboard } from '../../types/trainer.types';
 
-// Stubs — replace with actual auth context
-const TRAINER_ID = 'trainer-001';
-const TRAINER_NAME = 'Rajan';
-const TOKEN = '';
+import { useAuth } from '../../context/AuthContext';
+import { getTrainerId } from '../../services/session';
 
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
-  const greeting = useGreeting(TRAINER_NAME);
+  const { profile } = useAuth();
+const greeting = useGreeting(profile?.fullName ?? profile?.name ?? '');
   const { isOnline } = useNetworkStatus();
 
   const fetchDashboard = useCallback(
-    () => DashboardAPI.getDashboard(TRAINER_ID, TOKEN),
+    () => DashboardAPI.getDashboard(getTrainerId()),
     [],
   );
 

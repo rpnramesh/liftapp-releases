@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScheduleStackParamList } from '../../navigation/TrainerNavigator';
-import { LiveClassAPI } from '../../services/mockApi';
+import { LiveClassAPI } from '../../services/trainer.api';
 import { useAsync } from '../../hooks/useTrainer';
 import { ClassAttendee } from '../../types/trainer.types';
 import { LIVE_CLASS } from '../../constants/trainer.constants';
@@ -26,7 +26,7 @@ export default function LiveClassScreen({ navigation, route }: Props) {
   const [camOff, setCamOff] = useState(false);
   const [endingSummary, setEndingSummary] = useState<{ attendeeCount: number; averageRating: number | null } | null>(null);
 
-  const fetchAttendees = useCallback(() => LiveClassAPI.getAttendees(classId, TOKEN), [classId]);
+  const fetchAttendees = useCallback(() => LiveClassAPI.getAttendees(classId), [classId]);
   const { data: attendees, refresh: refreshAttendees } = useAsync<ClassAttendee[]>(fetchAttendees);
 
   // Elapsed timer
@@ -51,7 +51,7 @@ export default function LiveClassScreen({ navigation, route }: Props) {
 
   const handleStartClass = async () => {
     try {
-      const res = await LiveClassAPI.getHostToken(classId, TOKEN);
+      const res = await LiveClassAPI.getHostToken(classId);
       // In production: init Agora SDK with res.agoraToken + res.channelName
       // RtcEngine.joinChannel(res.agoraToken, res.channelName, null, 0)
       setIsLive(true);
@@ -67,7 +67,7 @@ export default function LiveClassScreen({ navigation, route }: Props) {
         text: 'End Class', style: 'destructive',
         onPress: async () => {
           try {
-            const summary = await LiveClassAPI.endClass(classId, TOKEN);
+            const summary = await LiveClassAPI.endClass(classId);
             setIsLive(false);
             setEndingSummary(summary);
           } catch (e: any) { Alert.alert('Error', e.message); }

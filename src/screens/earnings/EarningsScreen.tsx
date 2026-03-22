@@ -1,22 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-017 Trainer Earnings Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, RefreshControl, Alert, Linking,
+  Alert,
+  FlatList,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import { EarningsAPI } from '../../services/mockApi';
+import { EarningsAPI } from '../../services/trainer.api';
 
-import { SkeletonLoader, EmptyState, StatusBadge } from '../../components/common';
+import { EmptyState, SkeletonLoader, StatusBadge } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
-import { TrainerEarnings, FeeDue, PaymentRecord } from '../../types/trainer.types';
-import { formatINR, formatDate, paymentStatusColor, feeReminderMessage, whatsappURL, razorpayPayoutDate } from '../../utils/trainer.utils';
+import { FeeDue, PaymentRecord, TrainerEarnings } from '../../types/trainer.types';
+import { feeReminderMessage, formatDate, formatINR, paymentStatusColor, razorpayPayoutDate, whatsappURL } from '../../utils/trainer.utils';
 
-const TRAINER_ID = 'trainer-001';
-const TOKEN = '';
+import { getTrainerId } from '../../services/session';
 
 export default function EarningsScreen() {
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -25,9 +30,9 @@ export default function EarningsScreen() {
   });
   const [tab, setTab] = useState<'overview' | 'dues' | 'history'>('overview');
 
-  const fetchEarnings = useCallback(() => EarningsAPI.getEarnings(TRAINER_ID, selectedMonth, TOKEN), [selectedMonth]);
-  const fetchDues = useCallback(() => EarningsAPI.getFeeDues(TRAINER_ID, TOKEN), []);
-  const fetchHistory = useCallback(() => EarningsAPI.getPaymentHistory(TRAINER_ID, 1, TOKEN).then(r => r.payments), []);
+  const fetchEarnings = useCallback(() => EarningsAPI.getEarnings(getTrainerId(), selectedMonth), [selectedMonth]);
+  const fetchDues = useCallback(() => EarningsAPI.getFeeDues(getTrainerId()), []);
+  const fetchHistory = useCallback(() => EarningsAPI.getPaymentHistory(getTrainerId(), 1).then(r => r.payments), []);
 
   const earningsAsync = useAsync<TrainerEarnings>(fetchEarnings);
   const duesAsync = useAsync<FeeDue[]>(fetchDues);
@@ -35,7 +40,7 @@ export default function EarningsScreen() {
 
   const sendReminder = async (due: FeeDue) => {
     try {
-      await EarningsAPI.sendReminder(TRAINER_ID, due.clientId, TOKEN);
+      await EarningsAPI.sendReminder(getTrainerId(), due.clientId);
       const msg = feeReminderMessage(due.clientName, due.amountDue, due.paymentLink);
       Linking.openURL(whatsappURL(due.clientPhone, msg));
     } catch (e: any) { Alert.alert('Error', e.message); }
