@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Lift Member App — Phone Auth via WebView (production reCAPTCHA)
-// Uses Firebase web SDK inside a WebView for real reCAPTCHA verification.
-// Returns verificationId to RN for OTP confirmation via signInWithCredential.
+// Loads Firebase compat SDK in a WebView with authDomain as baseUrl so that
+// reCAPTCHA sees an authorised origin and invisible verification succeeds.
+// Returns verificationId → RN verifies with signInWithCredential.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
@@ -9,10 +10,11 @@ import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const PRIMARY = '#1A56DB';
+const AUTH_DOMAIN = 'lift-bfd12.firebaseapp.com';
 
 const FIREBASE_CONFIG = JSON.stringify({
   apiKey: 'AIzaSyBWfe4NVioDMI1b_VuZvkBsNCMJLnWI32M',
-  authDomain: 'lift-bfd12.firebaseapp.com',
+  authDomain: AUTH_DOMAIN,
   projectId: 'lift-bfd12',
   storageBucket: 'lift-bfd12.firebasestorage.app',
   messagingSenderId: '858368934869',
@@ -25,71 +27,78 @@ const HTML = `
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body { margin:0; display:flex; align-items:center; justify-content:center;
-           min-height:100vh; font-family:sans-serif; background:#fff; }
-    #status { color:#6B7280; font-size:14px; text-align:center; padding:20px; }
+    body{margin:0;display:flex;align-items:center;justify-content:center;
+         min-height:100vh;font-family:sans-serif;background:#fff}
+    #status{color:#6B7280;font-size:14px;text-align:center;padding:20px}
   </style>
 </head>
 <body>
   <div id="recaptcha-container"></div>
-  <div id="status">Verifying…</div>
+  <div id="status">Initialising…</div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"><\/script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"><\/script>
   <script>
-    var app = firebase.initializeApp(${FIREBASE_CONFIG});
+    var config = ${FIREBASE_CONFIG};
+    var app = firebase.initializeApp(config);
     var auth = firebase.auth();
     var verifier = null;
     var ready = false;
+    var pendingPhone = null;
 
-    function post(obj) {
+    function post(obj){
       window.ReactNativeWebView.postMessage(JSON.stringify(obj));
     }
 
-    function initVerifier() {
-      if (verifier) { verifier.clear(); verifier = null; }
-      verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-        size: 'invisible',
-        callback: function() { post({ type: 'recaptcha-solved' }); },
-        'expired-callback': function() { post({ type: 'recaptcha-expired' }); }
-      });
-      verifier.render().then(function() {
-        ready = true;
-        post({ type: 'ready' });
-      }).catch(function(e) {
-        post({ type: 'error', error: 'reCAPTCHA render failed: ' + e.message });
-      });
+    function initVerifier(){
+      try{ if(verifier) verifier.clear(); }catch(e){}
+      verifier = null; ready = false;
+      try{
+        verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container',{
+          size:'invisible',
+          callback:function(){ post({type:'recaptcha-solved'}); },
+          'expired-callback':function(){ post({type:'recaptcha-expired'}); initVerifier(); }
+        });
+        verifier.render().then(function(){
+          ready = true;
+          post({type:'ready'});
+          if(pendingPhone) sendOtp(pendingPhone);
+        }).catch(function(e){
+          post({type:'error', error:'reCAPTCHA init failed: '+e.message});
+        });
+      }catch(e){
+        post({type:'error', error:'reCAPTCHA setup error: '+e.message});
+      }
     }
 
-    initVerifier();
+    function sendOtp(phone){
+      if(!verifier||!ready){ pendingPhone=phone; return; }
+      pendingPhone=null;
+      document.getElementById('status').textContent='Sending OTP…';
+      auth.signInWithPhoneNumber(phone, verifier)
+        .then(function(result){
+          post({type:'verificationId', verificationId:result.verificationId});
+        })
+        .catch(function(e){
+          initVerifier();
+          var msg=e.message||'Failed to send OTP';
+          if(e.code==='auth/too-many-requests') msg='Too many attempts. Try again later.';
+          if(e.code==='auth/invalid-phone-number') msg='Invalid phone number.';
+          post({type:'error', error:msg, code:e.code||''});
+        });
+    }
 
     document.addEventListener('message', handleMessage);
     window.addEventListener('message', handleMessage);
-
-    function handleMessage(event) {
-      try {
-        var data = JSON.parse(event.data);
-        if (data.action === 'sendOtp') {
-          document.getElementById('status').textContent = 'Sending OTP…';
-          if (!verifier || !ready) {
-            post({ type: 'error', error: 'reCAPTCHA not ready. Please try again.' });
-            return;
-          }
-          auth.signInWithPhoneNumber(data.phone, verifier)
-            .then(function(result) {
-              post({ type: 'verificationId', verificationId: result.verificationId });
-            })
-            .catch(function(e) {
-              initVerifier();
-              var msg = e.message || 'Failed to send OTP';
-              if (e.code === 'auth/too-many-requests') msg = 'Too many attempts. Please try again later.';
-              if (e.code === 'auth/invalid-phone-number') msg = 'Invalid phone number format.';
-              post({ type: 'error', error: msg, code: e.code || '' });
-            });
-        }
-      } catch(e) {}
+    function handleMessage(event){
+      try{
+        var data=JSON.parse(event.data);
+        if(data.action==='sendOtp') sendOtp(data.phone);
+      }catch(e){}
     }
-  </script>
+
+    initVerifier();
+  <\/script>
 </body>
 </html>
 `;
@@ -99,6 +108,11 @@ const PhoneAuthWebView = forwardRef((_, ref) => {
   const [visible, setVisible] = useState(false);
   const pendingRef = useRef(null);
   const readyRef = useRef(false);
+  const timeoutRef = useRef(null);
+
+  const cleanup = useCallback(() => {
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  }, []);
 
   const onMessage = useCallback((event) => {
     try {
@@ -108,41 +122,56 @@ const PhoneAuthWebView = forwardRef((_, ref) => {
           readyRef.current = true;
           break;
         case 'verificationId':
+          cleanup();
           setVisible(false);
           pendingRef.current?.resolve(data.verificationId);
           pendingRef.current = null;
           break;
         case 'error':
+          cleanup();
           setVisible(false);
           pendingRef.current?.reject(new Error(data.error));
           pendingRef.current = null;
           break;
+        case 'recaptcha-expired':
+          break;
       }
     } catch {}
-  }, []);
+  }, [cleanup]);
 
   useImperativeHandle(ref, () => ({
     sendOtp: (phoneNumber) => {
       return new Promise((resolve, reject) => {
         pendingRef.current = { resolve, reject };
+        readyRef.current = false;
         setVisible(true);
+
         const trySend = () => {
           webViewRef.current?.injectJavaScript(`
             handleMessage({ data: '${JSON.stringify({ action: 'sendOtp', phone: phoneNumber }).replace(/'/g, "\\'")}' });
             true;
           `);
         };
-        if (readyRef.current) {
-          setTimeout(trySend, 300);
-        } else {
-          setTimeout(trySend, 2000);
-        }
+
+        // Give WebView time to mount and reCAPTCHA to initialise
+        timeoutRef.current = setTimeout(trySend, 2500);
+
+        // Failsafe: reject after 20s if no response
+        setTimeout(() => {
+          if (pendingRef.current) {
+            setVisible(false);
+            pendingRef.current.reject(new Error('Verification timed out. Please try again.'));
+            pendingRef.current = null;
+          }
+        }, 20000);
       });
     },
   }));
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible transparent animationType="fade">
       <View style={styles.overlay}>
         <View style={styles.card}>
           <ActivityIndicator color={PRIMARY} size="large" />
@@ -150,12 +179,17 @@ const PhoneAuthWebView = forwardRef((_, ref) => {
         </View>
         <WebView
           ref={webViewRef}
-          source={{ html: HTML }}
+          source={{ html: HTML, baseUrl: `https://${AUTH_DOMAIN}` }}
           onMessage={onMessage}
           javaScriptEnabled
           domStorageEnabled
           style={styles.webview}
           originWhitelist={['*']}
+          onError={() => {
+            setVisible(false);
+            pendingRef.current?.reject(new Error('WebView failed to load'));
+            pendingRef.current = null;
+          }}
         />
       </View>
     </Modal>
