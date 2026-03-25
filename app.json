@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "LIFT",
+    "slug": "lift-member-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./LIFT_PROJECT/assets/images/icon.png",
+    "scheme": "liftmemberapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rpn.liftmember"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./LIFT_PROJECT/assets/images/android-icon-foreground.png",
+        "backgroundImage": "./LIFT_PROJECT/assets/images/android-icon-background.png",
+        "monochromeImage": "./LIFT_PROJECT/assets/images/android-icon-monochrome.png",
+        "backgroundColor": "#1A56DB"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.rpn.liftmember",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./LIFT_PROJECT/assets/images/icon.png",
+          "color": "#1A56DB",
+          "defaultChannel": "rest-timer",
+          "sounds": []
+        }
+      ]
+    ],
+    "web": {
+      "output": "single",
+      "favicon": "./LIFT_PROJECT/assets/images/favicon.png"
+    },
+    "splash": {
+      "image": "./LIFT_PROJECT/assets/images/splash-icon.png",
+      "imageWidth": 200,
+      "resizeMode": "contain",
+      "backgroundColor": "#1A56DB"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3051db9f-9a53-49ce-bdcd-c612c21cf062"
+      }
+    },
+    "owner": "rpn.ramesh"
+  }
+}

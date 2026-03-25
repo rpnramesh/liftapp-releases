@@ -1,0 +1,21 @@
+{
+  "name": "lift_project",
+  "main": "./App.js",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "~54.0.33",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "eslint": "^9.25.0"
+  },
+  "private": true
+}
