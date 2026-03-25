@@ -3,8 +3,9 @@
 // Lift Trainer App — Auth Screens (Firebase)
 // Fixes: profile save, duplicate phone check, OTP flow
 // ─────────────────────────────────────────────────────────────────────────────
+import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { onAuthStateChanged, signInWithPhoneNumber } from 'firebase/auth';
+import { onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
     View,
 } from 'react-native';
 import { PrimaryButton } from '../../components/common';
+import PhoneAuthWebView, { PhoneAuthHandle } from '../../components/common/PhoneAuthWebView';
 import { IconSymbol } from '../../components/ui/icon-symbol';
 import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C } from '../../constants/theme';
@@ -22,6 +24,18 @@ import { useAuth } from '../../context/AuthContext';
 import { auth, db } from '../../firebase/config';
 import { AuthStackParamList } from '../../navigation/TrainerNavigator';
 import { isValidIndianPhone, isValidOTP } from '../../utils/trainer.utils';
+
+// ── Navigation helper: reset to Main (works across nested navigators) ─────────
+function resetToMain(navigation: any) {
+  navigation.dispatch(
+    CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] })
+  );
+}
+function resetToGymLinking(navigation: any, trainerId: string) {
+  navigation.dispatch(
+    CommonActions.reset({ index: 0, routes: [{ name: 'Auth', state: { routes: [{ name: 'GymLinking', params: { trainerId } }] } }] })
+  );
+}
 
 // ─── Splash ───────────────────────────────────────────────────────────────────
 type SplashProps = NativeStackScreenProps<AuthStackParamList, 'Splash'>;
@@ -36,10 +50,10 @@ export default function SplashScreen({ navigation }: SplashProps) {
       if (!snap?.exists()) { setTimeout(() => navigation.replace('Registration'), 1500); return; }
       const data = snap.data();
       if (!data.gymId && !data.isFreelance) {
-        setTimeout(() => navigation.replace('GymLinking', { trainerId: user.uid }), 1500);
+        setTimeout(() => resetToGymLinking(navigation, user.uid), 1500);
         return;
       }
-      setTimeout(() => navigation.replace('Main' as any), 1500);
+      setTimeout(() => resetToMain(navigation), 1500);
     });
     const timeout = setTimeout(() => { unsub(); navigation.replace('Welcome'); }, 5000);
     return () => { unsub(); clearTimeout(timeout); };
@@ -280,13 +294,14 @@ type OTPProps = NativeStackScreenProps<AuthStackParamList, 'OTP'>;
 export function OTPScreen({ navigation, route }: OTPProps) {
   const { phone: initialPhone, isNewUser, registrationData } = (route.params ?? {}) as any;
   const { setSession } = useAuth();
+  const phoneAuthRef = useRef<PhoneAuthHandle>(null);
   const [phone, setPhone] = useState(initialPhone || '');
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [timer, setTimer] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [confirmation, setConfirmation] = useState<any>(null);
+  const [verificationId, setVerificationId] = useState<string | null>(null);
 
   useEffect(() => {
     if (timer <= 0) return;
@@ -298,27 +313,26 @@ export function OTPScreen({ navigation, route }: OTPProps) {
     if (!isValidIndianPhone(phone)) { setError('Enter a valid 10-digit mobile number'); return; }
     setLoading(true); setError('');
     try {
-      const result = await signInWithPhoneNumber(auth, `+91${phone}`, {
-        type: 'recaptcha',
-        verify() { return Promise.resolve('expo-go-bypass'); },
-        _reset() {}, clear() {},
-      } as any);
-      setConfirmation(result);
+      const vId = await phoneAuthRef.current?.sendOtp(`+91${phone}`);
+      if (!vId) throw new Error('Failed to send OTP');
+      setVerificationId(vId);
       setStep('otp');
       setTimer(30);
     } catch (e: any) {
-      if (e?.code === 'auth/too-many-requests') setError('Too many attempts. Please try again later.');
-      else setError('Failed to send OTP. Please try again.');
+      if (e?.message?.includes('too-many-requests') || e?.message?.includes('Too many'))
+        setError('Too many attempts. Please try again later.');
+      else setError(e?.message || 'Failed to send OTP. Please try again.');
     } finally { setLoading(false); }
   };
 
   const verifyOTP = async () => {
     if (!isValidOTP(otp)) { setError('Enter the 6-digit OTP'); return; }
-    if (!confirmation) { setError('Please request OTP first'); return; }
+    if (!verificationId) { setError('Please request OTP first'); return; }
     setLoading(true); setError('');
     try {
-      const credential = await confirmation.confirm(otp);
-      const user = credential.user;
+      const credential = PhoneAuthProvider.credential(verificationId, otp);
+      const result = await signInWithCredential(auth, credential);
+      const user = result.user;
       const uid = user.uid;
       const token = await user.getIdToken();
 
@@ -370,18 +384,21 @@ export function OTPScreen({ navigation, route }: OTPProps) {
       });
 
       if (isNewUser || (!trainerData.gymId && !trainerData.isFreelance)) {
-        navigation.replace('GymLinking', { trainerId: uid });
+        resetToGymLinking(navigation, uid);
       } else {
-        navigation.replace('Main' as any);
+        resetToMain(navigation);
       }
     } catch (e: any) {
       console.log('Verify error:', e?.code, e?.message);
-      setError('Invalid OTP. Please try again.');
+      if (e?.code === 'auth/invalid-verification-code') setError('Invalid OTP. Please check and try again.');
+      else if (e?.code === 'auth/code-expired') setError('OTP expired. Please request a new one.');
+      else setError('Verification failed. Please try again.');
     } finally { setLoading(false); }
   };
 
   return (
     <KeyboardSafeView style={{ flex: 1 }}>
+      <PhoneAuthWebView ref={phoneAuthRef} />
       <View style={os.container}>
         <TouchableOpacity style={os.back} onPress={() => {
           if (step === 'otp') { setStep('phone'); setOtp(''); setError(''); }

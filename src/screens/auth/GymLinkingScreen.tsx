@@ -2,6 +2,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Lift Trainer App — Gym Linking / Freelance Setup (Firebase)
 // ─────────────────────────────────────────────────────────────────────────────
+import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
@@ -59,7 +60,9 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
     } finally { setLoading(false); }
   };
 
-  const goToDashboard = () => navigation.replace('Main' as any);
+  const goToDashboard = () => navigation.dispatch(
+    CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] })
+  );
 
   return (
     <KeyboardSafeView style={{ flex: 1 }}>
