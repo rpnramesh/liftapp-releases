@@ -4,9 +4,19 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth, getReactNativePersistence, initializeAuth } from 'firebase/auth';
+import { getAuth, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+
+// getReactNativePersistence is only available in the RN-specific Firebase bundle.
+// Import it safely so it doesn't crash if Metro resolves the browser bundle.
+let getReactNativePersistence: ((storage: any) => any) | undefined;
+try {
+  const authModule = require('firebase/auth');
+  if (typeof authModule.getReactNativePersistence === 'function') {
+    getReactNativePersistence = authModule.getReactNativePersistence;
+  }
+} catch {}
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBWfe4NVioDMI1b_VuZvkBsNCMJLnWI32M',
@@ -23,9 +33,9 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 // Auth with AsyncStorage persistence — user stays logged in until explicit sign-out
 let auth: ReturnType<typeof getAuth>;
 try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
+  auth = getReactNativePersistence
+    ? initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) })
+    : initializeAuth(app);
 } catch {
   // Already initialized (hot reload)
   auth = getAuth(app);
