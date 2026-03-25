@@ -8,19 +8,19 @@ import { useFocusEffect } from '@react-navigation/native';
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { db } from '../../firebase/config';
 
@@ -91,7 +91,7 @@ export default function MemberDetailsScreen({ navigation, route }: any) {
       if (goalWeight) updates.goalWeight = parseFloat(goalWeight) || 0;
       updates.updatedAt = Date.now();
       await updateDoc(doc(db, 'members', clientId), updates);
-      Alert.alert('Saved ✅', 'Member details updated and synced to their app.');
+      Alert.alert('Saved', 'Member details updated and synced to their app.');
     } catch (e) {
       Alert.alert('Error', 'Failed to save. Please try again.');
     } finally { setSaving(false); }
@@ -149,7 +149,7 @@ export default function MemberDetailsScreen({ navigation, route }: any) {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader
         title={`${clientName} — Details`}
         onBack={() => navigation.goBack()}
@@ -164,10 +164,10 @@ export default function MemberDetailsScreen({ navigation, route }: any) {
           <Text style={s.hint}>Changes sync to the member's app immediately</Text>
 
           {[
-            { label: '👤 Full Name', value: name, onChange: setName, keyboard: 'default' },
-            { label: '📏 Height (cm)', value: height, onChange: setHeight, keyboard: 'decimal-pad' },
-            { label: '⚖️ Current Weight (kg)', value: weight, onChange: setWeight, keyboard: 'decimal-pad' },
-            { label: '🎯 Goal Weight (kg)', value: goalWeight, onChange: setGoalWeight, keyboard: 'decimal-pad' },
+            { label: 'Full Name', value: name, onChange: setName, keyboard: 'default' },
+            { label: 'Height (cm)', value: height, onChange: setHeight, keyboard: 'decimal-pad' },
+            { label: 'Current Weight (kg)', value: weight, onChange: setWeight, keyboard: 'decimal-pad' },
+            { label: 'Goal Weight (kg)', value: goalWeight, onChange: setGoalWeight, keyboard: 'decimal-pad' },
           ].map(({ label, value, onChange, keyboard }) => (
             <View key={label} style={s.fieldRow}>
               <Text style={s.fieldLabel}>{label}</Text>
@@ -220,9 +220,13 @@ export default function MemberDetailsScreen({ navigation, route }: any) {
                 <Text style={s.measureType}>{type}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={s.measureValue}>{getMeasure(type)}</Text>
-                  <Text style={{ color: C.primary, fontSize: 13 }}>
-                    {editingMeasure === type ? '▲' : '✏️'}
-                  </Text>
+                  <View style={{ width: 28, alignItems: 'center' }}>
+                    {editingMeasure === type ? (
+                      <IconSymbol name="chevron.up" size={14} color={C.primary} />
+                    ) : (
+                      <IconSymbol name="pencil" size={14} color={C.primary} />
+                    )}
+                  </View>
                 </View>
               </TouchableOpacity>
 
@@ -252,7 +256,7 @@ export default function MemberDetailsScreen({ navigation, route }: any) {
           ))}
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

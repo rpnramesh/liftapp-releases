@@ -6,21 +6,21 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { EmptyState, PrimaryButton, SkeletonCard } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { getTrainerId } from '../../services/session';
 import { ClientsAPI, FreelanceAPI } from '../../services/trainer.api';
@@ -61,7 +61,10 @@ export default function FreelanceOnboardingScreen({ navigation }: any) {
       <View style={styles.actionRow}>
         <TouchableOpacity style={[styles.actionBtn, { flex: 1 }]}
           onPress={() => setShowInviteModal(true)}>
-          <Text style={styles.actionBtnText}>📲 Generate Invite Link</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <IconSymbol name="paperplane.fill" size={16} color={C.white} />
+            <Text style={styles.actionBtnText}>Generate Invite Link</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.actionBtn, styles.actionBtnSecondary, { flex: 1 }]}
           onPress={() => setShowManualModal(true)}>
@@ -95,8 +98,8 @@ export default function FreelanceOnboardingScreen({ navigation }: any) {
             <View style={{ gap: S.sm }}>{[1, 2].map(i => <SkeletonCard key={i} />)}</View>
           ) : null}
           ListEmptyComponent={loading ? null : (
-            <EmptyState emoji="👥" title="No freelance clients yet"
-              subtitle="Add a client manually or generate an invite link." />
+              <EmptyState icon={<IconSymbol name="person.2.fill" size={48} color={C.mid} />} title="No freelance clients yet"
+                subtitle="Add a client manually or generate an invite link." />
           )}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.clientCard}
@@ -108,18 +111,18 @@ export default function FreelanceOnboardingScreen({ navigation }: any) {
                 <Text style={styles.clientName}>{item.fullName}</Text>
                 <Text style={styles.clientMeta}>{item.membershipStatus} · {item.assignedPlanName ?? 'No plan'}</Text>
               </View>
-              <Text style={{ color: C.primary, fontSize: 18 }}>›</Text>
+              <IconSymbol name="chevron.right" size={18} color={C.primary} />
             </TouchableOpacity>
           )}
         />
       ) : (
-        <FlatList
+          <FlatList
           data={invites}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: S.lg, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor={C.primary} />}
           ListEmptyComponent={loading ? null : (
-            <EmptyState emoji="🔗" title="No invite links yet"
+            <EmptyState icon={<IconSymbol name="paperplane.fill" size={48} color={C.mid} />} title="No invite links yet"
               subtitle="Generate an invite link to start onboarding clients." />
           )}
           renderItem={({ item }) => (
@@ -129,9 +132,12 @@ export default function FreelanceOnboardingScreen({ navigation }: any) {
                 <Text style={styles.inviteMeta}>Fee: {formatINR(item.monthlyFee ?? 0)}/mo · Status: {item.status}</Text>
                 {item.clientName && <Text style={styles.inviteMeta}>Client: {item.clientName}</Text>}
               </View>
-              <TouchableOpacity style={styles.shareBtn}
+                <TouchableOpacity style={styles.shareBtn}
                 onPress={() => Share.share({ message: `Join my training on Lift: ${item.inviteLink}` })}>
-                <Text style={styles.shareBtnText}>📲 Share</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <IconSymbol name="paperplane.fill" size={14} color={C.white} />
+                  <Text style={styles.shareBtnText}>Share</Text>
+                </View>
               </TouchableOpacity>
             </View>
           )}
@@ -178,11 +184,13 @@ function InviteModal({ onClose, onCreated }: any) {
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: C.bg, padding: S.lg }}>
           <View style={modal.header}>
             <Text style={modal.title}>{result ? 'Invite Created!' : 'Generate Invite Link'}</Text>
-            <TouchableOpacity onPress={onClose}><Text style={{ color: C.mid, fontSize: 16 }}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol name="xmark" size={18} color={C.mid} />
+            </TouchableOpacity>
           </View>
 
           {!result ? (
@@ -199,7 +207,7 @@ function InviteModal({ onClose, onCreated }: any) {
             </>
           ) : (
             <>
-              <Text style={modal.successEmoji}>🎉</Text>
+              <IconSymbol name="star.fill" size={48} color={C.primary} />
               <Text style={modal.successText}>Your invite link is ready!</Text>
               <View style={modal.linkBox}>
                 <Text style={modal.linkText} numberOfLines={2}>{result.inviteLink}</Text>
@@ -207,14 +215,17 @@ function InviteModal({ onClose, onCreated }: any) {
               <View style={{ gap: S.md, marginTop: S.md }}>
                 <TouchableOpacity style={modal.shareBtn}
                   onPress={() => Share.share({ message: `Join my training on Lift: ${result.inviteLink}` })}>
-                  <Text style={modal.shareBtnText}>📲 Share on WhatsApp</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <IconSymbol name="paperplane.fill" size={14} color={C.white} />
+                    <Text style={modal.shareBtnText}>Share on WhatsApp</Text>
+                  </View>
                 </TouchableOpacity>
                 <PrimaryButton label="Done" onPress={onCreated} />
               </View>
             </>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 }
@@ -260,13 +271,15 @@ function ManualClientModal({ onClose, onCreated }: any) {
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <ScrollView style={{ flex: 1, backgroundColor: C.white, padding: S.lg }}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={modal.header}>
             <Text style={modal.title}>Add Client Manually</Text>
-            <TouchableOpacity onPress={onClose}><Text style={{ color: C.mid, fontSize: 16 }}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol name="xmark" size={18} color={C.mid} />
+            </TouchableOpacity>
           </View>
 
           <View style={modal.field}>
@@ -324,7 +337,7 @@ function ManualClientModal({ onClose, onCreated }: any) {
 
           <PrimaryButton label="Add Client" onPress={handleAdd} loading={loading} />
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 }

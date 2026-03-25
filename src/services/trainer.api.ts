@@ -4,24 +4,25 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { signOut } from 'firebase/auth';
 import {
-  collection,
-  deleteDoc,
-  doc, getDoc, getDocs,
-  query,
-  setDoc, updateDoc,
-  where,
-  writeBatch
+    collection,
+    deleteDoc,
+    doc, getDoc, getDocs,
+    orderBy,
+    query,
+    setDoc, updateDoc,
+    where,
+    writeBatch
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import {
-  BodyMeasurement, ClassAttendee, ClientCard, ClientProfile,
-  CreateClassPayload, CreateInvitePayload, FeeDue, FreelanceInvite,
-  LiveClass, ManualClientPayload,
-  MembershipStatus,
-  PaymentRecord, ProgressPhoto,
-  TrainerDashboard, TrainerEarnings, TrainerNotification, TrainerProfile,
-  TrainerRegistrationPayload, TrainerVideo, VideoUploadPayload,
-  WeightEntry, WorkoutLog, WorkoutPlan,
+    BodyMeasurement, ClassAttendee, ClientCard, ClientProfile,
+    CreateClassPayload, CreateInvitePayload, FeeDue, FreelanceInvite,
+    LiveClass, ManualClientPayload,
+    MembershipStatus,
+    PaymentRecord, ProgressPhoto,
+    TrainerDashboard, TrainerEarnings, TrainerNotification, TrainerProfile,
+    TrainerRegistrationPayload, TrainerVideo, VideoUploadPayload,
+    WeightEntry, WorkoutLog, WorkoutPlan,
 } from '../types/trainer.types';
 
 const ts = () => Date.now();
@@ -159,7 +160,7 @@ export const DashboardAPI = {
     const gymId = await getTrainerGymId(trainerId);
     const logsSnap = await getDocs(collection(db, 'gyms', gymId, 'workoutLogs')).catch(() => ({ docs: [] as any[] }));
     const recentLogs = logsSnap.docs
-      .map(d => d.data())
+      .map(d => ({ id: d.id, ...(d.data() as any) }))
       .sort((a: any, b: any) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
       .slice(0, 10);
     return {
@@ -270,8 +271,8 @@ export const WorkoutAPI = {
   },
   getWorkoutLogs: async (trainerId: string, memberId: string, ..._a: any[]) => {
     const gymId = await getEffectiveGymId(trainerId || uid(), memberId);
-    const snap = await getDocs(query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', memberId)));
-    const logs = snap.docs.map(d => d.data() as WorkoutLog).sort((a: any, b: any) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+    const snap = await getDocs(query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', memberId), orderBy('completedAt', 'desc'))).catch(() => ({ docs: [] as any[] }));
+    const logs = snap.docs.map(d => ({ id: d.id, ...(d.data() as WorkoutLog) }));
     return { logs, total: logs.length };
   },
   addNoteOnLog: async (trainerId: string, memberId: string, logId: string, note: string, ..._a: any[]) => {
@@ -350,7 +351,7 @@ export const LiveClassAPI = {
 // ─── Progress ─────────────────────────────────────────────────────────────────
 export const ProgressAPI = {
   getWeightHistory: async (_t: string, memberId: string, ..._a: any[]): Promise<WeightEntry[]> => {
-    const gymId = await getEffectiveGymId(trainerId || uid(), memberId);
+    const gymId = await getEffectiveGymId(_t || uid(), memberId);
     const snap = await getDocs(query(collection(db, 'gyms', gymId, 'weightLogs'), where('memberId', '==', memberId)));
     return snap.docs.map(d => {
       const w = d.data();
@@ -364,7 +365,7 @@ export const ProgressAPI = {
     await setDoc(ref, clean({ memberId, trainerId, date, annotation, createdAt: ts() }));
   },
   getMeasurements: async (_t: string, memberId: string, ..._a: any[]): Promise<BodyMeasurement[]> => {
-    const gymId = await getEffectiveGymId(trainerId || uid(), memberId);
+    const gymId = await getEffectiveGymId(_t || uid(), memberId);
     const snap = await getDocs(query(collection(db, 'gyms', gymId, 'measurements'), where('memberId', '==', memberId)));
     return snap.docs.map(d => {
       const m = d.data();
@@ -372,7 +373,7 @@ export const ProgressAPI = {
     });
   },
   getProgressPhotos: async (_t: string, memberId: string, ..._a: any[]): Promise<ProgressPhoto[]> => {
-    const gymId = await getEffectiveGymId(trainerId || uid(), memberId);
+    const gymId = await getEffectiveGymId(_t || uid(), memberId);
     const snap = await getDocs(query(collection(db, 'gyms', gymId, 'progressPhotos'), where('memberId', '==', memberId), where('sharedWithTrainer', '==', true))).catch(() => ({ docs: [] as any[] }));
     return snap.docs.map(d => { const p = d.data(); return { id: d.id, date: new Date(p.takenAt).toISOString().split('T')[0], photoUrl: p.photoUrl ?? '', isSharedWithTrainer: true }; });
   },
@@ -382,7 +383,7 @@ export const ProgressAPI = {
     return { requestId: ref.id, expiresAt: new Date(ts() + 86400000).toISOString() };
   },
   commentOnPhoto: async (_t: string, memberId: string, photoId: string, text: string, ..._a: any[]) => {
-    const gymId = await getEffectiveGymId(trainerId || uid(), memberId);
+    const gymId = await getEffectiveGymId(_t || uid(), memberId);
     const ref = doc(collection(db, 'gyms', gymId, 'progressPhotos', photoId, 'comments'));
     await setDoc(ref, clean({ trainerId: _t, text, createdAt: ts() }));
   },

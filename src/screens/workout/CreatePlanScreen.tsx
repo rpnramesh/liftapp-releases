@@ -10,12 +10,14 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert, FlatList, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert, FlatList, Modal,
+    ScrollView, StyleSheet, Text, TextInput, TouchableOpacity,
+    View
 } from 'react-native';
 import { EmptyState, PrimaryButton, ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { REST_PRESETS, WORKOUT_DAYS } from '../../constants/trainer.constants';
 import { db } from '../../firebase/config';
@@ -55,7 +57,7 @@ function workoutToPlanExercises(workout: any): PlanExercise[] {
 }
 
 const MAX_SETS = 12;
-const MAX_REPS = 12;
+const MAX_REPS = 50;
 
 // Strip undefined before Firestore writes
 function clean(obj: any): any {
@@ -117,6 +119,13 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
   }, [clientId]);
 
   const activeDay = days[activeDayIdx];
+
+  // Ensure activeDayIdx stays valid if days array length changes
+  useEffect(() => {
+    if (activeDayIdx >= days.length) {
+      setActiveDayIdx(Math.max(0, days.length - 1));
+    }
+  }, [days.length, activeDayIdx]);
 
   const toggleRestDay = (idx: number) => {
     setDays(prev => prev.map((d, i) =>
@@ -254,7 +263,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
       }));
 
       Alert.alert(
-        isEditing ? 'Plan Updated ✅' : 'Plan Assigned ✅',
+        isEditing ? 'Plan Updated' : 'Plan Assigned',
         `"${planName}" has been ${isEditing ? 'updated' : 'assigned'} for ${clientName}.`,
         [{ text: 'Done', onPress: () => navigation.goBack() }]
       );
@@ -274,7 +283,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <ScreenHeader
           title={isEditing ? `Edit Plan — ${clientName}` : `New Plan — ${clientName}`}
@@ -285,7 +294,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
 
         {isEditing && (
           <View style={styles.editingBanner}>
-            <Text style={styles.editingBannerText}>✏️ Editing existing plan — changes save immediately</Text>
+            <Text style={styles.editingBannerText}>Editing existing plan — changes save immediately</Text>
           </View>
         )}
 
@@ -299,11 +308,11 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           style={styles.dayTabRow} contentContainerStyle={{ paddingHorizontal: S.lg, gap: S.sm }}>
           {days.map((d, i) => (
-            <TouchableOpacity key={d.dayLabel}
+            <TouchableOpacity key={d.dayLabel ?? `day-${i}`}
               style={[styles.dayTab, i === activeDayIdx && styles.dayTabActive, d.restDay && styles.dayTabRest]}
               onPress={() => setActiveDayIdx(i)}>
               <Text style={[styles.dayTabText, i === activeDayIdx && styles.dayTabTextActive]}>
-                {d.dayLabel.slice(0, 3)}
+                {( (d.dayLabel ?? `Day ${i + 1}`) ).slice(0, 3)}
               </Text>
               {d.restDay && <Text style={styles.dayTabBadge}>REST</Text>}
               {!d.restDay && d.exercises.length > 0 && (
@@ -318,7 +327,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: S.lg, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled">
           <View style={styles.dayHeader}>
-            <Text style={styles.dayTitle}>{activeDay.dayLabel}</Text>
+            <Text style={styles.dayTitle}>{activeDay.dayLabel ?? `Day ${activeDayIdx + 1}`}</Text>
             <TouchableOpacity
               style={[styles.restToggle, activeDay.restDay && styles.restToggleOn]}
               onPress={() => toggleRestDay(activeDayIdx)}>
@@ -332,7 +341,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
             <>
               {activeDay.sourceWorkoutName && (
                 <View style={styles.sourceBadge}>
-                  <Text style={styles.sourceBadgeIcon}>📚</Text>
+                  <IconSymbol name="clipboard" size={18} color={C.primary} />
                   <Text style={styles.sourceBadgeText}>
                     Loaded from <Text style={{ fontWeight: '700' }}>{activeDay.sourceWorkoutName}</Text>
                     {' '}— edits here won't affect the library
@@ -341,7 +350,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
               )}
               <TouchableOpacity style={styles.loadWorkoutBtn}
                 onPress={() => setShowWorkoutPicker(true)}>
-                <Text style={styles.loadWorkoutIcon}>📚</Text>
+                <IconSymbol name="clipboard" size={18} color={C.primary} style={{ marginRight: 8 }} />
                 <View>
                   <Text style={styles.loadWorkoutText}>
                     {activeDay.sourceWorkoutName ? 'Replace with another workout' : 'Load from Workout Library'}
@@ -351,9 +360,9 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
               </TouchableOpacity>
 
               {activeDay.exercises.map((ex, exIdx) => (
-                <PlanExerciseCard key={ex.id} exercise={ex} index={exIdx}
-                  onChange={patch => updateExercise(exIdx, patch)}
-                  onRemove={() => removeExercise(exIdx)} />
+                        <PlanExerciseCard key={ex.id} exercise={ex} index={exIdx}
+                          onChange={patch => updateExercise(exIdx, patch)}
+                          onRemove={() => removeExercise(exIdx)} />
               ))}
 
               <TouchableOpacity style={styles.addBlankBtn} onPress={addBlankExercise}>
@@ -364,7 +373,7 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
 
           {activeDay.restDay && (
             <View style={styles.restDayPlaceholder}>
-              <Text style={{ fontSize: 40 }}>😴</Text>
+              <IconSymbol name="hotel" size={48} color={C.mid} />
               <Text style={styles.restDayText}>Rest Day</Text>
             </View>
           )}
@@ -377,15 +386,15 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
         </View>
       </View>
 
-      {showWorkoutPicker && (
+        {showWorkoutPicker && (
         <WorkoutPickerModal
           visible={showWorkoutPicker}
-          dayLabel={activeDay.dayLabel}
+          dayLabel={activeDay.dayLabel ?? `Day ${activeDayIdx + 1}`}
           onSelect={loadWorkoutIntoDay}
           onClose={() => setShowWorkoutPicker(false)}
         />
       )}
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 
@@ -413,7 +422,10 @@ function WorkoutPickerModal({ visible, dayLabel, onSelect, onClose }: any) {
             <Text style={pickerStyles.sub}>Loading into {dayLabel}</Text>
           </View>
           <TouchableOpacity style={pickerStyles.closeBtn} onPress={onClose}>
-            <Text style={pickerStyles.closeBtnText}>✕ Cancel</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="xmark" size={16} color={C.mid} />
+              <Text style={pickerStyles.closeBtnText}>Cancel</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -423,8 +435,8 @@ function WorkoutPickerModal({ visible, dayLabel, onSelect, onClose }: any) {
             <Text style={{ color: C.mid, marginTop: 12 }}>Loading your workout library…</Text>
           </View>
         ) : workouts.length === 0 ? (
-          <EmptyState emoji="📚" title="No workouts in library"
-            subtitle="Go to Library → Workouts and create a workout first. Come back here after saving." />
+            <EmptyState icon={<IconSymbol name="clipboard" size={40} color={C.mid} />} title="No workouts in library"
+            subtitle="Go to Library > Workouts and create a workout first. Come back here after saving." />
         ) : (
           <FlatList data={workouts} keyExtractor={(item: any) => item.id}
             contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: 40 }}
@@ -436,20 +448,27 @@ function WorkoutPickerModal({ visible, dayLabel, onSelect, onClose }: any) {
                     <Text style={pickerStyles.cardName}>{wkt.name}</Text>
                     {wkt.description ? <Text style={pickerStyles.cardDesc} numberOfLines={1}>{wkt.description}</Text> : null}
                     <View style={pickerStyles.statsRow}>
-                      <Text style={pickerStyles.statText}>🏋️ {(wkt.exercises ?? []).length} exercises</Text>
-                      <Text style={pickerStyles.statText}>⏱ ~{wkt.estimatedMinutes ?? 0} min</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <IconSymbol name="figure.strengthtraining.traditional" size={14} color={C.primary} />
+                        <Text style={[pickerStyles.statText, { marginLeft: 8 }]}>{(wkt.exercises ?? []).length} exercises</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <IconSymbol name="timer" size={14} color={C.mid} />
+                        <Text style={[pickerStyles.statText, { marginLeft: 8 }]}>~{wkt.estimatedMinutes ?? 0} min</Text>
+                      </View>
                     </View>
                     {muscleGroups.length > 0 && (
                       <View style={pickerStyles.muscleRow}>
                         {muscleGroups.slice(0, 4).map((g: any) => (
                           <View key={g} style={pickerStyles.muscleChip}>
-                            <Text style={pickerStyles.muscleChipText}>{MUSCLE_GROUP_ICONS[g] ?? '💪'} {g}</Text>
+                            <IconSymbol name={MUSCLE_GROUP_ICONS[g] ?? 'dumbbell'} size={14} color={C.primary} />
+                            <Text style={[pickerStyles.muscleChipText, { marginLeft: 8 }]}>{g}</Text>
                           </View>
                         ))}
                       </View>
                     )}
                   </View>
-                  <Text style={{ fontSize: 22, color: C.primary }}>→</Text>
+                  <IconSymbol name="chevron.right" size={22} color={C.primary} />
                 </TouchableOpacity>
               );
             }}
@@ -474,8 +493,10 @@ function PlanExerciseCard({ exercise, index, onChange, onRemove }: any) {
             {exercise.mainSets}×{exercise.mainReps} main
           </Text>
         </View>
-        <TouchableOpacity onPress={onRemove}><Text style={{ color: C.red, fontSize: 16 }}>✕</Text></TouchableOpacity>
-        <Text style={{ color: C.mid, fontSize: 12, marginLeft: 4 }}>{expanded ? '▲' : '▼'}</Text>
+        <TouchableOpacity onPress={onRemove}><IconSymbol name="xmark" size={18} color={C.red} /></TouchableOpacity>
+        <View style={{ marginLeft: 8 }}>
+          <IconSymbol name={expanded ? 'chevron.up' : 'chevron.down'} size={14} color={C.mid} />
+        </View>
       </TouchableOpacity>
       {expanded && (
         <View style={exStyles.body}>

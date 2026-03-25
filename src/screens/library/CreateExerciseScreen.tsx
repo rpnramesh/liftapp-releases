@@ -7,15 +7,17 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  Alert, KeyboardAvoidingView, Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { PrimaryButton, ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { LibraryStackParamList } from '../../navigation/TrainerNavigator';
 import { MUSCLE_GROUPS, MUSCLE_GROUP_ICONS } from '../../services/workoutDemoData';
@@ -82,7 +84,7 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <ScreenHeader
           title={isEditing ? 'Edit Exercise' : 'New Exercise'}
@@ -115,7 +117,7 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
                 <TouchableOpacity key={g}
                   style={[styles.groupChip, muscleGroup === g && styles.groupChipActive]}
                   onPress={() => setMuscleGroup(g)}>
-                  <Text style={styles.groupChipIcon}>{MUSCLE_GROUP_ICONS[g] ?? '💪'}</Text>
+                  <IconSymbol name={MUSCLE_GROUP_ICONS[g] ?? 'dumbbell'} size={14} color={muscleGroup === g ? C.white : C.primary} />
                   <Text style={[styles.groupChipText, muscleGroup === g && styles.groupChipTextActive]}>{g}</Text>
                 </TouchableOpacity>
               ))}
@@ -148,7 +150,7 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
           />
         </ScrollView>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

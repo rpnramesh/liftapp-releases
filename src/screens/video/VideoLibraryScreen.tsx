@@ -5,15 +5,16 @@ import { C } from '../../constants/theme';
 
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Image, RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Image, RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { EmptyState, SkeletonCard, StatusBadge } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { useAsync } from '../../hooks/useTrainer';
 import { VideoAPI } from '../../services/trainer.api';
 import { TrainerVideo } from '../../types/trainer.types';
@@ -53,15 +54,18 @@ export default function VideoLibraryScreen({ navigation, hideHeader }: { navigat
     <View style={styles.videoCard}>
       {item.thumbnailUrl ? (
         <Image source={{ uri: item.thumbnailUrl }} style={styles.thumbnail} />
-      ) : (
+        ) : (
         <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
-          <Text style={{ fontSize: 28 }}>🎬</Text>
+          <IconSymbol name="play" size={28} color={C.mid} />
         </View>
       )}
       <View style={styles.videoInfo}>
         <Text style={styles.videoTitle} numberOfLines={2}>{item.title}</Text>
         {item.isPersonalized && item.assignedMemberName && (
-          <Text style={styles.assignedTo}>👤 {item.assignedMemberName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <IconSymbol name="person.2.fill" size={14} color={C.mid} />
+            <Text style={styles.assignedTo}>{item.assignedMemberName}</Text>
+          </View>
         )}
         {item.isPersonalized && item.watchStatus && (
           <StatusBadge
@@ -76,7 +80,10 @@ export default function VideoLibraryScreen({ navigation, hideHeader }: { navigat
         </View>
         <View style={styles.actions}>
           <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item.id, item.title)}>
-            <Text style={styles.deleteBtnText}>🗑 Delete</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="trash" size={14} color={C.red} />
+              <Text style={styles.deleteBtnText}>Delete</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -123,7 +130,7 @@ export default function VideoLibraryScreen({ navigation, hideHeader }: { navigat
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />}
           ListEmptyComponent={
             <EmptyState
-              emoji="🎬"
+              icon={<IconSymbol name="play" size={48} color={C.mid} />}
               title="No videos yet"
               subtitle="Upload workout videos for your clients."
               ctaLabel="Upload a Video"

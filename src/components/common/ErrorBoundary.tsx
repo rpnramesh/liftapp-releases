@@ -9,13 +9,14 @@
 
 import React, { Component, ErrorInfo } from 'react';
 import {
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
+import { IconSymbol } from '../../../components/ui/icon-symbol';
 import { LIFT_TEAL } from '../../constants/trainer.constants';
 
 interface Props {
@@ -77,7 +78,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
 
     return (
       <View style={styles.container}>
-        <Text style={styles.emoji}>⚠️</Text>
+        <IconSymbol name="bell.fill" size={48} color="#F59E0B" />
         <Text style={styles.title}>Something went wrong</Text>
         <Text style={styles.subtitle}>
           Lift encountered an unexpected error. Please try again — your data is safe.
@@ -93,9 +94,10 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             <TouchableOpacity
               onPress={() => this.setState(prev => ({ showDetails: !prev.showDetails }))}
             >
-              <Text style={styles.devToggle}>
-                {this.state.showDetails ? '▼' : '▶'} Error Details (dev only)
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name={this.state.showDetails ? 'chevron.down' : 'chevron.right'} size={12} color="#374151" />
+                <Text style={styles.devToggle}>Error Details (dev only)</Text>
+              </View>
             </TouchableOpacity>
             {this.state.showDetails && (
               <ScrollView style={styles.devScroll} nestedScrollEnabled>
@@ -130,7 +132,7 @@ export const ApiErrorBanner: React.FC<ApiErrorBannerProps> = ({ error, onDismiss
       <Text style={styles.errorBannerText}>{error}</Text>
       {onDismiss && (
         <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={styles.errorBannerDismiss}>✕</Text>
+          <IconSymbol name="xmark" size={16} color="#DC2626" />
         </TouchableOpacity>
       )}
     </View>

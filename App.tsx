@@ -6,10 +6,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import KeyboardSafeView from './src/components/ui/KeyboardSafeView';
 
 import { GlobalErrorBoundary } from './src/components/common/ErrorBoundary';
 import { LIFT_TEAL } from './src/constants/trainer.constants';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { useBackgroundVibration } from './src/hooks/useTrainer';
 import { initI18n } from './src/i18n/i18n';
 import TrainerNavigator from './src/navigation/TrainerNavigator';
 import { logAppOpen } from './src/services/analytics';
@@ -19,6 +21,8 @@ import { setupNotifications } from './src/services/notifications';
 
 function InnerApp() {
   const { trainerId, token, gymId, isFreelance, isLoading } = useAuth();
+  // Enable a short vibration when app goes to background (Android)
+  useBackgroundVibration(true);
   const notifCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -72,7 +76,9 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
         <AuthProvider>
-          <InnerApp />
+          <KeyboardSafeView style={{ flex: 1 }}>
+            <InnerApp />
+          </KeyboardSafeView>
         </AuthProvider>
       </SafeAreaProvider>
     </GlobalErrorBoundary>

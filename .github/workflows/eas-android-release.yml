@@ -1,0 +1,130 @@
+name: EAS Android Release
+
+on:
+  push:
+    tags:
+      - 'testv.*'
+  workflow_dispatch: {}
+
+jobs:
+  eas-build-and-upload:
+    runs-on: ubuntu-latest
+    env:
+      EAS_BUILD_PROFILE: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli@~3 || npm install -g eas-cli
+
+      - name: Run EAS build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Starting EAS build (profile=$EAS_BUILD_PROFILE)"
+          npx --yes eas-cli --version || true
+          npx --yes eas-cli build -p android --profile "$EAS_BUILD_PROFILE" --non-interactive --output=json 2>&1 | tee /tmp/eas-build-output.json
+
+      - name: Extract artifact URL
+        run: |
+          set -e
+          ARTIFACT_URL=$(jq -r '.. | objects | .url? // empty' /tmp/eas-build-output.json | grep -E '^https?://' | head -n1 || true)
+          if [ -z "$ARTIFACT_URL" ]; then
+            echo "Could not find artifact URL in /tmp/eas-build-output.json"
+            cat /tmp/eas-build-output.json
+            exit 1
+          fi
+          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        if: false
+
+      - name: Fetch artifact to file
+        run: |
+          set -e
+          ARTIFACT_URL=${{ steps.extract_artifact_url.outputs.artifact_url || env.ARTIFACT_URL || "" }}
+          if [ -z "$ARTIFACT_URL" ]; then
+            ARTIFACT_URL=$(jq -r '.. | objects | .url? // empty' /tmp/eas-build-output.json | grep -E '^https?://' | head -n1)
+          fi
+          echo "Downloading $ARTIFACT_URL"
+          curl -L "$ARTIFACT_URL" -o /tmp/app.apk
+
+      - name: Optionally sign APK (if keystore provided)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "Installing Android build-tools"
+            sudo apt-get update
+            sudo apt-get install -y wget unzip
+            ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+            cd /tmp
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
+            unzip -q cmdline.zip -d cmdline-tools-tmp
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            mv cmdline-tools-tmp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/" || true
+            export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+            yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+            echo "Decoding keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/keystore.jks
+
+            ZIPALIGN="$ANDROID_SDK_ROOT/build-tools/33.0.2/zipalign"
+            APKSIGNER="$ANDROID_SDK_ROOT/build-tools/33.0.2/apksigner"
+            test -x "$ZIPALIGN" && test -x "$APKSIGNER"
+
+            echo "Aligning APK"
+            $ZIPALIGN -v -p 4 /tmp/app.apk /tmp/aligned.apk
+            cp /tmp/aligned.apk /tmp/signed.apk
+            echo "Signing with apksigner"
+            $APKSIGNER sign --ks /tmp/keystore.jks --ks-pass pass:"$KEYSTORE_PASSWORD" --ks-key-alias "$KEY_ALIAS" --key-pass pass:"$KEY_PASSWORD" /tmp/signed.apk
+            echo "Verifying"
+            $APKSIGNER verify --verbose /tmp/signed.apk || true
+            mv /tmp/signed.apk /tmp/app-final.apk
+          else
+            echo "No keystore provided; uploading downloaded APK as-is"
+            mv /tmp/app.apk /tmp/app-final.apk
+          fi
+
+      - name: Upload to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG=${GITHUB_REF##*/}
+          REPO=${GITHUB_REPOSITORY}
+          echo "Using tag $TAG and repo $REPO"
+          release=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO/releases/tags/$TAG")
+          release_id=$(echo "$release" | jq -r .id // empty)
+          if [ -z "$release_id" ] || [ "$release_id" = "null" ]; then
+            echo "Creating release $TAG"
+            create_resp=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/json" \
+              -d "{\"tag_name\": \"$TAG\", \"name\": \"$TAG\", \"prerelease\": false}" \
+              "https://api.github.com/repos/$REPO/releases")
+            release_id=$(echo "$create_resp" | jq -r .id)
+          fi
+          upload_url=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO/releases/$release_id" | jq -r .upload_url | sed -e 's/{?name,label}//')
+          ASSET_NAME="${TAG}-app-final.apk"
+          assets=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO/releases/$release_id/assets")
+          existing_id=$(echo "$assets" | jq -r ".[] | select(.name==\"$ASSET_NAME\") | .id" | head -n1 || true)
+          if [ -n "$existing_id" ]; then
+            echo "Deleting existing asset id $existing_id"
+            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$REPO/releases/assets/$existing_id"
+          fi
+          echo "Uploading asset $ASSET_NAME"
+          curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Content-Type: application/vnd.android.package-archive" --data-binary @/tmp/app-final.apk "$upload_url?name=$ASSET_NAME" | jq -r .browser_download_url

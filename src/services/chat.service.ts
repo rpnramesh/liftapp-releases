@@ -4,19 +4,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  addDoc,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  limit,
-  increment,
-  Unsubscribe,
+    collection,
+    doc,
+    getDoc,
+    increment,
+    limit,
+    onSnapshot,
+    orderBy,
+    query,
+    setDoc,
+    Unsubscribe,
+    updateDoc,
+    where
 } from 'firebase/firestore';
 
 import { db } from '../firebase/config';
@@ -100,7 +99,7 @@ export async function sendMessage(
   await setDoc(msgRef, message);
 
   await updateDoc(doc(db, 'chats', chatId), {
-    lastMessage: text ?? (type === 'image' ? '📷 Image' : type === 'voice' ? '🎙️ Voice note' : '💪 Workout'),
+    lastMessage: text ?? (type === 'image' ? 'Image' : type === 'voice' ? 'Voice note' : 'Workout'),
     lastMessageAt: Date.now(),
     [`unreadCount.${recipientId}`]: increment(1),
   });

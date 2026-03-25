@@ -9,28 +9,29 @@
 //   • Progress photos count
 //   • Trainer-specific stats
 // ─────────────────────────────────────────────────────────────────────────────
+import { useEffect, useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    onSnapshot,
+    query,
+    where,
 } from 'firebase/firestore';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, R, S } from '../../constants/theme';
 import { db } from '../../firebase/config';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
@@ -279,8 +280,28 @@ export default function ProgressDashboardScreen({ navigation, route }: Props) {
     }
   }, [clientId, trainerId]);
 
-  // Auto-load
-  React.useEffect(() => { loadAll(); }, [loadAll]);
+  // Auto-load and refresh on navigation focus
+  useFocusEffect(useCallback(() => { loadAll(); }, [loadAll]));
+
+  // Also subscribe to realtime updates for workout logs so the UI refreshes
+  // immediately when a new log is added elsewhere.
+  useEffect(() => {
+    let unsub = () => {};
+    (async () => {
+      try {
+        const trainerSnap = await getDoc(doc(db, 'trainers', trainerId));
+        const gymId = trainerSnap.data()?.gymId ?? trainerId;
+        const q = query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', clientId));
+        unsub = onSnapshot(q, snap => {
+          const logs = snap.docs.map((d: any) => d.data()).sort((a: any, b: any) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+          setWorkoutLogs(logs);
+        }, () => {});
+      } catch (e) {
+        // ignore realtime subscribe errors
+      }
+    })();
+    return () => { try { unsub(); } catch (_) {} };
+  }, [clientId, trainerId]);
 
   // Derived stats
   const latestWeight = weightEntries.length ? weightEntries[weightEntries.length - 1] : null;
@@ -347,9 +368,15 @@ export default function ProgressDashboardScreen({ navigation, route }: Props) {
         {/* ── Weight & BMI ── */}
         <View style={s.card}>
           <View style={s.cardHeader}>
-            <Text style={s.cardTitle}>⚖️ Weight & BMI</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <IconSymbol name="scalemass" size={18} color={C.primary} />
+              <Text style={[s.cardTitle, { marginLeft: 8 }]}>Weight & BMI</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('WeightBMI', { clientId, clientName })}>
-              <Text style={s.seeAll}>Full chart ›</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={s.seeAll}>Full chart</Text>
+                <IconSymbol name="chevron.right" size={14} color={C.mid} />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -400,9 +427,15 @@ export default function ProgressDashboardScreen({ navigation, route }: Props) {
         {/* ── Workout Consistency ── */}
         <View style={s.card}>
           <View style={s.cardHeader}>
-            <Text style={s.cardTitle}>🏋️ Workout Consistency</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <IconSymbol name="figure.strengthtraining.traditional" size={18} color={C.primary} />
+              <Text style={[s.cardTitle, { marginLeft: 8 }]}>Workout Consistency</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('WorkoutLogs', { clientId, clientName })}>
-              <Text style={s.seeAll}>All logs ›</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={s.seeAll}>All logs</Text>
+                <IconSymbol name="chevron.right" size={14} color={C.mid} />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -441,7 +474,10 @@ export default function ProgressDashboardScreen({ navigation, route }: Props) {
           <View style={s.cardHeader}>
             <Text style={s.cardTitle}>📐 Body Measurements</Text>
             <TouchableOpacity onPress={() => navigation.navigate('Measurements', { clientId, clientName })}>
-              <Text style={s.seeAll}>All ›</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={s.seeAll}>All</Text>
+                <IconSymbol name="chevron.right" size={14} color={C.mid} />
+              </View>
             </TouchableOpacity>
           </View>
 
@@ -470,9 +506,15 @@ export default function ProgressDashboardScreen({ navigation, route }: Props) {
         {/* ── Progress Photos ── */}
         <View style={s.card}>
           <View style={s.cardHeader}>
-            <Text style={s.cardTitle}>📷 Progress Photos</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <IconSymbol name="camera" size={18} color={C.primary} />
+              <Text style={[s.cardTitle, { marginLeft: 8 }]}>Progress Photos</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('ProgressPhotos', { clientId, clientName })}>
-              <Text style={s.seeAll}>View all ›</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={s.seeAll}>View all</Text>
+                <IconSymbol name="chevron.right" size={14} color={C.mid} />
+              </View>
             </TouchableOpacity>
           </View>
           {photoCount > 0 ? (

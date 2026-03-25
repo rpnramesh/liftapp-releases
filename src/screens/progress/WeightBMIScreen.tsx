@@ -6,18 +6,19 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  Alert, Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert, Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
 import { ProgressAPI } from '../../services/trainer.api';
 
 import { EmptyState, PrimaryButton, SkeletonLoader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C } from '../../constants/theme';
 import { useAsync } from '../../hooks/useTrainer';
 import { WeightEntry } from '../../types/trainer.types';
@@ -111,7 +112,10 @@ function BMIZoneChart({ entries }: BMIZoneChartProps) {
 
   return (
     <View style={cs.card}>
-      <Text style={cs.title}>⚖️ Weight Progress</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <IconSymbol name="scalemass" size={18} color={C.primary} />
+        <Text style={[cs.title, { marginLeft: 8 }]}>Weight Progress</Text>
+      </View>
       <Text style={cs.sub}>
         {sorted.length >= entries.length
           ? `${entries.length} entries total`
@@ -330,8 +334,8 @@ export default function WeightBMIScreen({ navigation, route }: WeightProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{clientName}'s Weight & BMI</Text>
       </View>
@@ -371,14 +375,14 @@ export default function WeightBMIScreen({ navigation, route }: WeightProps) {
         {loading ? (
           <SkeletonLoader height={48} />
         ) : entries?.length === 0 ? (
-          <EmptyState emoji="⚖️" title="No weight data yet" subtitle={`${clientName} hasn't logged their weight yet.`} />
+          <EmptyState icon={<IconSymbol name="scalemass" size={40} color={C.mid} />} title="No weight data yet" subtitle={`${clientName} hasn't logged their weight yet.`} />
         ) : (
           entries?.map(entry => (
             <View key={entry.date} style={styles.entryRow}>
               <View>
                 <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
                 {entry.trainerAnnotation && (
-                  <Text style={styles.annotation}>📌 {entry.trainerAnnotation}</Text>
+                  <Text style={styles.annotation}><IconSymbol name="pin" size={12} color={C.mid} /> {entry.trainerAnnotation}</Text>
                 )}
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -391,7 +395,7 @@ export default function WeightBMIScreen({ navigation, route }: WeightProps) {
                 style={styles.annotateBtn}
                 onPress={() => { setAnnotationModal({ date: entry.date }); setAnnotationText(entry.trainerAnnotation ?? ''); }}
               >
-                <Text style={styles.annotateBtnText}>📌</Text>
+                <IconSymbol name="pin" size={16} color={C.mid} />
               </TouchableOpacity>
             </View>
           ))

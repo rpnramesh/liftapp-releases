@@ -6,18 +6,19 @@ import { C } from '../../constants/theme';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { EmptyState, LiveBadge, PrimaryButton, SkeletonCard } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { CLASS_CATEGORIES, CLASS_DURATIONS, LIVE_CLASS } from '../../constants/trainer.constants';
 import { useAsync } from '../../hooks/useTrainer';
 import { ScheduleStackParamList } from '../../navigation/TrainerNavigator';
@@ -91,7 +92,7 @@ export default function ScheduleScreen({ navigation }: Props) {
         )}
 
         {tab === 'past' && item.averageRating != null && (
-          <Text style={styles.rating}>⭐ {item.averageRating.toFixed(1)} avg · {item.rsvpCount} attended</Text>
+          <Text style={styles.rating}><IconSymbol name="star.fill" size={14} color={C.amber} /> {item.averageRating.toFixed(1)} avg · {item.rsvpCount} attended</Text>
         )}
 
         <View style={styles.classActions}>
@@ -100,7 +101,7 @@ export default function ScheduleScreen({ navigation }: Props) {
               style={styles.startBtn}
               onPress={() => navigation.navigate('LiveClass', { classId: item.id })}
             >
-              <Text style={styles.startBtnText}>🔴 Start Class</Text>
+              <Text style={styles.startBtnText}>Start Class</Text>
             </TouchableOpacity>
           )}
           {tab === 'upcoming' && isEditable(item) && (
@@ -153,12 +154,12 @@ export default function ScheduleScreen({ navigation }: Props) {
           refreshControl={<RefreshControl refreshing={data.loading} onRefresh={data.refresh} tintColor={C.primary} />}
           ListEmptyComponent={
             <EmptyState
-              emoji="📅"
-              title={tab === 'upcoming' ? 'No classes scheduled' : 'No past classes'}
-              subtitle={tab === 'upcoming' ? 'Tap "+ Schedule" to create a live class for your clients.' : ''}
-              ctaLabel={tab === 'upcoming' ? 'Schedule a Class' : undefined}
-              onCTA={tab === 'upcoming' ? () => setShowCreate(true) : undefined}
-            />
+                icon={<IconSymbol name="calendar" size={48} color={C.mid} />}
+                title={tab === 'upcoming' ? 'No classes scheduled' : 'No past classes'}
+                subtitle={tab === 'upcoming' ? 'Tap "+ Schedule" to create a live class for your clients.' : ''}
+                ctaLabel={tab === 'upcoming' ? 'Schedule a Class' : undefined}
+                onCTA={tab === 'upcoming' ? () => setShowCreate(true) : undefined}
+              />
           }
         />
       )}
@@ -207,7 +208,9 @@ function CreateClassModal({ visible, onClose, onCreated }: {
         <View style={modalStyles.sheet}>
           <View style={modalStyles.sheetHeader}>
             <Text style={modalStyles.sheetTitle}>Schedule Live Class</Text>
-            <TouchableOpacity onPress={onClose}><Text style={{ fontSize: 20, color: C.mid }}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol name="xmark" size={20} color={C.mid} />
+            </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 20 }}>
             <Text style={modalStyles.label}>Class Name *</Text>

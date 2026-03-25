@@ -5,6 +5,7 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, R, S } from '../../constants/theme';
 import { ExerciseAPI } from '../../services/workoutMockApi';
 import VideoLibraryScreen from '../video/VideoLibraryScreen';
@@ -39,9 +40,9 @@ export default function LibraryScreen() {
   const countLoaded = exerciseCount >= 0;
 
   const tabs: { key: LibraryTab; label: string; icon: string }[] = [
-    { key: 'workouts', label: 'Workouts', icon: '🏋️' },
-    { key: 'exercises', label: 'Exercises', icon: '💪' },
-    { key: 'videos', label: 'Videos', icon: '▶️' },
+    { key: 'workouts', label: 'Workouts', icon: 'figure.strengthtraining.traditional' },
+    { key: 'exercises', label: 'Exercises', icon: 'dumbbell' },
+    { key: 'videos', label: 'Videos', icon: 'play' },
   ];
 
   const handleWorkoutPress = () => {
@@ -98,7 +99,7 @@ export default function LibraryScreen() {
             onPress={() => setActiveTab(tab.key)}
             activeOpacity={0.8}
           >
-            <Text style={styles.tabIcon}>{tab.icon}</Text>
+            <IconSymbol name={tab.icon as any} size={18} color={activeTab === tab.key ? C.primary : C.mid} />
             <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
               {tab.label}
             </Text>

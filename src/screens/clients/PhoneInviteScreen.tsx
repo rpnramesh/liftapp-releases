@@ -7,30 +7,30 @@
 //   #6  Membership validity date/months picker added
 // ─────────────────────────────────────────────────────────────────────────────
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  setDoc,
-  updateDoc,
-  where,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    query,
+    setDoc,
+    updateDoc,
+    where,
 } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput, TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput, TouchableOpacity,
+    View
 } from 'react-native';
 import { PrimaryButton } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { db } from '../../firebase/config';
 import { getTrainerId } from '../../services/session';
@@ -218,7 +218,10 @@ export default function PhoneInviteScreen({ navigation }: any) {
         <View style={s.modalHeader}>
           <Text style={s.modalTitle}>Membership Validity</Text>
           <TouchableOpacity onPress={() => setShowValidityModal(false)}>
-            <Text style={{ color: C.mid, fontSize: 16 }}>✕ Done</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="xmark" size={16} color={C.mid} />
+              <Text style={{ color: C.mid, fontSize: 16 }}>Done</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -282,10 +285,10 @@ export default function PhoneInviteScreen({ navigation }: any) {
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontSize: 15, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Text style={s.title}>Invite a Member</Text>
         <Text style={s.subtitle}>Works for gym members and freelance members</Text>
@@ -295,7 +298,7 @@ export default function PhoneInviteScreen({ navigation }: any) {
         {(['phone', 'link'] as const).map(t => (
           <TouchableOpacity key={t} style={[s.tab, tab === t && s.tabActive]} onPress={() => setTab(t)}>
             <Text style={[s.tabText, tab === t && s.tabTextActive]}>
-              {t === 'phone' ? '📱 By Phone' : '🔗 Invite Link'}
+              {t === 'phone' ? 'By Phone' : 'Invite Link'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -306,10 +309,10 @@ export default function PhoneInviteScreen({ navigation }: any) {
         {/* ── Membership Validity (shown on both tabs) ── */}
         <TouchableOpacity style={s.validityCard} onPress={() => setShowValidityModal(true)}>
           <View style={{ flex: 1 }}>
-            <Text style={s.validityLabel}>📅 Membership Validity</Text>
+            <Text style={s.validityLabel}>Membership Validity</Text>
             <Text style={s.validityValue}>{validityLabel}</Text>
           </View>
-          <Text style={{ color: C.primary, fontSize: 18 }}>›</Text>
+          <IconSymbol name="chevron.right" size={18} color={C.primary} />
         </TouchableOpacity>
 
         {/* ── Phone tab ── */}
@@ -336,19 +339,19 @@ export default function PhoneInviteScreen({ navigation }: any) {
           </View>
 
           {notFound && (
-            <View style={s.statusCard}>
-              <Text style={{ fontSize: 32 }}>🔍</Text>
-              <Text style={s.statusTitle}>Member not found</Text>
-              <Text style={s.statusSub}>This number isn't registered on Lift. Ask them to download and sign up first.</Text>
-            </View>
+              <View style={s.statusCard}>
+                <IconSymbol name="magnifyingglass" size={32} color={C.mid} />
+                <Text style={s.statusTitle}>Member not found</Text>
+                <Text style={s.statusSub}>This number isn't registered on Lift. Ask them to download and sign up first.</Text>
+              </View>
           )}
 
           {notEnabled && (
-            <View style={[s.statusCard, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
-              <Text style={{ fontSize: 32 }}>🔒</Text>
-              <Text style={s.statusTitle}>Invites not enabled</Text>
-              <Text style={s.statusSub}>This member hasn't turned on "Accept Trainer Invites" in their Lift profile. Ask them to enable it first.</Text>
-            </View>
+              <View style={[s.statusCard, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}>
+                <IconSymbol name="lock.fill" size={32} color={C.mid} />
+                <Text style={s.statusTitle}>Invites not enabled</Text>
+                <Text style={s.statusSub}>This member hasn't turned on "Accept Trainer Invites" in their Lift profile. Ask them to enable it first.</Text>
+              </View>
           )}
 
           {foundMember && !sent && (<>
@@ -359,7 +362,7 @@ export default function PhoneInviteScreen({ navigation }: any) {
               <View style={{ flex: 1 }}>
                 <Text style={s.foundName}>{foundMember.name ?? foundMember.fullName}</Text>
                 <Text style={s.foundSub}>{foundMember.phone}</Text>
-                <Text style={s.foundBadge}>{foundMember.gymId ? '🏛 Gym Member' : '🌟 Independent'}</Text>
+                <Text style={s.foundBadge}>{foundMember.gymId ? 'Gym Member' : 'Independent'}</Text>
               </View>
             </View>
             <View style={s.card}>
@@ -371,14 +374,14 @@ export default function PhoneInviteScreen({ navigation }: any) {
           </>)}
 
           {sent && (
-            <View style={[s.statusCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
-              <Text style={{ fontSize: 48 }}>🎉</Text>
-              <Text style={s.statusTitle}>Invite Sent!</Text>
-              <Text style={s.statusSub}>{foundMember?.name ?? foundMember?.fullName} will see your invite in their Lift app Profile → Trainer Invites.</Text>
-              <TouchableOpacity style={s.anotherBtn} onPress={resetPhone}>
-                <Text style={s.anotherBtnText}>Invite Another Member</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={[s.statusCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+                <IconSymbol name="star.fill" size={48} color={C.primary} />
+                <Text style={s.statusTitle}>Invite Sent!</Text>
+                <Text style={s.statusSub}>{foundMember?.name ?? foundMember?.fullName} will see your invite in their Lift app Profile › Trainer Invites.</Text>
+                <TouchableOpacity style={s.anotherBtn} onPress={resetPhone}>
+                  <Text style={s.anotherBtnText}>Invite Another Member</Text>
+                </TouchableOpacity>
+              </View>
           )}
         </>)}
 
@@ -387,7 +390,7 @@ export default function PhoneInviteScreen({ navigation }: any) {
           {!inviteLink ? (
             <View style={s.card}>
               <Text style={s.label}>Generate Invite Link</Text>
-              <Text style={s.hint}>Share this link with your member. They paste it in Lift → Profile → Trainer Invites.</Text>
+              <Text style={s.hint}>Share this link with your member. They paste it in Lift › Profile › Trainer Invites.</Text>
               <PrimaryButton
                 label={generatingLink ? 'Generating…' : 'Generate Link'}
                 onPress={handleGenerateLink}
@@ -396,12 +399,12 @@ export default function PhoneInviteScreen({ navigation }: any) {
             </View>
           ) : (
             <View style={s.card}>
-              <Text style={s.label}>Your Invite Link ✅</Text>
+              <Text style={s.label}>Your Invite Link</Text>
               <View style={s.linkBox}>
                 <Text style={s.linkText} numberOfLines={3}>{inviteLink}</Text>
               </View>
-              <PrimaryButton label="📲 Share Link" onPress={() => Share.share({ message: `Join my training program on Lift: ${inviteLink}` })} />
-              <Text style={s.hint}>Member opens Lift → Profile → Trainer Invites → pastes this link → Accept</Text>
+              <PrimaryButton label="Share Link" onPress={() => Share.share({ message: `Join my training program on Lift: ${inviteLink}` })} />
+              <Text style={s.hint}>Member opens Lift › Profile › Trainer Invites › pastes this link › Accept</Text>
               <TouchableOpacity onPress={() => setInviteLink('')} style={{ alignItems: 'center', marginTop: 8 }}>
                 <Text style={{ color: C.mid, fontSize: 13 }}>Generate new link</Text>
               </TouchableOpacity>
@@ -409,17 +412,17 @@ export default function PhoneInviteScreen({ navigation }: any) {
           )}
 
           <View style={[s.statusCard, { backgroundColor: '#F0F9FF', borderColor: '#BAE6FD' }]}>
-            <Text style={{ fontSize: 32 }}>🔗</Text>
+            <IconSymbol name="share" size={32} color={C.mid} />
             <Text style={s.statusTitle}>How invite links work</Text>
             <Text style={[s.statusSub, { textAlign: 'left' }]}>
-              {'1. Tap Generate Link above\n2. Share via WhatsApp or SMS\n3. Member opens Lift → Profile → Trainer Invites\n4. They paste the link and tap Go → Accept\n5. You see them in your Clients list immediately'}
+              {'1. Tap Generate Link above\n2. Share via WhatsApp or SMS\n3. Member opens Lift › Profile › Trainer Invites\n4. They paste the link and tap Go › Accept\n5. You see them in your Clients list immediately'}
             </Text>
           </View>
         </>)}
       </ScrollView>
 
       <ValidityModal />
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

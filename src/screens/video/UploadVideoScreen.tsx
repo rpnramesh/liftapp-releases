@@ -1,21 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-011 Upload Personalised Session Video
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TextInput,
-  TouchableOpacity, Alert, KeyboardAvoidingView, Platform,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { VideosStackParamList } from '../../navigation/TrainerNavigator';
-import { VideoAPI } from '../../services/trainer.api';
-import { UPLOAD_LIMITS, VIDEO_CATEGORIES } from '../../constants/trainer.constants';
 import { PrimaryButton } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
+import { UPLOAD_LIMITS, VIDEO_CATEGORIES } from '../../constants/trainer.constants';
+import { VideoAPI } from '../../services/trainer.api';
 
 const TOKEN = '';
-type Props = NativeStackScreenProps<VideosStackParamList, 'UploadVideo'>;
+type Props = NativeStackScreenProps<any, 'UploadVideo'>;
 
 export default function UploadVideoScreen({ navigation, route }: Props) {
   const { preselectedClientId } = route.params ?? {};
@@ -61,11 +67,14 @@ export default function UploadVideoScreen({ navigation, route }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={{ color: C.primary, fontWeight: '500' }}>← Cancel</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="chevron.left" size={16} color={C.primary} />
+              <Text style={{ color: C.primary, fontWeight: '500' }}>Cancel</Text>
+            </View>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Upload Video</Text>
         </View>
@@ -73,7 +82,7 @@ export default function UploadVideoScreen({ navigation, route }: Props) {
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16, paddingBottom: 40 }}>
           {/* Video selector placeholder */}
           <TouchableOpacity style={styles.videoPicker}>
-            <Text style={styles.videoPickerIcon}>🎬</Text>
+            <IconSymbol name="play" size={40} color={C.mid} />
             <Text style={styles.videoPickerText}>Tap to select video</Text>
             <Text style={styles.videoPickerSub}>MP4 format · Max {UPLOAD_LIMITS.VIDEO_MB} MB</Text>
           </TouchableOpacity>
@@ -136,7 +145,7 @@ export default function UploadVideoScreen({ navigation, route }: Props) {
           <PrimaryButton label="Upload Video" onPress={handleUpload} loading={uploading} />
         </ScrollView>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

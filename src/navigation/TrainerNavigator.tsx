@@ -2,11 +2,11 @@
 // Lift Trainer App — Navigator
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { Text } from 'react-native';
 
 import GymLinkingScreen from '../screens/auth/GymLinkingScreen';
 import OTPScreen from '../screens/auth/OTPScreen';
@@ -96,7 +96,7 @@ const RootStack     = createNativeStackNavigator();
 
 function ClientsStackNavigator() {
   return (
-    <ClientsStack.Navigator screenOptions={{ headerShown: false }}>
+    <ClientsStack.Navigator id="clients" screenOptions={{ headerShown: false }}>
       <ClientsStack.Screen name="ClientList"          component={ClientListScreen} />
       <ClientsStack.Screen name="ClientProfile"       component={ClientProfileScreen} />
       <ClientsStack.Screen name="MemberDetails"       component={MemberDetailsScreen} />
@@ -118,7 +118,7 @@ function ClientsStackNavigator() {
 
 function LibraryStackNavigator() {
   return (
-    <LibraryStack.Navigator screenOptions={{ headerShown: false }}>
+    <LibraryStack.Navigator id="library" screenOptions={{ headerShown: false }}>
       <LibraryStack.Screen name="LibraryHub"     component={LibraryScreen} />
       <LibraryStack.Screen name="WorkoutsList"   component={WorkoutsListScreen} />
       <LibraryStack.Screen name="CreateWorkout"  component={CreateWorkoutScreen} />
@@ -132,7 +132,7 @@ function LibraryStackNavigator() {
 
 function ScheduleStackNavigator() {
   return (
-    <ScheduleStack.Navigator screenOptions={{ headerShown: false }}>
+    <ScheduleStack.Navigator id="schedule" screenOptions={{ headerShown: false }}>
       <ScheduleStack.Screen name="ScheduleList" component={ScheduleScreen} />
       <ScheduleStack.Screen name="LiveClass"    component={LiveClassScreen} />
     </ScheduleStack.Navigator>
@@ -143,7 +143,7 @@ function ScheduleStackNavigator() {
 
 function ProfileStackNavigator() {
   return (
-    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+    <ProfileStack.Navigator id="profile" screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="ProfileMain"   component={ProfileScreen} />
       <ProfileStack.Screen name="Earnings"      component={EarningsScreen} />
       <ProfileStack.Screen name="Notifications" component={NotificationsScreen} />
@@ -155,7 +155,7 @@ function ProfileStackNavigator() {
 
 function AuthStackNavigator() {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator id="auth" screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Splash"       component={SplashScreen} />
       <AuthStack.Screen name="Welcome"      component={WelcomeScreen} />
       <AuthStack.Screen name="Registration" component={RegistrationScreen} />
@@ -169,17 +169,23 @@ function AuthStackNavigator() {
 
 function MainTabNavigator() {
   return (
-    <Tab.Navigator
+    <Tab.Navigator id="main-tab"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#0D9488',
+        tabBarActiveTintColor: '#1A56DB',
         tabBarInactiveTintColor: '#6B7280',
         tabBarStyle: { paddingBottom: 8, height: 60 },
-        tabBarIcon: ({ color, size }) => {
-          const icons: Record<string, string> = {
-            Home: '🏠', Clients: '👥', Library: '📚', Schedule: '📅', Profile: '👤',
+        tabBarIcon: ({ color, size, focused }) => {
+          const iconMap: Record<string, { filled: string; outline: string }> = {
+            Home:     { filled: 'home',              outline: 'home-outline' },
+            Clients:  { filled: 'people',            outline: 'people-outline' },
+            Library:  { filled: 'library',           outline: 'library-outline' },
+            Schedule: { filled: 'calendar',          outline: 'calendar-outline' },
+            Profile:  { filled: 'person-circle',     outline: 'person-circle-outline' },
           };
-          return <Text style={{ fontSize: size - 4 }}>{icons[route.name] ?? '•'}</Text>;
+          const icons = iconMap[route.name] ?? { filled: 'ellipse', outline: 'ellipse-outline' };
+          const iconName = focused ? icons.filled : icons.outline;
+          return <Ionicons name={iconName as any} size={size} color={color} />;
         },
       })}
     >
@@ -197,7 +203,7 @@ function MainTabNavigator() {
 export default function TrainerNavigator() {
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Navigator id="root" screenOptions={{ headerShown: false }}>
         <RootStack.Screen name="Auth" component={AuthStackNavigator} />
         <RootStack.Screen name="Main" component={MainTabNavigator} />
       </RootStack.Navigator>

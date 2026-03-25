@@ -1,22 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-014 View Client Body Measurements
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useCallback } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
 import { ProgressAPI } from '../../services/trainer.api';
 
-import { SkeletonLoader, EmptyState } from '../../components/common';
+import { EmptyState, SkeletonLoader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { useAsync } from '../../hooks/useTrainer';
+import { getTrainerId } from '../../services/session';
 import { BodyMeasurement } from '../../types/trainer.types';
 import { formatDate } from '../../utils/trainer.utils';
-import { getTrainerId } from '../../services/session';
-
-const TRAINER_ID = getTrainerId();
-const TOKEN = '';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'Measurements'>;
 
@@ -35,7 +34,14 @@ const MEASUREMENT_FIELDS: { key: keyof BodyMeasurement; label: string }[] = [
 export default function MeasurementsScreen({ navigation, route }: Props) {
   const { clientId, clientName } = route.params;
   const fetchMeasurements = useCallback(() => ProgressAPI.getMeasurements(getTrainerId(), clientId), [clientId]);
-  const { data: measurements, loading } = useAsync<BodyMeasurement[]>(fetchMeasurements);
+  const { data: measurements, loading, refresh } = useAsync<BodyMeasurement[]>(fetchMeasurements, [clientId]);
+
+  // Refresh when screen comes into focus so recent measurements appear after updates
+  useFocusEffect(
+    useCallback(() => {
+      if (typeof refresh === 'function') refresh();
+    }, [refresh]),
+  );
 
   const latest = measurements?.[0];
   const previous = measurements?.[1];
@@ -51,8 +57,8 @@ export default function MeasurementsScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{clientName}'s Measurements</Text>
       </View>
@@ -61,7 +67,7 @@ export default function MeasurementsScreen({ navigation, route }: Props) {
         {loading ? (
           <SkeletonLoader height={200} />
         ) : !latest ? (
-          <EmptyState emoji="📏" title="No measurements logged" subtitle={`${clientName} hasn't logged body measurements yet.`} />
+          <EmptyState icon={<IconSymbol name="scalemass" size={48} color={C.mid} />} title="No measurements logged" subtitle={`${clientName} hasn't logged body measurements yet.`} />
         ) : (
           <>
             <Text style={styles.dateLabel}>Latest: {formatDate(latest.date)}</Text>

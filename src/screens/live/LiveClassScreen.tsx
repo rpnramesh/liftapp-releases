@@ -1,19 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-012 Host Live Class (Agora.io WebRTC — Trainer Host)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList, Alert,
-} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    Alert,
+    FlatList,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { Avatar, LiveBadge } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import { useAsync } from '../../hooks/useTrainer';
 import { ScheduleStackParamList } from '../../navigation/TrainerNavigator';
 import { LiveClassAPI } from '../../services/trainer.api';
-import { useAsync } from '../../hooks/useTrainer';
 import { ClassAttendee } from '../../types/trainer.types';
-import { LIVE_CLASS } from '../../constants/trainer.constants';
-import { Avatar, LiveBadge } from '../../components/common';
 
 const TOKEN = '';
 type Props = NativeStackScreenProps<ScheduleStackParamList, 'LiveClass'>;
@@ -88,11 +93,11 @@ export default function LiveClassScreen({ navigation, route }: Props) {
   if (endingSummary) {
     return (
       <View style={styles.summaryContainer}>
-        <Text style={styles.summaryEmoji}>🎉</Text>
+        <IconSymbol name="star.fill" size={48} color={C.primary} />
         <Text style={styles.summaryTitle}>Class Ended!</Text>
         <Text style={styles.summaryMeta}>{endingSummary.attendeeCount} attended</Text>
         {endingSummary.averageRating != null && (
-          <Text style={styles.summaryRating}>⭐ {endingSummary.averageRating.toFixed(1)} average rating</Text>
+          <Text style={styles.summaryRating}><IconSymbol name="star.fill" size={12} color={C.amber} /> {endingSummary.averageRating.toFixed(1)} average rating</Text>
         )}
         {endingSummary.averageRating === null && (
           <Text style={styles.summaryRatingSub}>Ratings will appear once members submit them.</Text>
@@ -108,7 +113,10 @@ export default function LiveClassScreen({ navigation, route }: Props) {
     <View style={styles.container}>
       {/* Camera preview area — in production: Agora RtcLocalView.SurfaceView */}
       <View style={styles.cameraArea}>
-        <Text style={styles.cameraPlaceholder}>📷 Camera Preview (Agora SDK)</Text>
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <IconSymbol name="camera.fill" size={28} color={C.mid} />
+          <Text style={styles.cameraPlaceholder}>Camera Preview (Agora SDK)</Text>
+        </View>
         {isLive && (
           <View style={styles.liveOverlay}>
             <LiveBadge />
@@ -121,11 +129,11 @@ export default function LiveClassScreen({ navigation, route }: Props) {
       {/* Controls */}
       <View style={styles.controls}>
         <TouchableOpacity style={[styles.controlBtn, micMuted && styles.controlBtnOff]} onPress={() => setMicMuted(m => !m)}>
-          <Text style={styles.controlIcon}>{micMuted ? '🔇' : '🎤'}</Text>
+          <IconSymbol name="mic" size={18} color={micMuted ? C.mid : C.primary} />
           <Text style={styles.controlLabel}>{micMuted ? 'Unmute' : 'Mute'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.controlBtn, camOff && styles.controlBtnOff]} onPress={() => setCamOff(c => !c)}>
-          <Text style={styles.controlIcon}>{camOff ? '📵' : '📷'}</Text>
+          <IconSymbol name={camOff ? 'camera.slash' : 'camera.fill'} size={18} color={camOff ? C.mid : C.primary} />
           <Text style={styles.controlLabel}>{camOff ? 'Camera Off' : 'Camera On'}</Text>
         </TouchableOpacity>
         {isLive && (
@@ -136,11 +144,14 @@ export default function LiveClassScreen({ navigation, route }: Props) {
         )}
         {!isLive ? (
           <TouchableOpacity style={styles.startBtn} onPress={handleStartClass}>
-            <Text style={styles.startBtnText}>🔴 Start</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="record" size={14} color={'#EF4444'} />
+              <Text style={styles.startBtnText}>Start</Text>
+            </View>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.endBtn} onPress={handleEndClass}>
-            <Text style={styles.endBtnText}>⏹ End</Text>
+            <Text style={styles.endBtnText}>End</Text>
           </TouchableOpacity>
         )}
       </View>

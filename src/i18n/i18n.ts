@@ -37,7 +37,7 @@ const detectLanguage = async (): Promise<SupportedLanguage> => {
   } catch {}
 
   // Fall back to device locale
-  const deviceLocale = Localization.locale?.split('-')[0] ?? 'en';
+  const deviceLocale = (Localization as any).locale?.split('-')[0] ?? 'en';
   return SUPPORTED_LANGUAGES.includes(deviceLocale as SupportedLanguage)
     ? (deviceLocale as SupportedLanguage)
     : 'en';
@@ -58,7 +58,7 @@ export const initI18n = async (): Promise<void> => {
     interpolation: {
       escapeValue: false, // React already handles XSS
     },
-    compatibilityJSON: 'v3',
+    compatibilityJSON: 'v4',
   });
 };
 

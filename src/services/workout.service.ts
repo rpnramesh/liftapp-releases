@@ -4,27 +4,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  addDoc,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-  Unsubscribe,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    onSnapshot,
+    orderBy,
+    query,
+    runTransaction,
+    setDoc,
+    Unsubscribe,
+    updateDoc,
+    where
 } from 'firebase/firestore';
 
 import { db } from '../firebase/config';
 import {
-  Workout,
-  WorkoutAssignment,
-  WorkoutLog,
-  WorkoutDay,
+    Workout,
+    WorkoutAssignment,
+    WorkoutDay,
+    WorkoutLog,
 } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,6 +172,46 @@ export async function saveWorkoutLog(
   log: Omit<WorkoutLog, 'id'>,
 ): Promise<string> {
   const ref = doc(collection(db, 'gyms', gymId, 'workoutLogs'));
-  await setDoc(ref, { ...log, id: ref.id });
-  return ref.id;
+  const id = ref.id;
+
+  // Transaction: write workout log and update member streak/lastWorkoutAt
+  await runTransaction(db, async (tx) => {
+    tx.set(ref, { ...log, id });
+
+    // Update member document with streak logic
+    try {
+      const memberRef = doc(db, 'members', log.memberId);
+      const memberSnap = await tx.get(memberRef);
+      const now = Date.now();
+      let newStreak = 1;
+      if (memberSnap.exists()) {
+        const m = memberSnap.data() as any;
+        const prev = m.lastWorkoutAt ?? m.lastWorkoutAtMillis ?? 0;
+        if (prev) {
+          const prevMid = new Date(new Date(prev).toDateString()).getTime();
+          const nowMid = new Date(new Date(log.completedAt ?? now).toDateString()).getTime();
+          const daysDiff = Math.floor((nowMid - prevMid) / (24 * 3600 * 1000));
+          if (daysDiff === 0) {
+            // same day — keep existing streak
+            newStreak = m.streak ?? 1;
+          } else if (daysDiff === 1) {
+            newStreak = (m.streak ?? 0) + 1;
+          } else {
+            newStreak = 1;
+          }
+        } else {
+          newStreak = 1;
+        }
+      }
+      tx.update(doc(db, 'members', log.memberId), {
+        lastWorkoutAt: log.completedAt ?? Date.now(),
+        streak: newStreak,
+      });
+    } catch (e) {
+      // If member doc update fails, still allow log creation
+      console.log('streak update failed', e);
+    }
+  });
+
+  return id;
 }

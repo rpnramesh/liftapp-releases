@@ -4,16 +4,17 @@
 
 import React, { useEffect, useRef } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Image,
-  Text,
-  TextInput, TextInputProps,
-  TextStyle,
-  TouchableOpacity,
-  View,
-  ViewStyle
+    ActivityIndicator,
+    Animated,
+    Image,
+    Text,
+    TextInput, TextInputProps,
+    TextStyle,
+    TouchableOpacity,
+    View,
+    ViewStyle
 } from 'react-native';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, GS, R, S, T } from '../../constants/theme';
 
 // ─── SkeletonLoader ───────────────────────────────────────────────────────────
@@ -47,11 +48,16 @@ export const SkeletonCard: React.FC = () => (
 
 // ─── EmptyState ───────────────────────────────────────────────────────────────
 
+
 export const EmptyState: React.FC<{
-  emoji?: string; title: string; subtitle?: string; ctaLabel?: string; onCTA?: () => void;
-}> = ({ emoji = '📭', title, subtitle, ctaLabel, onCTA }) => (
+  icon?: React.ReactNode; emoji?: string; title: string; subtitle?: string; ctaLabel?: string; onCTA?: () => void;
+}> = ({ icon, emoji = '📭', title, subtitle, ctaLabel, onCTA }) => (
   <View style={GS.emptyContainer}>
-    <Text style={{ fontSize: 48, marginBottom: S.sm }}>{emoji}</Text>
+    {icon ? (
+      <View style={{ marginBottom: S.sm }}>{icon}</View>
+    ) : (
+      <Text style={{ fontSize: 48, marginBottom: S.sm }}>{emoji}</Text>
+    )}
     <Text style={[T.h3, { textAlign: 'center' }]}>{title}</Text>
     {subtitle && <Text style={[T.body, { color: C.mid, textAlign: 'center', lineHeight: 20 }]}>{subtitle}</Text>}
     {ctaLabel && onCTA && (
@@ -177,7 +183,10 @@ export const ScreenHeader: React.FC<{
   <View style={GS.header}>
     {onBack
       ? <TouchableOpacity onPress={onBack} style={{ marginRight: S.md, minWidth: 44, minHeight: 44, justifyContent: 'center' }}>
-          <Text style={GS.backText}>← Back</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <IconSymbol name="chevron.left" size={16} color={C.primary} />
+            <Text style={GS.backText}>Back</Text>
+          </View>
         </TouchableOpacity>
       : <View style={{ width: S.xxl }} />}
     <Text style={[T.h3, { flex: 1 }]}>{title}</Text>

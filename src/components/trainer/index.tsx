@@ -4,13 +4,14 @@
 
 import React from 'react';
 import { Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { IconSymbol } from '../../../components/ui/icon-symbol';
 import { C, R, S, T } from '../../constants/theme';
 import {
-  ActivityFeedItem as ActivityFeedItemType,
-  ClientCard as ClientCardType,
-  EarningsSummary,
-  LiveClass,
-  PendingActions,
+    ActivityFeedItem as ActivityFeedItemType,
+    ClientCard as ClientCardType,
+    EarningsSummary,
+    LiveClass,
+    PendingActions,
 } from '../../types/trainer.types';
 import { formatDateTime, formatINR, membershipStatusColor, timeAgo } from '../../utils/trainer.utils';
 import { Avatar, Card, LiveBadge, RiskFlagBadge, StatusBadge } from '../common';
@@ -35,10 +36,10 @@ export const ClientCard: React.FC<{
         {client.lastWorkoutDate ? `Last workout: ${timeAgo(client.lastWorkoutDate)}` : 'No workouts logged yet'}
       </Text>
       {client.assignedPlanName
-        ? <Text style={[T.small, { color: C.dark }]}>📋 {client.assignedPlanName}</Text>
+        ? <Text style={[T.small, { color: C.dark }]}><IconSymbol name="clipboard" size={12} color="#374151" /> {client.assignedPlanName}</Text>
         : <Text style={[T.small, { color: C.red, fontWeight: '500' }]}>⚠ No plan assigned</Text>
       }
-      <Text style={T.small}>🔥 {client.streak} day streak</Text>
+      <Text style={T.small}><IconSymbol name="flame.fill" size={12} color={C.amber} /> {client.streak} day streak</Text>
 
       {/* Quick action row */}
       <View style={{ flexDirection: 'row', gap: S.sm, marginTop: S.xs }}>
@@ -141,7 +142,10 @@ export const EarningsStrip: React.FC<{
       onPress={onViewDetails}
       style={{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: S.md, paddingVertical: S.sm, borderRadius: R.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }}
     >
-      <Text style={{ color: C.white, fontSize: 13, fontWeight: '600' }}>Details →</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={{ color: C.white, fontSize: 13, fontWeight: '600' }}>Details</Text>
+        <IconSymbol name="chevron.right" size={16} color={C.white} />
+      </View>
     </TouchableOpacity>
   </View>
 );
@@ -179,8 +183,8 @@ export const ClassCard: React.FC<{
       )}
 
       {cls.status === 'Completed' && cls.averageRating != null && (
-        <Text style={[T.small, { color: C.amber }]}>⭐ {cls.averageRating.toFixed(1)} avg rating · {cls.rsvpCount} attended</Text>
-      )}
+          <Text style={[T.small, { color: C.amber }]}><IconSymbol name="star.fill" size={12} color={C.amber} /> {cls.averageRating.toFixed(1)} avg rating · {cls.rsvpCount} attended</Text>
+        )}
     </Card>
   );
 };

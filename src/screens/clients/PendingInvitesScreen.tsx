@@ -5,26 +5,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useFocusEffect } from '@react-navigation/native';
 import {
-  collection,
-  getDocs,
-  query,
-  updateDoc,
-  doc,
-  where,
-  orderBy,
+    collection,
+    doc,
+    getDocs,
+    orderBy,
+    query,
+    updateDoc,
+    where,
 } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, R, S } from '../../constants/theme';
 import { db } from '../../firebase/config';
 import { getTrainerId } from '../../services/session';
@@ -101,7 +102,7 @@ export default function PendingInvitesScreen({ navigation }: any) {
           <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
         ) : invites.length === 0 ? (
           <View style={s.emptyBox}>
-            <Text style={s.emptyEmoji}>📭</Text>
+            <IconSymbol name="clipboard" size={48} color={C.mid} />
             <Text style={s.emptyTitle}>No Pending Invites</Text>
             <Text style={s.emptySub}>All your invites have been responded to.</Text>
           </View>
@@ -122,15 +123,15 @@ export default function PendingInvitesScreen({ navigation }: any) {
                   </View>
                   <View style={s.typeBadge}>
                     <Text style={s.typeBadgeText}>
-                      {invite.type === 'link' ? '🔗 Link' : '📱 Phone'}
+                      {invite.type === 'link' ? 'Link' : 'Phone'}
                     </Text>
                   </View>
                 </View>
 
                 <View style={s.cardMeta}>
-                  <Text style={s.metaText}>📅 Sent {formatDate(invite.createdAt)}</Text>
+                  <Text style={s.metaText}><IconSymbol name="calendar" size={12} color={C.mid} /> Sent {formatDate(invite.createdAt)}</Text>
                   {!!formatValidity(invite) && (
-                    <Text style={s.metaText}>⏳ {formatValidity(invite)}</Text>
+                    <Text style={s.metaText}><IconSymbol name="timer" size={12} color={C.mid} /> {formatValidity(invite)}</Text>
                   )}
                 </View>
 

@@ -5,28 +5,29 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useCallback } from 'react';
 import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { DashboardAPI } from '../../services/trainer.api';
 
 import {
-  Avatar,
-  EmptyState,
-  OfflineBanner,
-  SkeletonCard,
-  SkeletonLoader,
-  StatusBadge,
+    Avatar,
+    EmptyState,
+    OfflineBanner,
+    SkeletonCard,
+    SkeletonLoader,
+    StatusBadge,
 } from '../../components/common';
 import {
-  ActivityFeedItem,
-  EarningsStrip,
-  PendingActionChip,
+    ActivityFeedItem,
+    EarningsStrip,
+    PendingActionChip,
 } from '../../components/trainer';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C } from '../../constants/theme';
 import { useAppForeground, useAsync, useGreeting, useNetworkStatus } from '../../hooks/useTrainer';
 import { ScheduledSession, TrainerDashboard } from '../../types/trainer.types';
@@ -37,7 +38,7 @@ import { getTrainerId } from '../../services/session';
 export default function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { profile } = useAuth();
-const greeting = useGreeting(profile?.fullName ?? profile?.name ?? '');
+  const greeting = useGreeting(profile?.fullName ?? (profile as any)?.name ?? '');
   const { isOnline } = useNetworkStatus();
 
   const fetchDashboard = useCallback(
@@ -67,7 +68,7 @@ const greeting = useGreeting(profile?.fullName ?? profile?.name ?? '');
   if (error && !data) {
     return (
       <EmptyState
-        emoji="⚠️"
+        icon={<IconSymbol name="exclamationmark.triangle.fill" size={40} color={C.mid} />}
         title="Failed to load dashboard"
         subtitle={error}
         ctaLabel="Retry"

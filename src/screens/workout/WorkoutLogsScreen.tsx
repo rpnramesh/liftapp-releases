@@ -1,28 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { C } from '../../constants/theme';
-// Lift Trainer App — TS-009 View Client Workout Logs & Add Notes
+// Lift Trainer App — View Client Workout Logs & Add Notes (realtime)
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useCallback, useState } from 'react';
+import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal, RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { EmptyState, PrimaryButton, SkeletonCard, StatusBadge } from '../../components/common';
-import { useAsync } from '../../hooks/useTrainer';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import { db } from '../../firebase/config';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
+import { getTrainerId } from '../../services/session';
 import { WorkoutAPI } from '../../services/trainer.api';
 import { WorkoutLog } from '../../types/trainer.types';
 import { formatDateTime } from '../../utils/trainer.utils';
-
-import { getTrainerId } from '../../services/session';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'WorkoutLogs'>;
 
@@ -32,11 +35,48 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  const fetchLogs = useCallback(
-    () => WorkoutAPI.getWorkoutLogs(getTrainerId(), clientId, 1).then(r => r.logs),
-    [clientId],
+  const [logs, setLogs] = useState<WorkoutLog[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await WorkoutAPI.getWorkoutLogs(getTrainerId(), clientId, 1);
+      setLogs(r.logs);
+    } catch (e) {
+      console.log('fetchLogs error', e);
+      setLogs([]);
+    } finally { setLoading(false); }
+  }, [clientId]);
+
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  // Realtime subscription while focused
+  useFocusEffect(
+    useCallback(() => {
+      let unsub: (() => void) | null = null;
+      let mounted = true;
+
+      (async () => {
+        try {
+          const trainerId = getTrainerId();
+          const trainerSnap = await getDoc(doc(db, 'trainers', trainerId)).catch(() => null);
+          const gymId = trainerSnap?.data()?.gymId ?? trainerId;
+          const q = query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', clientId), orderBy('completedAt', 'desc'));
+          unsub = onSnapshot(q, snap => {
+            const data = snap.docs.map(d => ({ id: d.id, ...(d.data() as WorkoutLog) }));
+            if (!mounted) return;
+            setLogs(data);
+            setLoading(false);
+          }, err => { console.log('workoutLogs onSnapshot error', err); });
+        } catch (e) {
+          console.log('workoutLogs listener error', e);
+        }
+      })();
+
+      return () => { mounted = false; if (unsub) unsub(); };
+    }, [clientId]),
   );
-  const { data: logs, loading, refresh } = useAsync<WorkoutLog[]>(fetchLogs);
 
   const openNoteModal = (logId: string, existing?: string) => {
     setNoteModal({ logId, existing });
@@ -44,17 +84,16 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   };
 
   const saveNote = async () => {
-    if (!noteModal || !noteText.trim()) return;
+    if (!noteModal) return;
+    if (!noteText.trim()) return;
     setSavingNote(true);
     try {
       await WorkoutAPI.addNoteOnLog(getTrainerId(), clientId, noteModal.logId, noteText.trim());
       setNoteModal(null);
-      refresh();
+      await fetchLogs();
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to save note');
-    } finally {
-      setSavingNote(false);
-    }
+    } finally { setSavingNote(false); }
   };
 
   const renderLog = ({ item }: { item: WorkoutLog }) => {
@@ -77,9 +116,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
 
         {/* Exercise breakdown */}
         <View style={styles.exBreakdown}>
-          <Text style={styles.exBreakdownText}>
-            {completedCount}/{totalCount} exercises done
-          </Text>
+          <Text style={styles.exBreakdownText}>{completedCount}/{totalCount} exercises done</Text>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${(completedCount / Math.max(totalCount, 1)) * 100}%` as any, backgroundColor: statusColor }]} />
           </View>
@@ -88,7 +125,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         {/* Exercises list */}
         {item.completedExercises.map(ex => (
           <View key={ex.exerciseId} style={styles.exRow}>
-            <Text style={{ fontSize: 14 }}>{ex.completed ? '✅' : '⬜'}</Text>
+            {ex.completed ? <IconSymbol name="checkmark" size={16} color={statusColor} /> : <IconSymbol name="square" size={16} color={C.mid} />}
             <Text style={styles.exName}>{ex.exerciseName}</Text>
             <Text style={styles.exDetail}>{ex.actualSets}×{ex.actualReps}</Text>
           </View>
@@ -115,8 +152,8 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{clientName}'s Workout Logs</Text>
       </View>
@@ -129,12 +166,11 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
           keyExtractor={item => item.id}
           renderItem={renderLog}
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />}
-          ListEmptyComponent={<EmptyState emoji="📋" title="No workout logs yet" subtitle={`${clientName} hasn't logged any workouts yet.`} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchLogs} tintColor={C.primary} />}
+          ListEmptyComponent={<EmptyState icon={<IconSymbol name="clipboard" size={40} color={C.mid} />} title="No workout logs yet" subtitle={`${clientName} hasn't logged any workouts yet.`} />}
         />
       )}
 
-      {/* Note modal */}
       <Modal visible={!!noteModal} transparent animationType="slide" onRequestClose={() => setNoteModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>

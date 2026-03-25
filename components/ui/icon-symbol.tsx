@@ -1,7 +1,7 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
+import { SymbolViewProps, SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
@@ -18,7 +18,49 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
-} as IconMapping;
+  'chevron.left': 'chevron-left',
+  'chevron.up': 'expand_less',
+  'chevron.down': 'expand_more',
+  // Common app icons
+  'figure.strengthtraining.traditional': 'fitness_center',
+  'number': 'format_list_numbered',
+  'timer': 'timer',
+  'bolt.fill': 'flash_on',
+    'camera': 'photo_camera',
+    'scalemass': 'scale',
+    'play': 'play_arrow',
+    'dumbbell': 'fitness_center',
+    'location': 'location_on',
+    'shield': 'security',
+    'mic': 'mic',
+    'record': 'fiber_manual_record',
+    'play.fill': 'play_arrow',
+    'pause.fill': 'pause',
+    'star.fill': 'star',
+    'flame.fill': 'whatshot',
+    'clipboard': 'content_paste',
+    'bell.fill': 'notifications',
+    'camera.fill': 'photo_camera',
+    'camera.slash': 'videocam_off',
+    'bubble.left': 'chat_bubble',
+    'person.2.fill': 'people',
+    'trash': 'delete',
+    'magnifyingglass': 'search',
+    'pin': 'push_pin',
+    'pin.fill': 'push_pin',
+    'checkmark': 'check',
+    'square': 'check_box_outline_blank',
+    'bed': 'hotel',
+    'hotel': 'hotel',
+    // Additional mappings used across the app
+    'pencil': 'edit',
+    'xmark': 'close',
+    'exclamationmark.triangle.fill': 'warning',
+    'lock.fill': 'lock',
+    'calendar': 'calendar_today',
+    'share': 'share',
+    'copy': 'file_copy',
+} as unknown as IconMapping;
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.

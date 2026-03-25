@@ -8,12 +8,14 @@ import { onAuthStateChanged, signInWithPhoneNumber } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert, Animated, BackHandler, KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert, Animated, BackHandler,
+    ScrollView, StyleSheet, Text, TextInput, TouchableOpacity,
+    View,
 } from 'react-native';
 import { PrimaryButton } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C } from '../../constants/theme';
 import { SPECIALIZATIONS } from '../../constants/trainer.constants';
 import { useAuth } from '../../context/AuthContext';
@@ -182,10 +184,13 @@ export function RegistrationScreen({ navigation }: RegProps) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <ScrollView style={rs.container} contentContainerStyle={{ paddingBottom: 40 }}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={rs.backBtn}>
-          <Text style={rs.backText}>← Back</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <IconSymbol name="chevron.left" size={16} color={C.primary} />
+            <Text style={rs.backText}>Back</Text>
+          </View>
         </TouchableOpacity>
         <Text style={rs.title}>Create Trainer Account</Text>
         <Text style={rs.subtitle}>Build your professional profile on Lift</Text>
@@ -247,7 +252,7 @@ export function RegistrationScreen({ navigation }: RegProps) {
 
         <PrimaryButton label="Continue to OTP" onPress={handleSubmit} loading={loading} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 const rs = StyleSheet.create({
@@ -376,13 +381,16 @@ export function OTPScreen({ navigation, route }: OTPProps) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={os.container}>
         <TouchableOpacity style={os.back} onPress={() => {
           if (step === 'otp') { setStep('phone'); setOtp(''); setError(''); }
           else navigation.goBack();
         }}>
-          <Text style={os.backText}>← Back</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <IconSymbol name="chevron.left" size={16} color={C.primary} />
+            <Text style={os.backText}>Back</Text>
+          </View>
         </TouchableOpacity>
 
         {step === 'phone' ? (
@@ -416,7 +424,7 @@ export function OTPScreen({ navigation, route }: OTPProps) {
           </>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 const os = StyleSheet.create({

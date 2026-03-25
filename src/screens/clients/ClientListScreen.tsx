@@ -8,25 +8,27 @@
 //   4. Remove "Current Plan" box — plan shown in View/Edit button
 //   5. MembershipStatusCard added after statsRow in ClientProfileScreen
 // ─────────────────────────────────────────────────────────────────────────────
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
-  FlatList,
-  Linking, RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator, Alert,
+    FlatList,
+    Linking, RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import {
-  Avatar, EmptyState, PrimaryButton, RiskFlagBadge,
-  SkeletonCard, StatusBadge,
+    Avatar, EmptyState, PrimaryButton, RiskFlagBadge,
+    SkeletonCard, StatusBadge,
 } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C } from '../../constants/theme';
 import { db } from '../../firebase/config';
 import { useDebounce } from '../../hooks/useTrainer';
@@ -52,17 +54,28 @@ function getTodayStatus(planDays: any[]): { label: string; color: string } | nul
   const todayLabel = getTodayLabel();
   // Try multiple day label formats
   const today = planDays.find(d => {
-    const label = (d.dayLabel ?? d.day ?? '').toLowerCase();
-    return label === todayLabel.toLowerCase() || label === todayLabel.slice(0, 3).toLowerCase();
+    const raw = (d.dayLabel ?? d.day ?? '').toString().toLowerCase();
+    // direct string match (full or short)
+    if (raw === todayLabel.toLowerCase() || raw === todayLabel.slice(0, 3).toLowerCase()) return true;
+    // numeric day index (0=Sunday..6=Saturday) or dayNumber/dayIndex properties
+    const dayIndex = d.dayIndex ?? d.dayNumber ?? d.day;
+    if (typeof dayIndex === 'number') return dayIndex === new Date().getDay();
+    // patterns like 'day 1', 'day1'
+    const m = raw.match(/day\s*(\d+)/);
+    if (m) {
+      const n = parseInt(m[1], 10) - 1; // day1 -> index 0
+      return n === new Date().getDay();
+    }
+    return false;
   });
   if (!today) return null;
-  if (today.restDay) return { label: '😴 Rest Day', color: C.mid };
+  if (today.restDay) return { label: 'Rest Day', color: C.mid };
   const exercises = today.exercises ?? [];
-  if (exercises.length === 0) return { label: '😴 Rest Day', color: C.mid };
+  if (exercises.length === 0) return { label: 'Rest Day', color: C.mid };
   // Check both timestamp and boolean flags for max compatibility
-  if (today.completedAt || today.completed === true) return { label: '✅ Completed', color: '#16A34A' };
-  if (today.startedAt || today.inProgress === true) return { label: '🔄 In Progress', color: '#D97706' };
-  return { label: '⏳ Not Started', color: C.primary };
+  if (today.completedAt || today.completed === true) return { label: 'Completed', color: '#16A34A' };
+  if (today.startedAt || today.inProgress === true) return { label: 'In Progress', color: '#D97706' };
+  return { label: 'Not Started', color: C.primary };
 }
 
 // ─── Fetch enriched clients with plan name + today status ────────────────────
@@ -162,7 +175,7 @@ export default function ClientListScreen({ navigation }: ListProps) {
           <Text style={styles.clientName}>{item.fullName}</Text>
           {item.hasRiskFlag && <RiskFlagBadge />}
           {item.isFrozen && (
-            <View style={styles.frozenBadge}><Text style={styles.frozenBadgeText}>❄ Frozen</Text></View>
+            <View style={styles.frozenBadge}><Text style={styles.frozenBadgeText}>Frozen</Text></View>
           )}
           {item.clientType === 'freelance' && (
             <View style={styles.freelanceBadge}>
@@ -175,8 +188,14 @@ export default function ClientListScreen({ navigation }: ListProps) {
 
         {/* Plan name or No plan */}
         {item.hasPlan
-          ? <Text style={styles.planName}>📋 {item.assignedPlanName}</Text>
-          : <Text style={styles.noPlan}>⚠ No plan assigned</Text>
+          ? <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
+              <Ionicons name="clipboard-outline" size={13} color="#374151" />
+              <Text style={styles.planName}>{item.assignedPlanName}</Text>
+            </View>
+          : <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
+              <Ionicons name="warning-outline" size={13} color={C.red} />
+              <Text style={styles.noPlan}>No plan assigned</Text>
+            </View>
         }
 
         {/* Today's workout status — only when plan assigned AND status exists */}
@@ -186,7 +205,10 @@ export default function ClientListScreen({ navigation }: ListProps) {
           </Text>
         )}
 
-        <Text style={styles.streak}>🔥 {item.streak ?? 0}-day streak</Text>
+        <View style={{flexDirection:'row', alignItems:'center', gap:6}}>
+          <IconSymbol name="flame.fill" size={13} color={C.amber} />
+          <Text style={styles.streak}>{item.streak ?? 0}-day streak</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -205,13 +227,16 @@ export default function ClientListScreen({ navigation }: ListProps) {
           style={[styles.addBtn, { backgroundColor: C.amber }]}
           onPress={() => navigation.navigate('PendingInvites')}
         >
-          <Text style={styles.addBtnText}>🔔</Text>
+          <Ionicons name="notifications-outline" size={18} color={C.white} />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => navigation.navigate('PhoneInvite')}
         >
-          <Text style={styles.addBtnText}>➕ Invite</Text>
+          <View style={{flexDirection:'row', alignItems:'center', gap:4}}>
+            <Ionicons name="add" size={18} color={C.white} />
+            <Text style={styles.addBtnText}>Invite</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -255,11 +280,11 @@ export default function ClientListScreen({ navigation }: ListProps) {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={loadClients} tintColor={C.primary} />}
           ListEmptyComponent={
             tab === 'freelance'
-              ? <EmptyState emoji="🌟" title="No freelance clients yet"
-                  subtitle="Tap + Add to onboard a client."
-                  ctaLabel="+ Add Client" onCTA={() => navigation.navigate('FreelanceOnboarding')} />
-              : <EmptyState emoji="👥" title="No clients found"
-                  subtitle="Clients assigned to you will appear here." />
+                ? <EmptyState icon={<IconSymbol name="person.2.fill" size={48} color={C.mid} />} title="No freelance clients yet"
+                    subtitle="Tap + Add to onboard a client."
+                    ctaLabel="+ Add Client" onCTA={() => navigation.navigate('FreelanceOnboarding')} />
+                  : <EmptyState icon={<IconSymbol name="person.2.fill" size={48} color={C.mid} />} title="No clients found"
+                    subtitle="Clients assigned to you will appear here." />
           }
         />
       )}
@@ -362,7 +387,7 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
             });
             setProfile((p: any) => ({ ...p, isFrozen: !isFrozen }));
             Alert.alert(
-              !isFrozen ? '❄ Frozen' : '✅ Unfrozen',
+              !isFrozen ? 'Frozen' : 'Unfrozen',
               `${clientName} has been ${!isFrozen ? 'frozen' : 'unfrozen'}.`
             );
           } catch (e: any) {
@@ -388,7 +413,7 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
     );
   }
   if (error || !profile) {
-    return <EmptyState emoji="⚠️" title="Failed to load profile"
+    return <EmptyState icon={<IconSymbol name="exclamationmark.triangle.fill" size={40} color={C.mid} />} title="Failed to load profile"
       subtitle={error ?? ''} ctaLabel="Retry" onCTA={loadProfile} />;
   }
 
@@ -401,8 +426,8 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <View style={pStyles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginBottom: 10 }}>
-          <Text style={{ color: C.primary, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginBottom: 10 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <View style={pStyles.headerRow}>
           <Avatar uri={profile.profilePhotoUrl} name={profile.fullName} size={72} />
@@ -411,8 +436,11 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
               <Text style={pStyles.name}>{profile.fullName}</Text>
               {isFrozen && (
                 <View style={pStyles.frozenBadge}>
-                  <Text style={pStyles.frozenBadgeText}>❄ Frozen</Text>
-                </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <IconSymbol name="shield" size={12} color="#3B82F6" />
+                        <Text style={pStyles.frozenBadgeText}>Frozen</Text>
+                      </View>
+                    </View>
               )}
             </View>
             <Text style={pStyles.meta}>{profile.age} yrs · {profile.gender}</Text>
@@ -426,11 +454,15 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
       <View style={pStyles.statsRow}>
         {[
           ['Workouts', profile.totalWorkoutsLogged],
-          ['Streak', `🔥 ${profile.currentStreak}d`],
+          ['Streak', profile.currentStreak],
           ['Attendance', `${profile.attendanceThisMonth}/mo`],
         ].map(([label, value]) => (
           <View key={label as string} style={pStyles.stat}>
-            <Text style={pStyles.statValue}>{value}</Text>
+            {label === 'Streak' ? (
+              <Text style={pStyles.statValue}><IconSymbol name="flame.fill" size={16} color={C.amber} /> {value}d</Text>
+            ) : (
+              <Text style={pStyles.statValue}>{value}</Text>
+            )}
             <Text style={pStyles.statLabel}>{label}</Text>
           </View>
         ))}
@@ -465,15 +497,18 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
               clientId: profile.id, clientName: profile.fullName,
             })}>
             <View style={{ flex: 1 }}>
-              <Text style={pStyles.editPlanBtnTitle}>✏️ View / Edit Plan</Text>
-              <Text style={pStyles.editPlanBtnSub}>{planName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="pencil" size={16} color={C.white} />
+                <Text style={pStyles.editPlanBtnTitle}>View / Edit Plan</Text>
+              </View>
+              <Text style={[pStyles.editPlanBtnSub]}>{planName}</Text>
               {todayStatus && (
                 <Text style={[pStyles.editPlanBtnStatus, { color: todayStatus.color }]}>
                   Today: {todayStatus.label}
                 </Text>
               )}
             </View>
-            <Text style={{ color: C.primary, fontSize: 22 }}>›</Text>
+              <IconSymbol name="chevron.right" size={20} color={C.primary} />
           </TouchableOpacity>
         ) : (
           <PrimaryButton
@@ -489,28 +524,40 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
           onPress={() => navigation.navigate('MemberDetails', {
             clientId: profile.id, clientName: profile.fullName,
           })}>
-          <Text style={[pStyles.secondBtnText, { color: C.primary }]}>📋 Member Details & Measurements</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name="paperplane.fill" size={14} color={C.primary} />
+            <Text style={[pStyles.secondBtnText, { color: C.primary, marginLeft: 8 }]}>Member Details & Measurements</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity style={pStyles.secondBtn}
           onPress={() => navigation.navigate('WorkoutLogs', {
             clientId: profile.id, clientName: profile.fullName,
           })}>
-          <Text style={pStyles.secondBtnText}>📊 View Workout Logs</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name="number" size={14} color={C.primary} />
+            <Text style={[pStyles.secondBtnText, { marginLeft: 8 }]}>View Workout Logs</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity style={pStyles.secondBtn}
           onPress={() => navigation.navigate('ProgressDashboard', {
             clientId: profile.id, clientName: profile.fullName,
           })}>
-          <Text style={pStyles.secondBtnText}>📈 View Progress</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name="scalemass" size={14} color={C.primary} />
+            <Text style={[pStyles.secondBtnText, { marginLeft: 8 }]}>View Progress</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity style={pStyles.secondBtn}
           onPress={() => navigation.navigate('ProgressPhotos', {
             clientId: profile.id, clientName: profile.fullName,
           })}>
-          <Text style={pStyles.secondBtnText}>📷 Progress Photos</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name="camera" size={14} color={C.primary} />
+            <Text style={[pStyles.secondBtnText, { marginLeft: 8 }]}>Progress Photos</Text>
+          </View>
         </TouchableOpacity>
 
         {/* In-app chat */}
@@ -520,7 +567,7 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
             clientId: profile.id, clientName: profile.fullName,
             clientPhone: profile.phone, clientPhotoUrl: profile.profilePhotoUrl,
           })}>
-          <Text style={[pStyles.secondBtnText, { color: C.primary }]}>💬 Chat with {profile.fullName?.split(' ')[0]}</Text>
+          <Text style={[pStyles.secondBtnText, { color: C.primary }]}><IconSymbol name="paperplane.fill" size={14} color={C.primary} /> Chat with {profile.fullName?.split(' ')[0]}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -536,14 +583,17 @@ export function ClientProfileScreen({ navigation, route }: ProfileProps) {
             onPress={handleFreeze}
             disabled={actionLoading}>
             <Text style={[pStyles.dangerBtnText, { color: isFrozen ? C.green : '#3B82F6' }]}>
-              {isFrozen ? '✅ Unfreeze Client' : '❄ Freeze Client'}
+              {isFrozen ? (<><IconSymbol name="shield" size={12} color={C.green} /> Unfreeze Client</>) : (<><IconSymbol name="shield" size={12} color="#3B82F6" /> Freeze Client</>)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[pStyles.dangerBtn, { backgroundColor: '#FEF2F2', borderColor: C.red }]}
             onPress={handleRemove}
             disabled={actionLoading}>
-            <Text style={[pStyles.dangerBtnText, { color: C.red }]}>🗑 Remove Client</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="trash" size={14} color={C.red} />
+              <Text style={[pStyles.dangerBtnText, { color: C.red }]}>Remove Client</Text>
+            </View>
           </TouchableOpacity>
         </View>
 

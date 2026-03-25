@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Vibration } from 'react-native';
 
 // ─── useAppState ─────────────────────────────────────────────────────────────
 /** Detect foreground events to re-fetch dashboard data (TS-006 AC2) */
@@ -14,6 +14,20 @@ export function useAppForeground(callback: () => void) {
     });
     return () => sub.remove();
   }, [callback]);
+}
+
+// Optionally vibrate on background/foreground transitions (Android only by design)
+export function useBackgroundVibration(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    const handler = (next: AppStateStatus) => {
+      if (next === 'background') {
+        try { Vibration.vibrate(100); } catch (_) {}
+      }
+    };
+    const sub = AppState.addEventListener('change', handler as any);
+    return () => sub.remove();
+  }, [enabled]);
 }
 
 // ─── useAsync ────────────────────────────────────────────────────────────────
@@ -76,12 +90,15 @@ export function useNetworkStatus() {
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    window?.addEventListener?.('online', handleOnline);
-    window?.addEventListener?.('offline', handleOffline);
-    return () => {
-      window?.removeEventListener?.('online', handleOnline);
-      window?.removeEventListener?.('offline', handleOffline);
-    };
+    // Only attach browser window listeners when running on web
+    if (typeof globalThis !== 'undefined' && (globalThis as any).addEventListener) {
+      (globalThis as any).addEventListener('online', handleOnline);
+      (globalThis as any).addEventListener('offline', handleOffline);
+      return () => {
+        (globalThis as any).removeEventListener('online', handleOnline);
+        (globalThis as any).removeEventListener('offline', handleOffline);
+      };
+    }
   }, []);
   return { isOnline };
 }

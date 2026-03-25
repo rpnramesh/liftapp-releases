@@ -8,20 +8,20 @@ import { signInWithPhoneNumber } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { PrimaryButton } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { SPECIALIZATIONS } from '../../constants/trainer.constants';
 import { useAuth } from '../../context/AuthContext';
@@ -105,7 +105,7 @@ export default function ProfileScreen() {
   if (error && !profile) {
     return (
       <View style={styles.centered}>
-        <Text style={{ fontSize: 40 }}>⚠️</Text>
+        <IconSymbol name="exclamationmark.triangle.fill" size={40} color="#F59E0B" />
         <Text style={styles.errorTitle}>Failed to load profile</Text>
         <Text style={styles.errorSub}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={loadProfile}>
@@ -128,12 +128,20 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.headerName}>{profile?.fullName ?? profile?.name ?? 'Trainer'}</Text>
         <View style={styles.roleBadge}>
-          <Text style={styles.roleBadgeText}>
-            {profile?.adminAccess ? '🛡 Admin + Trainer' : '🏋️ Trainer'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name={profile?.adminAccess ? 'shield' : 'figure.strengthtraining.traditional' as any} size={14} color={C.primary} />
+            <Text style={[styles.roleBadgeText, { marginLeft: 8 }]}>
+              {profile?.adminAccess ? 'Admin + Trainer' : 'Trainer'}
+            </Text>
+          </View>
         </View>
-        {profile?.gymName && <Text style={styles.gymText}>📍 {profile.gymName}</Text>}
-        {profile?.isFreelance && !profile?.gymName && <Text style={styles.gymText}>🌟 Freelance Trainer</Text>}
+        {profile?.gymName && (
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconSymbol name="location" size={12} color={C.mid} />
+            <Text style={[styles.gymText, { marginLeft: 6 }]}>{profile.gymName}</Text>
+          </View>
+        )}
+        {profile?.isFreelance && !profile?.gymName && <Text style={styles.gymText}>Freelance Trainer</Text>}
       </View>
 
       {/* Personal Info */}
@@ -153,8 +161,8 @@ export default function ProfileScreen() {
           <Text style={styles.editRowLabel}>Phone</Text>
           <View style={styles.editRowRight}>
             <Text style={styles.editRowValue}>{profile?.phone ?? '—'}</Text>
-            <TouchableOpacity onPress={() => setPhoneModal(true)} style={{ padding: 4 }}>
-              <Text style={{ fontSize: 14 }}>✏️</Text>
+            <TouchableOpacity onPress={() => setPhoneModal(true)} style={{ padding: 6 }}>
+              <IconSymbol name="pencil" size={14} color={C.mid} />
             </TouchableOpacity>
           </View>
         </View>
@@ -197,7 +205,10 @@ export default function ProfileScreen() {
           ) : (
             <TouchableOpacity onPress={() => setEditingField('bio')}>
               <Text style={styles.bioText}>{profile?.bio || 'Tap to add a bio…'}</Text>
-              <Text style={styles.editHint}>✏️ Tap to edit</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="pencil" size={12} color={C.mid} />
+                <Text style={styles.editHint}>Tap to edit</Text>
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -217,8 +228,11 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity onPress={() => setEditingField('specializations')}>
-              <Text style={{ color: C.primary, fontSize: 13, fontWeight: '600' }}>✏️ Edit</Text>
+              <TouchableOpacity onPress={() => setEditingField('specializations')}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="pencil" size={14} color={C.primary} />
+                <Text style={{ color: C.primary, fontSize: 13, fontWeight: '600' }}>Edit</Text>
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -345,11 +359,11 @@ function PhoneChangeModal({ currentPhone, trainerId, onClose, onSuccess }: any) 
 
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardSafeView style={{ flex: 1 }}>
         <View style={pm.container}>
           <View style={pm.header}>
             <Text style={pm.title}>Change Phone Number</Text>
-            <TouchableOpacity onPress={onClose}><Text style={{ color: C.mid, fontSize: 16 }}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={onClose}><IconSymbol name="xmark" size={16} color={C.mid} /></TouchableOpacity>
           </View>
 
           <Text style={pm.current}>Current: {currentPhone}</Text>
@@ -382,12 +396,15 @@ function PhoneChangeModal({ currentPhone, trainerId, onClose, onSuccess }: any) 
               </TouchableOpacity>
               <TouchableOpacity style={{ alignSelf: 'center', marginTop: 8 }}
                 onPress={() => { setStep('phone'); setOtp(''); setError(''); }}>
-                <Text style={pm.resend}>← Change number</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <IconSymbol name="chevron.left" size={14} color={C.mid} />
+                  <Text style={pm.resend}>Change number</Text>
+                </View>
               </TouchableOpacity>
             </>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 }
@@ -404,15 +421,15 @@ function EditRow({ label, value, editing, onEdit, onChange, onSave, onCancel, sa
           <TouchableOpacity style={styles.saveBtn} onPress={onSave} disabled={saving}>
             <Text style={styles.saveBtnText}>{saving ? '…' : '✓'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onCancel} style={{ padding: 4 }}>
-            <Text style={{ color: C.mid, fontSize: 16 }}>✕</Text>
+          <TouchableOpacity onPress={onCancel} style={{ padding: 6 }}>
+            <IconSymbol name="xmark" size={16} color={C.mid} />
           </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.editRowRight}>
           <Text style={styles.editRowValue}>{value || '—'}</Text>
           <TouchableOpacity onPress={onEdit} style={{ padding: 4 }}>
-            <Text style={{ fontSize: 14 }}>✏️</Text>
+            <IconSymbol name="pencil" size={14} color={C.mid} />
           </TouchableOpacity>
         </View>
       )}

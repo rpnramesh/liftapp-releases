@@ -7,18 +7,19 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { EmptyState, SkeletonCard } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, GS, R, S } from '../../constants/theme';
 import { useDebounce } from '../../hooks/useTrainer';
 import { MUSCLE_GROUP_ICONS, MUSCLE_GROUPS } from '../../services/workoutDemoData';
@@ -115,7 +116,7 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.searchBar}>
-        <Text style={{ fontSize: 16, color: C.mid }}>🔍</Text>
+        <IconSymbol name="magnifyingglass" size={16} color={C.mid} />
         <TextInput style={styles.searchInput} placeholder="Search exercises…"
           placeholderTextColor={C.mid} value={search} onChangeText={setSearch}
           clearButtonMode="while-editing" />
@@ -133,9 +134,10 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
           <TouchableOpacity key={g}
             style={[styles.filterChip, filterGroup === g && styles.filterChipActive]}
             onPress={() => setFilterGroup(filterGroup === g ? null : g)}>
-            <Text style={[styles.filterText, filterGroup === g && styles.filterTextActive]}>
-              {MUSCLE_GROUP_ICONS[g] ?? '💪'} {g}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name={MUSCLE_GROUP_ICONS[g] ?? 'dumbbell'} size={14} color={filterGroup === g ? C.white : C.primary} />
+              <Text style={[styles.filterText, filterGroup === g && styles.filterTextActive]}>{g}</Text>
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -151,14 +153,14 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
           contentContainerStyle={{ padding: S.lg, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={loadExercises} tintColor={C.primary} />}
           ListEmptyComponent={
-            <EmptyState emoji="💪"
-              title={search ? 'No exercises found' : 'No exercises yet'}
-              subtitle={search ? 'Try a different search' : 'Tap + Exercise above to add your first exercise'} />
+              <EmptyState icon={<IconSymbol name="dumbbell" size={48} color={C.mid} />}
+                title={search ? 'No exercises found' : 'No exercises yet'}
+                subtitle={search ? 'Try a different search' : 'Tap + Exercise above to add your first exercise'} />
           }
           renderItem={({ item: [group, exList] }) => (
             <View style={{ marginBottom: S.lg }}>
               <View style={styles.groupHeader}>
-                <Text style={styles.groupIcon}>{MUSCLE_GROUP_ICONS[group] ?? '💪'}</Text>
+                <IconSymbol name={MUSCLE_GROUP_ICONS[group] ?? 'dumbbell'} size={16} color={C.primary} />
                 <Text style={styles.groupTitle}>{group}</Text>
                 <Text style={styles.groupCount}>{exList.length}</Text>
               </View>
@@ -175,7 +177,7 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
                       <Text style={styles.editBtnText}>Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleDelete(ex)}>
-                      <Text style={{ fontSize: 18 }}>🗑</Text>
+                      <IconSymbol name="trash" size={18} color={C.mid} />
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -192,9 +194,10 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>{editModal.name}</Text>
               <View style={styles.modalGroupBadge}>
-                <Text style={styles.modalGroupText}>
-                  {MUSCLE_GROUP_ICONS[editModal.muscleGroup] ?? '💪'} {editModal.muscleGroup}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <IconSymbol name={MUSCLE_GROUP_ICONS[editModal.muscleGroup] ?? 'dumbbell'} size={16} color={C.primary} />
+                  <Text style={styles.modalGroupText}>{editModal.muscleGroup}</Text>
+                </View>
               </View>
               <Text style={styles.modalDesc}>{editModal.description}</Text>
               <View style={styles.modalBtnRow}>

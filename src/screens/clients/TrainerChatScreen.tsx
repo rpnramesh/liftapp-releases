@@ -6,29 +6,30 @@
 //   Freelance:     trainerId_trainerId_memberId (null gymId → trainerId as ns)
 // ─────────────────────────────────────────────────────────────────────────────
 import {
-  collection,
-  doc, getDoc,
-  increment,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  updateDoc,
+    collection,
+    doc, getDoc,
+    increment,
+    limit,
+    onSnapshot,
+    orderBy,
+    query,
+    setDoc,
+    updateDoc,
 } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref as storageRef, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
-  FlatList,
-  Image,
-  KeyboardAvoidingView, Platform,
-  StyleSheet,
-  Text,
-  TextInput, TouchableOpacity,
-  View,
+    ActivityIndicator, Alert,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TextInput, TouchableOpacity,
+    View
 } from 'react-native';
 import { Avatar } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, S } from '../../constants/theme';
 import { db } from '../../firebase/config';
 import { getTrainerId } from '../../services/session';
@@ -159,7 +160,7 @@ export default function TrainerChatScreen({ navigation, route }: any) {
       const mediaUrl = await getDownloadURL(imgRef);
       const msgRef = doc(collection(db, 'chats', chatId, 'messages'));
       await setDoc(msgRef, { id: msgRef.id, chatId, senderId: trainerId, senderRole: 'trainer', type: 'image', mediaUrl, readBy: [trainerId], createdAt: Date.now() });
-      await updateDoc(doc(db, 'chats', chatId), { lastMessage: '📷 Image', lastMessageAt: Date.now(), [`unreadCount.${clientId}`]: increment(1) });
+      await updateDoc(doc(db, 'chats', chatId), { lastMessage: 'Image', lastMessageAt: Date.now(), [`unreadCount.${clientId}`]: increment(1) });
     } catch (e) { Alert.alert('Error', 'Failed to send image.'); }
     finally { setSending(false); }
   };
@@ -188,7 +189,7 @@ export default function TrainerChatScreen({ navigation, route }: any) {
       const mediaUrl = await getDownloadURL(vRef);
       const msgRef = doc(collection(db, 'chats', chatId, 'messages'));
       await setDoc(msgRef, { id: msgRef.id, chatId, senderId: trainerId, senderRole: 'trainer', type: 'voice', mediaUrl, readBy: [trainerId], createdAt: Date.now() });
-      await updateDoc(doc(db, 'chats', chatId), { lastMessage: '🎙 Voice note', lastMessageAt: Date.now(), [`unreadCount.${clientId}`]: increment(1) });
+      await updateDoc(doc(db, 'chats', chatId), { lastMessage: 'Voice note', lastMessageAt: Date.now(), [`unreadCount.${clientId}`]: increment(1) });
     } catch { Alert.alert('Error', 'Failed to send voice note.'); }
     finally { setSending(false); }
   };
@@ -221,13 +222,13 @@ export default function TrainerChatScreen({ navigation, route }: any) {
           {item.type === 'image' && item.mediaUrl && <Image source={{ uri: item.mediaUrl }} style={ms.imageMsg} resizeMode="cover" />}
           {item.type === 'voice' && (
             <TouchableOpacity style={ms.voiceRow} onPress={() => playVoice(item)}>
-              <Text style={[ms.voiceIcon, playingId === item.id && { color: isMe ? C.white : C.primary }]}>
-                {playingId === item.id ? '⏸' : '▶'}
-              </Text>
+              <IconSymbol name={playingId === item.id ? 'pause.fill' : 'play.fill'} size={20} color={playingId === item.id ? (isMe ? C.white : C.primary) : C.mid} />
               <View style={ms.voiceBar}>
                 {[...Array(12)].map((_, i) => <View key={i} style={[ms.voiceBarSeg, isMe && { backgroundColor: 'rgba(255,255,255,0.6)' }]} />)}
               </View>
-              <Text style={[ms.voiceLbl, isMe && { color: 'rgba(255,255,255,0.8)' }]}>🎙 Voice</Text>
+              <Text style={[ms.voiceLbl, isMe && { color: 'rgba(255,255,255,0.8)' }]}> 
+                <IconSymbol name="mic" size={12} color={isMe ? C.white : C.mid} />{' '}Voice
+              </Text>
             </TouchableOpacity>
           )}
           <Text style={[ms.time, isMe && ms.timeMe]}>{time}{isMe && (isRead ? ' ✓✓' : ' ✓')}</Text>
@@ -237,11 +238,10 @@ export default function TrainerChatScreen({ navigation, route }: any) {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={cs.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontSize: 20 }}>←</Text>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Avatar uri={clientPhotoUrl} name={clientName} size={36} />
         <View style={{ flex: 1 }}>
@@ -265,9 +265,9 @@ export default function TrainerChatScreen({ navigation, route }: any) {
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <View style={cs.empty}>
-              <Text style={{ fontSize: 40 }}>💬</Text>
-              <Text style={cs.emptyText}>No messages yet</Text>
-              <Text style={cs.emptySub}>Send a message to {clientName?.split(' ')[0]}</Text>
+                <IconSymbol name="bubble.left" size={40} color={C.mid} />
+                  <Text style={cs.emptyText}>No messages yet</Text>
+                  <Text style={cs.emptySub}>Send a message to {clientName?.split(' ')[0]}</Text>
             </View>
           }
         />
@@ -276,35 +276,42 @@ export default function TrainerChatScreen({ navigation, route }: any) {
       {isRecording && (
         <View style={cs.recordingBar}>
           <View style={cs.recordingDot} />
-          <Text style={cs.recordingText}>Recording… tap 🔴 to send</Text>
+          <Text style={cs.recordingText}>Recording… tap <IconSymbol name="record" size={12} color="#EF4444" /> to send</Text>
         </View>
       )}
 
       <View style={cs.inputBar}>
         <TouchableOpacity style={cs.iconBtn} onPress={handleSendImage} disabled={!chatId || sending}>
-          <Text style={{ fontSize: 22 }}>📷</Text>
+          <IconSymbol name="camera" size={22} color={C.primary} />
         </TouchableOpacity>
         <TouchableOpacity
           style={[cs.iconBtn, isRecording && { backgroundColor: '#FEE2E2' }]}
           onPress={isRecording ? stopRecording : startRecording}
           disabled={!chatId || sending}>
-          <Text style={{ fontSize: 22 }}>{isRecording ? '🔴' : '🎙'}</Text>
+          {isRecording ? (
+            <IconSymbol name="record" size={20} color="#EF4444" />
+          ) : (
+            <IconSymbol name="mic" size={20} color={C.mid} />
+          )}
         </TouchableOpacity>
         <TextInput
           style={cs.input}
           placeholder={chatId ? `Message ${clientName?.split(' ')[0]}…` : 'Loading…'}
           placeholderTextColor={C.mid}
-          value={text} onChangeText={setText}
-          multiline maxLength={1000} editable={!!chatId}
+          value={text}
+          onChangeText={setText}
+          multiline
+          maxLength={1000}
+          editable={!!chatId}
         />
         <TouchableOpacity
           style={[cs.sendBtn, (!text.trim() || !chatId || sending) && { opacity: 0.4 }]}
           onPress={handleSendText}
           disabled={!text.trim() || !chatId || sending}>
-          {sending ? <ActivityIndicator size="small" color={C.white} /> : <Text style={{ color: C.white, fontWeight: '700', fontSize: 16 }}>↑</Text>}
+          {sending ? <ActivityIndicator size="small" color={C.white} /> : <IconSymbol name="paperplane.fill" size={18} color={C.white} />}
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 
@@ -313,7 +320,6 @@ const ms = StyleSheet.create({
   rowRight: { justifyContent: 'flex-end' },
   rowLeft: { justifyContent: 'flex-start' },
   bubble: { maxWidth: '75%', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
-  bubbleMe: { backgroundColor: C.primary, borderBottomRightRadius: 4 },
   bubbleThem: { backgroundColor: C.white, borderBottomLeftRadius: 4, elevation: 1 },
   text: { fontSize: 15, color: C.dark, lineHeight: 21 },
   textMe: { color: C.white },

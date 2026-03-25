@@ -5,15 +5,16 @@ import { C } from '../../constants/theme';
 
 import React, { useCallback } from 'react';
 import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { EmptyState, SkeletonCard } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { useAsync } from '../../hooks/useTrainer';
 import { NotificationsAPI } from '../../services/trainer.api';
 import { TrainerNotification } from '../../types/trainer.types';
@@ -22,16 +23,16 @@ import { timeAgo } from '../../utils/trainer.utils';
 import { getTrainerId } from '../../services/session';
 
 const TYPE_ICONS: Record<string, string> = {
-  workout_logged: '💪',
-  client_invited_accepted: '🎉',
-  membership_due: '💰',
-  video_watched: '▶️',
-  class_rsvp: '📅',
-  class_reminder: '⏰',
-  payment_received: '✅',
-  payment_failed: '❌',
-  client_reassigned: '🔄',
-  system: 'ℹ️',
+  workout_logged: 'dumbbell',
+  client_invited_accepted: 'star.fill',
+  membership_due: 'scalemass',
+  video_watched: 'play',
+  class_rsvp: 'timer',
+  class_reminder: 'timer',
+  payment_received: 'record',
+  payment_failed: 'shield',
+  client_reassigned: 'bubble.left',
+  system: 'bell.fill',
 };
 
 export default function NotificationsScreen() {
@@ -63,7 +64,7 @@ export default function NotificationsScreen() {
       activeOpacity={0.85}
     >
       <View style={styles.iconContainer}>
-        <Text style={styles.icon}>{TYPE_ICONS[item.type] ?? 'ℹ️'}</Text>
+        <IconSymbol name={(TYPE_ICONS[item.type] as any) ?? 'bell.fill'} size={18} color={item.isRead ? '#6B7280' : C.primary} />
         {!item.isRead && <View style={styles.unreadDot} />}
       </View>
       <View style={styles.notifContent}>
@@ -72,7 +73,7 @@ export default function NotificationsScreen() {
         <Text style={styles.notifTime}>{timeAgo(item.createdAt)}</Text>
       </View>
       <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteNotif(item.id)}>
-        <Text style={styles.deleteBtnText}>✕</Text>
+        <IconSymbol name="xmark" size={16} color={C.light} />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -100,7 +101,7 @@ export default function NotificationsScreen() {
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={C.primary} />}
           ListEmptyComponent={
-            <EmptyState emoji="🔔" title="No notifications" subtitle="You're all caught up! Notifications about your clients will appear here." />
+            <EmptyState icon={<IconSymbol name="bell.fill" size={48} color={C.mid} />} title="No notifications" subtitle="You're all caught up! Notifications about your clients will appear here." />
           }
         />
       )}

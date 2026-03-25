@@ -1,22 +1,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
-import { C, T, S, R, GS } from '../../constants/theme';
+import { C } from '../../constants/theme';
 // Lift Trainer App — TS-015 View Client Progress Photos
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react';
-import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, Modal, TextInput, Alert,
-} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useCallback, useState } from 'react';
+import {
+    Alert,
+    FlatList,
+    Image, Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 import { ClientsStackParamList } from '../../navigation/TrainerNavigator';
 import { ProgressAPI } from '../../services/trainer.api';
 
+import { IconSymbol } from '../../../components/ui/icon-symbol';
 import { EmptyState, PrimaryButton } from '../../components/common';
 import { useAsync } from '../../hooks/useTrainer';
+import { getTrainerId } from '../../services/session';
 import { ProgressPhoto } from '../../types/trainer.types';
 import { formatDate } from '../../utils/trainer.utils';
-import { getTrainerId } from '../../services/session';
 
 const TRAINER_ID = getTrainerId();
 const TOKEN = '';
@@ -55,15 +62,15 @@ export default function ProgressPhotosScreen({ navigation, route }: Props) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: C.primary, fontWeight: '500' }}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} accessibilityLabel="Back" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <IconSymbol name="chevron.left" size={20} color={C.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{clientName}'s Progress Photos</Text>
       </View>
 
       {sharedPhotos.length === 0 ? (
         <EmptyState
-          emoji="📷"
+          icon={<IconSymbol name="camera" size={48} color={C.mid} />}
           title="No photos shared"
           subtitle={`${clientName} hasn't shared any progress photos with you yet.`}
           ctaLabel="Request Access"
@@ -82,7 +89,10 @@ export default function ProgressPhotosScreen({ navigation, route }: Props) {
               <View style={styles.photoInfo}>
                 <Text style={styles.photoDate}>{formatDate(item.date)}</Text>
                 {item.trainerComment ? (
-                  <Text style={styles.comment} numberOfLines={2}>💬 {item.trainerComment}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <IconSymbol name="bubble.left" size={12} color={C.mid} />
+                    <Text style={styles.comment} numberOfLines={2}>{item.trainerComment}</Text>
+                  </View>
                 ) : (
                   <TouchableOpacity onPress={() => { setCommentModal({ photoId: item.id }); setCommentText(''); }}>
                     <Text style={styles.addComment}>+ Add comment</Text>

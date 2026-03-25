@@ -7,10 +7,12 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  Alert, FlatList, KeyboardAvoidingView, Modal, Platform,
-  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+    Alert, FlatList, Modal,
+    ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { EmptyState, PrimaryButton, ScreenHeader } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { REST_PRESETS } from '../../constants/trainer.constants';
 import { useAsync } from '../../hooks/useTrainer';
@@ -22,7 +24,7 @@ type Props = NativeStackScreenProps<LibraryStackParamList, 'CreateWorkout'>;
 
 const MAX_EXERCISES = 12;
 const MAX_SETS = 12;
-const MAX_REPS = 12;
+const MAX_REPS = 50;
 
 function defaultEntry(ex) {
   return {
@@ -163,7 +165,7 @@ export default function CreateWorkoutScreen({ navigation, route }: Props) {
   const noExercisesYet = !loadingExercises && (allExercises ?? []).length === 0;
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
         <ScreenHeader
           title={isEditing ? 'Edit Workout' : 'New Workout'}
@@ -174,13 +176,16 @@ export default function CreateWorkoutScreen({ navigation, route }: Props) {
 
         {noExercisesYet && (
           <View style={styles.noExercisesNotice}>
-            <Text style={styles.noExercisesIcon}>💪</Text>
+            <IconSymbol name="dumbbell" size={52} color={C.primary} />
             <Text style={styles.noExercisesTitle}>No exercises in your library yet</Text>
             <Text style={styles.noExercisesText}>
-              Go to Library → Exercises → tap + Exercise to add your first exercise before creating a workout.
+              Go to Library › Exercises › tap + Exercise to add your first exercise before creating a workout.
             </Text>
             <TouchableOpacity style={styles.noExercisesBtn} onPress={() => navigation.goBack()}>
-              <Text style={styles.noExercisesBtnText}>← Go back to Library</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="chevron.left" size={14} color={C.mid} />
+                <Text style={styles.noExercisesBtnText}>Go back to Library</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -205,12 +210,12 @@ export default function CreateWorkoutScreen({ navigation, route }: Props) {
 
             {entries.length > 0 && (
               <View style={styles.statsBar}>
-                <StatMini icon="🏋️" value={`${entries.length}/${MAX_EXERCISES}`} label="exercises" />
-                <View style={styles.statsDivider} />
-                <StatMini icon="🔢" value={`${stats.totalSets}`} label="total sets" />
-                <View style={styles.statsDivider} />
-                <StatMini icon="⏱" value={`~${stats.estimatedMinutes}`} label="minutes" />
-              </View>
+                  <StatMini icon="figure.strengthtraining.traditional" value={`${entries.length}/${MAX_EXERCISES}`} label="exercises" />
+                  <View style={styles.statsDivider} />
+                  <StatMini icon="number" value={`${stats.totalSets}`} label="total sets" />
+                  <View style={styles.statsDivider} />
+                  <StatMini icon="timer" value={`~${stats.estimatedMinutes}`} label="minutes" />
+                </View>
             )}
 
             <View>
@@ -223,7 +228,7 @@ export default function CreateWorkoutScreen({ navigation, route }: Props) {
 
               {entries.length === 0 ? (
                 <TouchableOpacity style={styles.emptyExercises} onPress={() => setShowPicker(true)}>
-                  <Text style={{ fontSize: 36 }}>💪</Text>
+                  <IconSymbol name="dumbbell" size={36} color={C.primary} />
                   <Text style={styles.emptyExText}>Tap to add exercises</Text>
                   <Text style={styles.emptyExSub}>Choose from your exercise library</Text>
                 </TouchableOpacity>
@@ -265,7 +270,7 @@ export default function CreateWorkoutScreen({ navigation, route }: Props) {
           onClose={() => { setShowPicker(false); setPickerSearch(''); setPickerFilter(null); }}
         />
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 
@@ -283,7 +288,7 @@ function ExerciseEntry({ entry, index, total, isExpanded, onToggle, onUpdate, on
             {entry.mainSets}×{entry.mainReps} main
           </Text>
         </View>
-        <Text style={styles.entryChevron}>{isExpanded ? '▲' : '▼'}</Text>
+        <IconSymbol name={isExpanded ? 'chevron.up' : 'chevron.down'} size={18} color={C.mid} style={styles.entryChevron as any} />
       </TouchableOpacity>
       {isExpanded && (
         <View style={styles.entryBody}>
@@ -303,18 +308,27 @@ function ExerciseEntry({ entry, index, total, isExpanded, onToggle, onUpdate, on
             <View style={{ flexDirection: 'row', gap: S.sm }}>
               {index > 0 && (
                 <TouchableOpacity style={styles.reorderBtn} onPress={onMoveUp}>
-                  <Text style={styles.reorderBtnText}>↑ Move Up</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <IconSymbol name="chevron.up" size={14} color={C.mid} />
+                    <Text style={styles.reorderBtnText}>Move Up</Text>
+                  </View>
                 </TouchableOpacity>
               )}
               {index < total - 1 && (
                 <TouchableOpacity style={styles.reorderBtn} onPress={onMoveDown}>
-                  <Text style={styles.reorderBtnText}>↓ Move Down</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <IconSymbol name="chevron.down" size={14} color={C.mid} />
+                    <Text style={styles.reorderBtnText}>Move Down</Text>
+                  </View>
                 </TouchableOpacity>
               )}
             </View>
             {/* Fix 2: Always show Remove button — user can delete from workout */}
             <TouchableOpacity style={styles.removeBtn} onPress={onRemove}>
-              <Text style={styles.removeBtnText}>🗑 Remove</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="trash" size={14} color={C.red} />
+                <Text style={styles.removeBtnText}>Remove</Text>
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -382,11 +396,14 @@ function ExercisePickerModal({ visible, exercises, search, onSearch, filter, onF
         <View style={pickerStyles.header}>
           <Text style={pickerStyles.title}>Add Exercise</Text>
           <TouchableOpacity onPress={onClose} style={pickerStyles.closeBtn}>
-            <Text style={pickerStyles.closeBtnText}>✕ Close</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="xmark" size={16} color={C.mid} />
+              <Text style={pickerStyles.closeBtnText}>Close</Text>
+            </View>
           </TouchableOpacity>
         </View>
         <View style={pickerStyles.searchBar}>
-          <Text style={{ fontSize: 16, color: C.mid }}>🔍</Text>
+          <IconSymbol name="magnifyingglass" size={18} color={C.mid} />
           <TextInput style={pickerStyles.searchInput} placeholder="Search exercises…"
             placeholderTextColor={C.mid} value={search} onChangeText={onSearch} autoFocus />
         </View>
@@ -399,24 +416,25 @@ function ExercisePickerModal({ visible, exercises, search, onSearch, filter, onF
           </TouchableOpacity>
           {MUSCLE_GROUPS.map(g => (
             <TouchableOpacity key={g}
-              style={[pickerStyles.filterChip, filter === g && pickerStyles.filterChipActive]}
-              onPress={() => onFilter(filter === g ? null : g)}>
-              <Text style={[pickerStyles.filterText, filter === g && pickerStyles.filterTextActive]}>
-                {MUSCLE_GROUP_ICONS[g] ?? '💪'} {g}
-              </Text>
-            </TouchableOpacity>
+                style={[pickerStyles.filterChip, filter === g && pickerStyles.filterChipActive]}
+                onPress={() => onFilter(filter === g ? null : g)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <IconSymbol name={MUSCLE_GROUP_ICONS[g] ?? 'dumbbell'} size={14} color={filter === g ? C.white : C.primary} />
+                  <Text style={[pickerStyles.filterText, filter === g && pickerStyles.filterTextActive]}>{g}</Text>
+                </View>
+              </TouchableOpacity>
           ))}
         </ScrollView>
         <FlatList data={exercises} keyExtractor={item => item.id}
           contentContainerStyle={{ padding: S.lg, gap: S.sm, paddingBottom: 40 }}
           ListEmptyComponent={
-            <EmptyState emoji="🔍" title="No exercises found"
+            <EmptyState icon={<IconSymbol name="magnifyingglass" size={48} color={C.mid} />} title="No exercises found"
               subtitle={search ? 'Try a different search' : 'All exercises already added'} />
           }
           renderItem={({ item: ex }) => (
             <TouchableOpacity style={pickerStyles.exCard} onPress={() => onSelect(ex)} activeOpacity={0.85}>
               <View style={pickerStyles.exIconCircle}>
-                <Text style={{ fontSize: 20 }}>{MUSCLE_GROUP_ICONS[ex.muscleGroup] ?? '💪'}</Text>
+                <IconSymbol name={MUSCLE_GROUP_ICONS[ex.muscleGroup] ?? 'dumbbell'} size={20} color={C.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={pickerStyles.exName}>{ex.name}</Text>
@@ -435,7 +453,11 @@ function ExercisePickerModal({ visible, exercises, search, onSearch, filter, onF
 function StatMini({ icon, value, label }) {
   return (
     <View style={styles.statMini}>
-      <Text style={styles.statMiniIcon}>{icon}</Text>
+      {typeof icon === 'string' ? (
+        <IconSymbol name={icon as any} size={18} color={C.primary} />
+      ) : (
+        <Text style={styles.statMiniIcon}>{icon}</Text>
+      )}
       <Text style={styles.statMiniValue}>{value}</Text>
       <Text style={styles.statMiniLabel}>{label}</Text>
     </View>

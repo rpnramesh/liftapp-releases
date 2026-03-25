@@ -5,10 +5,13 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-  Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView,
-  Share, StyleSheet, Text, TextInput, TouchableOpacity, View,
+    Alert, Clipboard,
+    ScrollView,
+    Share, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { PrimaryButton } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
+import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C } from '../../constants/theme';
 import { AuthStackParamList } from '../../navigation/TrainerNavigator';
 import { AuthAPI } from '../../services/trainer.api';
@@ -59,7 +62,7 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
   const goToDashboard = () => navigation.replace('Main' as any);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardSafeView style={{ flex: 1 }}>
       <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 40 }}>
         {path === 'choose' && (
           <>
@@ -67,12 +70,12 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
             <Text style={s.subtitle}>You can change this later from your profile.</Text>
             <View style={s.cards}>
               <TouchableOpacity style={s.card} onPress={() => setPath('gym')} activeOpacity={0.85}>
-                <Text style={s.cardIcon}>🏛</Text>
+                <IconSymbol name="person.2.fill" size={32} color={C.primary} />
                 <Text style={s.cardTitle}>Join a Gym</Text>
                 <Text style={s.cardDesc}>Enter your gym's invite code to link your account</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.card} onPress={() => setPath('freelance')} activeOpacity={0.85}>
-                <Text style={s.cardIcon}>🌟</Text>
+                <IconSymbol name="star.fill" size={32} color={C.primary} />
                 <Text style={s.cardTitle}>Go Freelance</Text>
                 <Text style={s.cardDesc}>Manage your own clients independently</Text>
               </TouchableOpacity>
@@ -82,23 +85,42 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </>
         )}
-
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="star.fill" size={52} color={C.primary} />
+            </View>
         {path === 'gym' && (
           <>
-            <TouchableOpacity onPress={() => setPath('choose')}><Text style={s.back}>← Back</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setPath('choose')}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <IconSymbol name="chevron.left" size={16} color={C.primary} />
+                <Text style={s.back}>Back</Text>
+              </View>
+            </TouchableOpacity>
             <Text style={s.title}>Enter Gym Code</Text>
             <Text style={s.subtitle}>Ask your gym admin for the invite code.</Text>
-            <TextInput style={[s.input, error && s.inputError]} placeholder="e.g. GYM12345"
-              value={gymCode} onChangeText={v => { setGymCode(normaliseGymCode(v)); setError(''); }}
-              autoCapitalize="characters" autoCorrect={false} maxLength={10} />
-            {!!error && <Text style={s.errorText}>{error}</Text>}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="paperplane.fill" size={16} color={C.white} />
+              <Text style={s.shareBtnText}>Share</Text>
+            </View>
+            <TextInput
+              style={s.input}
+              value={gymCode}
+              onChangeText={v => { setGymCode(normaliseGymCode(v)); setError(''); }}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={10}
+            />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <IconSymbol name="clipboard" size={16} color={C.primary} />
+              <Text style={[s.shareBtnText, { color: C.primary }]}>Copy Link</Text>
+            </View>
             <PrimaryButton label="Link Gym" onPress={handleGymLink} loading={loading} />
           </>
         )}
 
         {path === 'gym_success' && (
           <>
-            <Text style={s.successEmoji}>🎉</Text>
+            <IconSymbol name="star.fill" size={52} color={C.primary} />
             <Text style={s.title}>You're linked to{'\n'}{gymName}!</Text>
             <Text style={s.subtitle}>Your gym admin can now assign members to you.</Text>
             <PrimaryButton label="Go to Dashboard" onPress={goToDashboard} />
@@ -107,7 +129,7 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
 
         {path === 'freelance' && (
           <>
-            <TouchableOpacity onPress={() => setPath('choose')}><Text style={s.back}>← Back</Text></TouchableOpacity>
+            <IconSymbol name="star.fill" size={52} color={C.primary} />
             <Text style={s.title}>Set Your Monthly Fee</Text>
             <Text style={s.subtitle}>This is what your freelance clients will be charged each month.</Text>
             <View style={s.feeRow}>
@@ -123,23 +145,23 @@ export default function GymLinkingScreen({ navigation, route }: Props) {
 
         {path === 'freelance_success' && (
           <>
-            <Text style={s.successEmoji}>🌟</Text>
+            <IconSymbol name="star.fill" size={52} color={C.primary} />
             <Text style={s.title}>You're set up as a Freelance Trainer!</Text>
             <Text style={s.subtitle}>Share your invite link to start onboarding clients.</Text>
             <View style={s.linkCard}><Text style={s.linkText} numberOfLines={2}>{inviteLink}</Text></View>
             <View style={s.shareRow}>
               <TouchableOpacity style={s.shareBtn} onPress={() => Share.share({ message: `Join my training on Lift: ${inviteLink}` })}>
-                <Text style={s.shareBtnText}>📲 Share</Text>
+                <Text style={s.shareBtnText}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.shareBtn, s.copyBtn]} onPress={() => { Clipboard.setString(inviteLink); Alert.alert('Copied!'); }}>
-                <Text style={[s.shareBtnText, { color: C.primary }]}>📋 Copy Link</Text>
+                <Text style={[s.shareBtnText, { color: C.primary }]}>Copy Link</Text>
               </TouchableOpacity>
             </View>
             <PrimaryButton label="Go to Dashboard" onPress={goToDashboard} />
           </>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardSafeView>
   );
 }
 

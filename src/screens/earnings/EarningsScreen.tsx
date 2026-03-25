@@ -5,18 +5,21 @@ import { C } from '../../constants/theme';
 
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    FlatList,
+    Linking,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { EarningsAPI } from '../../services/trainer.api';
+import { AuthAPI, EarningsAPI } from '../../services/trainer.api';
 
 import { EmptyState, SkeletonLoader, StatusBadge } from '../../components/common';
+import { IconSymbol } from '../../components/ui/icon-symbol';
 import { useAsync } from '../../hooks/useTrainer';
 import { FeeDue, PaymentRecord, TrainerEarnings } from '../../types/trainer.types';
 import { feeReminderMessage, formatDate, formatINR, paymentStatusColor, razorpayPayoutDate, whatsappURL } from '../../utils/trainer.utils';
@@ -50,10 +53,34 @@ export default function EarningsScreen() {
   const dues = duesAsync.data;
   const history = historyAsync.data;
 
+  const [feeModal, setFeeModal] = useState(false);
+  const [feeText, setFeeText] = useState('');
+  const [savingFee, setSavingFee] = useState(false);
+
+  const saveFee = async () => {
+    const fee = parseFloat(feeText);
+    if (isNaN(fee) || fee < 0) return Alert.alert('Invalid', 'Enter a valid fee amount');
+    setSavingFee(true);
+    try {
+      await AuthAPI.setupFreelance(getTrainerId(), fee);
+      Alert.alert('Saved', 'Monthly freelance fee saved.');
+      setFeeModal(false);
+      setFeeText('');
+      earningsAsync.refresh();
+    } catch (e: any) { Alert.alert('Error', e.message ?? 'Failed to save'); }
+    finally { setSavingFee(false); }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Earnings</Text>
+      </View>
+
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <TouchableOpacity style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12 }} onPress={() => setFeeModal(true)}>
+          <Text style={{ color: C.primary, fontWeight: '600' }}>Set Monthly Freelance Fee</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Month selector */}
@@ -143,7 +170,7 @@ export default function EarningsScreen() {
       {tab === 'dues' && (
         duesAsync.loading ? <SkeletonLoader height={80} style={{ margin: 16 }} /> :
         dues?.length === 0 ? (
-          <EmptyState emoji="✅" title="No outstanding dues" subtitle="All freelance clients are up to date!" />
+          <EmptyState icon={<IconSymbol name="clipboard" size={48} color={C.mid} />} title="No outstanding dues" subtitle="All freelance clients are up to date!" />
         ) : (
           <FlatList
             data={dues?.sort((a, b) => b.daysOverdue - a.daysOverdue)}
@@ -158,7 +185,7 @@ export default function EarningsScreen() {
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <Text style={styles.dueAmount}>{formatINR(item.amountDue)}</Text>
                   <TouchableOpacity style={styles.reminderBtn} onPress={() => sendReminder(item)}>
-                    <Text style={styles.reminderBtnText}>📲 Remind</Text>
+                    <Text style={styles.reminderBtnText}>Remind</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -171,7 +198,7 @@ export default function EarningsScreen() {
       {tab === 'history' && (
         historyAsync.loading ? <SkeletonLoader height={80} style={{ margin: 16 }} /> :
         history?.length === 0 ? (
-          <EmptyState emoji="📄" title="No payment history" subtitle="Received payments will appear here." />
+          <EmptyState icon={<IconSymbol name="clipboard" size={48} color={C.mid} />} title="No payment history" subtitle="Received payments will appear here." />
         ) : (
           <FlatList
             data={history}
@@ -201,6 +228,30 @@ export default function EarningsScreen() {
           />
         )
       )}
+
+      <Modal visible={feeModal} transparent animationType="slide" onRequestClose={() => setFeeModal(false)}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <View style={{ width: '92%', backgroundColor: C.white, borderRadius: 12, padding: 16 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginBottom: 8 }}>Set Monthly Freelance Fee</Text>
+            <Text style={{ color: C.mid, marginBottom: 8 }}>Enter the monthly subscription fee you charge freelance clients (in ₹).</Text>
+            <TextInput
+              value={feeText}
+              onChangeText={setFeeText}
+              placeholder="e.g. 500"
+              keyboardType="numeric"
+              style={{ borderWidth: 1, borderColor: C.border, borderRadius: 8, padding: 10, marginBottom: 12 }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+              <TouchableOpacity onPress={() => setFeeModal(false)} style={{ padding: 10 }}>
+                <Text style={{ color: C.mid }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveFee} style={{ backgroundColor: C.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }} disabled={savingFee}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>{savingFee ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
