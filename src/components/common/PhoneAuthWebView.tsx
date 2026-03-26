@@ -127,6 +127,7 @@ const HTML = `
 const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [webviewKey, setWebviewKey] = useState(0);
   const pendingRef = useRef<{
     resolve: (id: string) => void;
     reject: (err: Error) => void;
@@ -135,11 +136,25 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const readyRef = useRef(false);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
     if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
     if (failsafeRef.current) { clearTimeout(failsafeRef.current); failsafeRef.current = null; }
+    if (reloadRef.current) { clearTimeout(reloadRef.current); reloadRef.current = null; }
   }, []);
+
+  // Auto-reload WebView if reCAPTCHA hasn't become ready after 15s
+  React.useEffect(() => {
+    if (readyRef.current) return;
+    reloadRef.current = setTimeout(() => {
+      if (!readyRef.current) {
+        console.log('[PhoneAuth] No ready signal after 15s — reloading WebView');
+        setWebviewKey(k => k + 1);
+      }
+    }, 15000);
+    return () => { if (reloadRef.current) clearTimeout(reloadRef.current); };
+  }, [webviewKey]);
 
   const injectSendOtp = useCallback((phone: string) => {
     const safePhone = phone.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -211,6 +226,11 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
         phoneRef.current = phoneNumber;
         setShowOverlay(true);
 
+        // If WebView hasn't loaded yet, force reload it
+        if (!readyRef.current) {
+          setWebviewKey(k => k + 1);
+        }
+
         // If reCAPTCHA was already ready (WebView pre-loaded), send immediately
         if (readyRef.current) {
           injectSendOtp(phoneNumber);
@@ -235,7 +255,7 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
         };
         startRetries();
 
-        // Failsafe: reject after 30s
+        // Failsafe: reject after 60s
         failsafeRef.current = setTimeout(() => {
           if (pendingRef.current) {
             cleanup();
@@ -244,22 +264,28 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
             pendingRef.current = null;
             phoneRef.current = null;
           }
-        }, 30000);
+        }, 60000);
       });
     },
   }));
 
   return (
     <>
-      {/* WebView is always mounted so Firebase + reCAPTCHA can pre-load */}
-      <View style={styles.webviewContainer} pointerEvents="none">
+      {/* WebView must stay ON-SCREEN for Android to keep JS execution active.
+          A 1x1 container at bottom-right with overflow:hidden hides the 300x400
+          WebView while keeping it in the viewport so reCAPTCHA can initialise. */}
+      <View style={styles.webviewContainer}>
         <WebView
+          key={webviewKey}
           ref={webViewRef}
           source={{ html: HTML, baseUrl: `https://${AUTH_DOMAIN}` }}
           onMessage={onMessage}
           javaScriptEnabled
           domStorageEnabled
           thirdPartyCookiesEnabled
+          mediaPlaybackRequiresUserAction={false}
+          mixedContentMode="compatibility"
+          cacheEnabled
           style={styles.webview}
           originWhitelist={['*']}
           onError={(e) => {
@@ -294,12 +320,14 @@ PhoneAuthWebView.displayName = 'PhoneAuthWebView';
 export default PhoneAuthWebView;
 
 const styles = StyleSheet.create({
+  // MUST remain on-screen (not bottom:-500) so Android keeps JS alive
+  // and reCAPTCHA can detect viewport visibility.
   webviewContainer: {
     position: 'absolute',
-    bottom: -500,
-    left: 0,
-    width: 300,
-    height: 400,
+    bottom: 0,
+    right: 0,
+    width: 1,
+    height: 1,
     overflow: 'hidden',
     opacity: 0.01,
   },
