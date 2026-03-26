@@ -327,7 +327,13 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: S.lg, paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled">
           <View style={styles.dayHeader}>
-            <Text style={styles.dayTitle}>{activeDay.dayLabel ?? `Day ${activeDayIdx + 1}`}</Text>
+            <TextInput
+              style={styles.dayTitleInput}
+              value={activeDay.dayLabel}
+              onChangeText={(text) => setDays(prev => prev.map((d, i) => i === activeDayIdx ? { ...d, dayLabel: text } : d))}
+              placeholder={`Day ${activeDayIdx + 1} name`}
+              placeholderTextColor={C.mid}
+            />
             <TouchableOpacity
               style={[styles.restToggle, activeDay.restDay && styles.restToggleOn]}
               onPress={() => toggleRestDay(activeDayIdx)}>
@@ -594,6 +600,7 @@ const styles = StyleSheet.create({
   dayTabCountText: { fontSize: 9, color: C.white, fontWeight: '700' },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: S.md },
   dayTitle: { fontSize: 17, fontWeight: '700', color: C.dark },
+  dayTitleInput: { fontSize: 17, fontWeight: '700', color: C.dark, flex: 1, borderBottomWidth: 1.5, borderBottomColor: C.primary, paddingVertical: 4, marginRight: 12 },
   restToggle: { paddingHorizontal: S.md, paddingVertical: S.xs + 2, borderRadius: R.full, borderWidth: 1, borderColor: C.border, backgroundColor: C.bg },
   restToggleOn: { backgroundColor: C.amber, borderColor: C.amber },
   restToggleText: { fontSize: 12, fontWeight: '600', color: C.mid },

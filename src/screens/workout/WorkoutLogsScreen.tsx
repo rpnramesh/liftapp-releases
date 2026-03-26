@@ -1,11 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { C } from '../../constants/theme';
-// Lift Trainer App — View Client Workout Logs & Add Notes (realtime)
+// Lift Trainer App — Interactive Client Workout Logs (real-time sync)
+// Trainer can start workouts, edit weight/reps/sets, toggle completion,
+// adjust rest time — all changes sync bidirectionally with member app.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
@@ -29,14 +31,23 @@ import { formatDateTime } from '../../utils/trainer.utils';
 
 type Props = NativeStackScreenProps<ClientsStackParamList, 'WorkoutLogs'>;
 
+// Helper to get gymId for Firestore writes
+async function getGymId() {
+  const trainerId = getTrainerId();
+  const trainerSnap = await getDoc(doc(db, 'trainers', trainerId)).catch(() => null);
+  return trainerSnap?.data()?.gymId ?? trainerId;
+}
+
 export default function WorkoutLogsScreen({ navigation, route }: Props) {
   const { clientId, clientName } = route.params;
   const [noteModal, setNoteModal] = useState<{ logId: string; existing?: string } | null>(null);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const [logs, setLogs] = useState<WorkoutLog[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -59,9 +70,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
 
       (async () => {
         try {
-          const trainerId = getTrainerId();
-          const trainerSnap = await getDoc(doc(db, 'trainers', trainerId)).catch(() => null);
-          const gymId = trainerSnap?.data()?.gymId ?? trainerId;
+          const gymId = await getGymId();
           const q = query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', clientId), orderBy('completedAt', 'desc'));
           unsub = onSnapshot(q, snap => {
             const data = snap.docs.map(d => ({ id: d.id, ...(d.data() as WorkoutLog) }));
@@ -90,29 +99,249 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
     try {
       await WorkoutAPI.addNoteOnLog(getTrainerId(), clientId, noteModal.logId, noteText.trim());
       setNoteModal(null);
-      await fetchLogs();
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to save note');
     } finally { setSavingNote(false); }
+  };
+
+  // ─── Start a new workout for the client ──────────────────────────────────
+  const startWorkout = async () => {
+    setStarting(true);
+    try {
+      const trainerId = getTrainerId();
+      const gymId = await getGymId();
+
+      // Load client's assigned plan
+      const assignSnap = await getDoc(doc(db, 'gyms', gymId, 'assignments', clientId)).catch(() => null);
+      if (!assignSnap?.exists() || !assignSnap.data().planId) {
+        Alert.alert('No Plan Assigned', `${clientName} doesn't have a workout plan assigned yet.`);
+        setStarting(false);
+        return;
+      }
+      const assign = assignSnap.data();
+      const planSnap = await getDoc(doc(db, 'gyms', gymId, 'clientPlans', assign.planId)).catch(() => null);
+      if (!planSnap?.exists()) {
+        Alert.alert('Plan Not Found', 'The assigned plan could not be loaded.');
+        setStarting(false);
+        return;
+      }
+      const plan = planSnap.data();
+      const planDays = (plan.days ?? []).filter((d: any) => !d.restDay && d.exercises?.length > 0);
+      if (planDays.length === 0) {
+        Alert.alert('Empty Plan', 'The plan has no workout days with exercises.');
+        setStarting(false);
+        return;
+      }
+
+      // Find next day to do (cycle through plan days)
+      const existingLogs = logs ?? [];
+      const lastDay = existingLogs.length > 0 ? existingLogs[0]?.dayLabel : null;
+      let nextDayIdx = 0;
+      if (lastDay) {
+        const lastIdx = planDays.findIndex((d: any) => d.dayLabel === lastDay);
+        if (lastIdx >= 0) nextDayIdx = (lastIdx + 1) % planDays.length;
+      }
+      const day = planDays[nextDayIdx];
+
+      // Create a new workout log
+      const logRef = doc(collection(db, 'gyms', gymId, 'workoutLogs'));
+      const now = Date.now();
+      const newLog = {
+        id: logRef.id,
+        memberId: clientId,
+        memberName: clientName,
+        trainerId,
+        gymId,
+        planId: assign.planId,
+        planName: plan.name ?? assign.planName ?? 'Workout',
+        dayLabel: day.dayLabel,
+        status: 'incomplete',
+        completedExercises: day.exercises.map((ex: any) => ({
+          exerciseId: ex.id,
+          exerciseName: ex.name,
+          muscleGroup: ex.muscleGroup ?? 'Other',
+          targetSets: ex.mainSets ?? 3,
+          targetReps: ex.mainReps ?? 10,
+          actualSets: ex.mainSets ?? 3,
+          actualReps: String(ex.mainReps ?? 10),
+          weight: 0,
+          restSeconds: ex.mainRestSeconds ?? 60,
+          completed: false,
+          notes: ex.notes ?? '',
+        })),
+        startedAt: now,
+        loggedAt: new Date(now).toISOString(),
+        completedAt: now,
+        startedBy: 'trainer',
+        updatedAt: now,
+      };
+
+      await setDoc(logRef, newLog);
+      setExpandedLogId(logRef.id);
+    } catch (e: any) {
+      console.log('startWorkout error:', e);
+      Alert.alert('Error', e.message ?? 'Failed to start workout');
+    } finally { setStarting(false); }
+  };
+
+  // ─── Update a single exercise in a log (Firestore write) ────────────────
+  const updateExerciseInLog = async (logId: string, exerciseId: string, patch: any) => {
+    try {
+      const gymId = await getGymId();
+      const logRef = doc(db, 'gyms', gymId, 'workoutLogs', logId);
+      const logSnap = await getDoc(logRef);
+      if (!logSnap.exists()) return;
+
+      const data = logSnap.data();
+      const exercises = (data.completedExercises ?? []).map((ex: any) =>
+        ex.exerciseId === exerciseId ? { ...ex, ...patch } : ex,
+      );
+
+      // Auto-determine status
+      const allDone = exercises.every((ex: any) => ex.completed);
+      const anyDone = exercises.some((ex: any) => ex.completed);
+      const status = allDone ? 'completed' : 'incomplete';
+
+      await updateDoc(logRef, {
+        completedExercises: exercises,
+        status,
+        updatedAt: Date.now(),
+        ...(allDone ? { completedAt: Date.now() } : {}),
+      });
+    } catch (e: any) {
+      console.log('updateExercise error:', e);
+    }
+  };
+
+  // ─── Mark entire workout as completed ────────────────────────────────────
+  const markWorkoutComplete = async (logId: string) => {
+    try {
+      const gymId = await getGymId();
+      const logRef = doc(db, 'gyms', gymId, 'workoutLogs', logId);
+      const logSnap = await getDoc(logRef);
+      if (!logSnap.exists()) return;
+      const data = logSnap.data();
+      const exercises = (data.completedExercises ?? []).map((ex: any) => ({ ...ex, completed: true }));
+      await updateDoc(logRef, {
+        completedExercises: exercises,
+        status: 'completed',
+        completedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Failed to update');
+    }
+  };
+
+  // ─── Render exercise row (interactive) ──────────────────────────────────
+  const renderExercise = (logId: string, ex: any, isExpanded: boolean) => {
+    const statusColor = ex.completed ? C.green : C.mid;
+
+    return (
+      <View key={ex.exerciseId} style={styles.exCard}>
+        <View style={styles.exTopRow}>
+          <TouchableOpacity
+            style={styles.exCheckBtn}
+            onPress={() => isExpanded && updateExerciseInLog(logId, ex.exerciseId, { completed: !ex.completed })}>
+            {ex.completed
+              ? <IconSymbol name="checkmark" size={16} color={C.green} />
+              : <IconSymbol name="square" size={16} color={C.mid} />}
+          </TouchableOpacity>
+          <Text style={[styles.exName, ex.completed && styles.exNameDone]}>{ex.exerciseName}</Text>
+          {ex.muscleGroup ? <Text style={styles.exMuscle}>{ex.muscleGroup}</Text> : null}
+        </View>
+
+        {isExpanded && (
+          <View style={styles.exFields}>
+            {/* Weight */}
+            <View style={styles.exField}>
+              <Text style={styles.exFieldLabel}>Weight (kg)</Text>
+              <TextInput
+                style={styles.exFieldInput}
+                keyboardType="numeric"
+                value={String(ex.weight ?? 0)}
+                onEndEditing={(e) => {
+                  const val = parseFloat(e.nativeEvent.text) || 0;
+                  updateExerciseInLog(logId, ex.exerciseId, { weight: val });
+                }}
+              />
+            </View>
+            {/* Sets */}
+            <View style={styles.exField}>
+              <Text style={styles.exFieldLabel}>Sets</Text>
+              <TextInput
+                style={styles.exFieldInput}
+                keyboardType="numeric"
+                value={String(ex.actualSets ?? 0)}
+                onEndEditing={(e) => {
+                  const val = parseInt(e.nativeEvent.text) || 0;
+                  updateExerciseInLog(logId, ex.exerciseId, { actualSets: val });
+                }}
+              />
+            </View>
+            {/* Reps */}
+            <View style={styles.exField}>
+              <Text style={styles.exFieldLabel}>Reps</Text>
+              <TextInput
+                style={styles.exFieldInput}
+                keyboardType="numeric"
+                value={String(ex.actualReps ?? 0)}
+                onEndEditing={(e) => {
+                  const val = e.nativeEvent.text || '0';
+                  updateExerciseInLog(logId, ex.exerciseId, { actualReps: val });
+                }}
+              />
+            </View>
+            {/* Rest Time */}
+            <View style={styles.exField}>
+              <Text style={styles.exFieldLabel}>Rest (s)</Text>
+              <View style={styles.restRow}>
+                <TouchableOpacity style={styles.restBtn}
+                  onPress={() => updateExerciseInLog(logId, ex.exerciseId, { restSeconds: Math.max(0, (ex.restSeconds ?? 60) - 15) })}>
+                  <Text style={styles.restBtnText}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.restValue}>{ex.restSeconds ?? 60}s</Text>
+                <TouchableOpacity style={styles.restBtn}
+                  onPress={() => updateExerciseInLog(logId, ex.exerciseId, { restSeconds: (ex.restSeconds ?? 60) + 15 })}>
+                  <Text style={styles.restBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {!isExpanded && (
+          <View style={styles.exSummaryRow}>
+            <Text style={styles.exDetail}>{ex.actualSets}×{ex.actualReps}</Text>
+            {ex.weight > 0 && <Text style={styles.exDetail}>{ex.weight}kg</Text>}
+            {ex.restSeconds ? <Text style={styles.exDetail}>{ex.restSeconds}s rest</Text> : null}
+          </View>
+        )}
+      </View>
+    );
   };
 
   const renderLog = ({ item }: { item: WorkoutLog }) => {
     const statusColor = item.status === 'completed' ? C.green : C.mid;
     const completedCount = item.completedExercises.filter(ex => ex.completed).length;
     const totalCount = item.completedExercises.length;
+    const isExpanded = expandedLogId === item.id;
 
     return (
-      <View style={styles.logCard}>
-        <View style={styles.logHeader}>
+      <View style={[styles.logCard, isExpanded && styles.logCardExpanded]}>
+        <TouchableOpacity
+          style={styles.logHeader}
+          onPress={() => setExpandedLogId(isExpanded ? null : item.id)}>
           <View>
             <Text style={styles.logPlan}>{item.planName}</Text>
             <Text style={styles.logDay}>{item.dayLabel}</Text>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            <StatusBadge label={item.status === 'completed' ? 'Completed' : 'Incomplete'} color={statusColor} />
+            <StatusBadge label={item.status === 'completed' ? 'Completed' : 'In Progress'} color={statusColor} />
             <Text style={styles.logTime}>{formatDateTime(item.loggedAt)}</Text>
+            <IconSymbol name={isExpanded ? 'chevron.up' : 'chevron.down'} size={14} color={C.mid} />
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Exercise breakdown */}
         <View style={styles.exBreakdown}>
@@ -123,13 +352,16 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         </View>
 
         {/* Exercises list */}
-        {item.completedExercises.map(ex => (
-          <View key={ex.exerciseId} style={styles.exRow}>
-            {ex.completed ? <IconSymbol name="checkmark" size={16} color={statusColor} /> : <IconSymbol name="square" size={16} color={C.mid} />}
-            <Text style={styles.exName}>{ex.exerciseName}</Text>
-            <Text style={styles.exDetail}>{ex.actualSets}×{ex.actualReps}</Text>
-          </View>
-        ))}
+        {item.completedExercises.map(ex => renderExercise(item.id, ex, isExpanded))}
+
+        {/* Actions when expanded */}
+        {isExpanded && item.status !== 'completed' && (
+          <TouchableOpacity style={styles.completeBtn}
+            onPress={() => markWorkoutComplete(item.id)}>
+            <IconSymbol name="checkmark" size={16} color={C.white} />
+            <Text style={styles.completeBtnText}>Mark Workout Complete</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Trainer note */}
         {item.trainerNote ? (
@@ -157,6 +389,12 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{clientName}'s Workout Logs</Text>
       </View>
+
+      {/* Start Workout button */}
+      <TouchableOpacity style={styles.startBtn} onPress={startWorkout} disabled={starting}>
+        <IconSymbol name="play.fill" size={18} color={C.white} />
+        <Text style={styles.startBtnText}>{starting ? 'Starting…' : 'Start Workout for Client'}</Text>
+      </TouchableOpacity>
 
       {loading && !logs ? (
         <View style={{ padding: 16, gap: 10 }}>{[1, 2, 3].map(i => <SkeletonCard key={i} />)}</View>
@@ -199,7 +437,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   header: { backgroundColor: C.white, padding: 20, paddingTop: 52, gap: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: C.dark },
+  startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.primary, marginHorizontal: 16, marginTop: 12, padding: 14, borderRadius: 12 },
+  startBtnText: { color: C.white, fontSize: 15, fontWeight: '700' },
   logCard: { backgroundColor: C.white, borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, gap: 10 },
+  logCardExpanded: { borderWidth: 1.5, borderColor: C.primary },
   logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   logPlan: { fontSize: 15, fontWeight: '700', color: C.dark },
   logDay: { fontSize: 12, color: C.mid },
@@ -208,9 +449,33 @@ const styles = StyleSheet.create({
   exBreakdownText: { fontSize: 12, color: '#374151', fontWeight: '500' },
   progressBar: { height: 4, backgroundColor: C.border, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: 4, borderRadius: 2 },
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
-  exName: { flex: 1, fontSize: 13, color: '#374151' },
+
+  // Exercise card styles
+  exCard: { backgroundColor: '#F9FAFB', borderRadius: 8, padding: 10, marginVertical: 2 },
+  exTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exCheckBtn: { padding: 4 },
+  exName: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '600' },
+  exNameDone: { textDecorationLine: 'line-through', color: C.mid },
+  exMuscle: { fontSize: 10, color: C.mid, backgroundColor: '#E5E7EB', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  exSummaryRow: { flexDirection: 'row', gap: 12, marginTop: 4, paddingLeft: 28 },
   exDetail: { fontSize: 12, color: C.mid, fontWeight: '500' },
+
+  // Editable fields
+  exFields: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, paddingLeft: 28 },
+  exField: { gap: 2 },
+  exFieldLabel: { fontSize: 10, color: C.mid, fontWeight: '600' },
+  exFieldInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 14, fontWeight: '600', color: C.dark, width: 60, textAlign: 'center', backgroundColor: C.white },
+
+  // Rest time controls
+  restRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  restBtn: { width: 28, height: 28, borderRadius: 6, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  restBtnText: { fontSize: 16, fontWeight: '700', color: '#374151' },
+  restValue: { fontSize: 14, fontWeight: '600', color: C.dark, minWidth: 36, textAlign: 'center' },
+
+  // Complete workout button
+  completeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.green, borderRadius: 10, padding: 12, marginTop: 4 },
+  completeBtnText: { color: C.white, fontWeight: '700', fontSize: 14 },
+
   noteBox: { backgroundColor: C.primary + '10', borderRadius: 8, padding: 10, gap: 4 },
   noteLabel: { fontSize: 11, fontWeight: '700', color: C.primary },
   noteText: { fontSize: 13, color: '#374151', lineHeight: 18 },

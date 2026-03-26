@@ -60,6 +60,7 @@ const MAPPING = {
     'calendar': 'calendar_today',
     'share': 'share',
     'copy': 'file_copy',
+    'photo': 'photo_library',
 } as unknown as IconMapping;
 
 /**

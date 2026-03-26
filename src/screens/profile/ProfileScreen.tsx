@@ -3,7 +3,7 @@
 // Lift Trainer App — Profile Screen
 // Fixes: phone change via OTP, name updates propagate, all fields save
 // ─────────────────────────────────────────────────────────────────────────────
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { signInWithPhoneNumber } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useState } from 'react';
@@ -30,6 +30,7 @@ import { ProfileAPI } from '../../services/trainer.api';
 
 export default function ProfileScreen() {
   const { trainerId, logout, reloadProfile } = useAuth();
+  const navigation = useNavigation<any>();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -282,6 +283,19 @@ export default function ProfileScreen() {
           </View>
         </View>
       )}
+
+      {/* Earnings */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}
+          onPress={() => navigation.navigate('Earnings')}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <IconSymbol name="star.fill" size={20} color={C.primary} />
+            <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>Earnings</Text>
+          </View>
+          <IconSymbol name="chevron.right" size={16} color={C.mid} />
+        </TouchableOpacity>
+      </View>
 
       {/* Logout */}
       <View style={{ padding: S.lg, paddingBottom: 40 }}>
