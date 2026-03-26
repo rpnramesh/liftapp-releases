@@ -197,7 +197,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
-  header: { backgroundColor: C.white, padding: 20, paddingTop: 52, gap: 4, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  header: { backgroundColor: C.white, padding: 20, paddingTop: 52, gap: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: C.dark },
   logCard: { backgroundColor: C.white, borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, gap: 10 },
   logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },

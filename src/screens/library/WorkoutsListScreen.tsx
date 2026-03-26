@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { collectionGroup, onSnapshot, orderBy, query, where } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { EmptyState, SkeletonCard } from '../../components/common';
 import { IconSymbol } from '../../components/ui/icon-symbol';

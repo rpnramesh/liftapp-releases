@@ -282,7 +282,7 @@ export default function TrainerChatScreen({ navigation, route }: any) {
 
       <View style={cs.inputBar}>
         <TouchableOpacity style={cs.iconBtn} onPress={handleSendImage} disabled={!chatId || sending}>
-          <IconSymbol name="camera" size={22} color={C.primary} />
+          <IconSymbol name="photo" size={22} color={C.primary} />
         </TouchableOpacity>
         <TouchableOpacity
           style={[cs.iconBtn, isRecording && { backgroundColor: '#FEE2E2' }]}
@@ -320,6 +320,7 @@ const ms = StyleSheet.create({
   rowRight: { justifyContent: 'flex-end' },
   rowLeft: { justifyContent: 'flex-start' },
   bubble: { maxWidth: '75%', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8 },
+  bubbleMe: { backgroundColor: C.primary, borderBottomRightRadius: 4 },
   bubbleThem: { backgroundColor: C.white, borderBottomLeftRadius: 4, elevation: 1 },
   text: { fontSize: 15, color: C.dark, lineHeight: 21 },
   textMe: { color: C.white },

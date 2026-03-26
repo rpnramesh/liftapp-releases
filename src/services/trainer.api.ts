@@ -187,8 +187,9 @@ export const ClientsAPI = {
     const q = query(collection(db, 'members'), where('trainerId', '==', trainerId), where('active', '==', true));
     const snap = await getDocs(q);
     let results = snap.docs.map(d => d.data());
-    if (type === 'freelance') results = results.filter(m => m.isFreelance);
-    else if (type === 'gym') results = results.filter(m => !m.isFreelance);
+    const isFreelanceClient = (m: any) => !!m.isFreelance || !m.gymId;
+    if (type === 'freelance') results = results.filter(isFreelanceClient);
+    else if (type === 'gym') results = results.filter(m => !isFreelanceClient(m));
     const clients: ClientCard[] = results.map(m => ({
       id: m.id, fullName: m.name ?? m.fullName ?? '',
       profilePhotoUrl: m.photoUrl ?? null,
@@ -196,7 +197,7 @@ export const ClientsAPI = {
       lastWorkoutDate: m.lastWorkoutAt ? new Date(m.lastWorkoutAt).toISOString() : null,
       assignedPlanName: m.currentPlanName ?? null,
       streak: m.streak ?? 0, hasRiskFlag: (m.planEndDate ?? 0) < ts(),
-      clientType: (m.isFreelance ? 'freelance' : 'gym') as 'gym' | 'freelance',
+      clientType: ((m.isFreelance || !m.gymId) ? 'freelance' : 'gym') as 'gym' | 'freelance',
     }));
     return { clients, total: clients.length, page: 1 };
   },
@@ -218,7 +219,7 @@ export const ClientsAPI = {
       lastWorkoutDate: m.lastWorkoutAt ? new Date(m.lastWorkoutAt).toISOString() : null,
       totalWorkoutsLogged: logsSnap.docs.length, currentStreak: m.streak ?? 0,
       attendanceThisMonth: 0,
-      clientType: (m.isFreelance ? 'freelance' : 'gym') as 'gym' | 'freelance',
+      clientType: ((m.isFreelance || !m.gymId) ? 'freelance' : 'gym') as 'gym' | 'freelance',
     };
   },
 };

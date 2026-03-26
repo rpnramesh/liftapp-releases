@@ -9,7 +9,7 @@
 //   • Progress photos count
 //   • Trainer-specific stats
 // ─────────────────────────────────────────────────────────────────────────────
-import { useEffect, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
     collection,
@@ -20,7 +20,7 @@ import {
     query,
     where,
 } from 'firebase/firestore';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     RefreshControl,
