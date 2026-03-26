@@ -7,22 +7,44 @@
     "noUnusedParameters": false,
     "baseUrl": ".",
     "paths": {
-      "@components/*": ["src/components/*"],
-      "@screens/*": ["src/screens/*"],
-      "@services/*": ["src/services/*"],
-      "@hooks/*": ["src/hooks/*"],
-      "@utils/*": ["src/utils/*"],
-      "@types/*": ["src/types/*"],
-      "@constants/*": ["src/constants/*"],
-      "@context/*": ["src/context/*"],
-      "@i18n/*": ["src/i18n/*"],
-      "@navigation/*": ["src/navigation/*"]
+      "@components/*": [
+        "src/components/*"
+      ],
+      "@screens/*": [
+        "src/screens/*"
+      ],
+      "@services/*": [
+        "src/services/*"
+      ],
+      "@hooks/*": [
+        "src/hooks/*"
+      ],
+      "@utils/*": [
+        "src/utils/*"
+      ],
+      "@types/*": [
+        "src/types/*"
+      ],
+      "@constants/*": [
+        "src/constants/*"
+      ],
+      "@context/*": [
+        "src/context/*"
+      ],
+      "@i18n/*": [
+        "src/i18n/*"
+      ],
+      "@navigation/*": [
+        "src/navigation/*"
+      ]
     },
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "jsx": "react-native",
-    "lib": ["ESNext"],
+    "lib": [
+      "ESNext"
+    ],
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "target": "ESNext"
@@ -31,8 +53,6 @@
     "App.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/**/*.json",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "src/**/*.json"
   ]
 }

@@ -43,8 +43,8 @@ export type AuthStackParamList = {
   Splash: undefined;
   Welcome: undefined;
   Registration: undefined;
-  OTP: undefined;
-  GymLinking: undefined;
+  OTP: { phone?: string; isNewUser?: boolean; registrationData?: any };
+  GymLinking: { trainerId: string };
 };
 
 export type ClientsStackParamList = {
