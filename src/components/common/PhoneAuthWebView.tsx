@@ -34,6 +34,7 @@ const HTML = `
     body{margin:0;display:flex;align-items:center;justify-content:center;
          min-height:100vh;font-family:sans-serif;background:#fff}
     #status{color:#6B7280;font-size:14px;text-align:center;padding:20px}
+    #recaptcha-container{position:absolute;top:0;left:0}
   </style>
 </head>
 <body>
@@ -51,12 +52,17 @@ const HTML = `
     var pendingPhone = null;
 
     function post(obj){
-      window.ReactNativeWebView.postMessage(JSON.stringify(obj));
+      try{ window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }catch(e){}
     }
+
+    window.onerror = function(msg, url, line) {
+      post({type:'error', error:'JS Error: ' + msg + ' (line ' + line + ')'});
+    };
 
     function initVerifier(){
       try{ if(verifier) verifier.clear(); }catch(e){}
       verifier = null; ready = false;
+      document.getElementById('status').textContent='Setting up verification…';
       try{
         verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container',{
           size:'invisible',
@@ -65,42 +71,53 @@ const HTML = `
         });
         verifier.render().then(function(){
           ready = true;
+          document.getElementById('status').textContent='Ready';
           post({type:'ready'});
-          if(pendingPhone) sendOtp(pendingPhone);
+          if(pendingPhone){ sendOtp(pendingPhone); }
         }).catch(function(e){
+          document.getElementById('status').textContent='reCAPTCHA failed: '+e.message;
           post({type:'error', error:'reCAPTCHA init failed: '+e.message});
         });
       }catch(e){
+        document.getElementById('status').textContent='Setup error: '+e.message;
         post({type:'error', error:'reCAPTCHA setup error: '+e.message});
       }
     }
 
     function sendOtp(phone){
-      if(!verifier||!ready){ pendingPhone=phone; return; }
+      if(!verifier||!ready){
+        pendingPhone=phone;
+        post({type:'status', message:'Waiting for reCAPTCHA (ready='+ready+')'});
+        return;
+      }
       pendingPhone=null;
-      document.getElementById('status').textContent='Sending OTP…';
+      document.getElementById('status').textContent='Sending OTP to '+phone+'…';
       auth.signInWithPhoneNumber(phone, verifier)
         .then(function(result){
           post({type:'verificationId', verificationId:result.verificationId});
         })
         .catch(function(e){
-          initVerifier();
           var msg=e.message||'Failed to send OTP';
           if(e.code==='auth/too-many-requests') msg='Too many attempts. Try again later.';
-          if(e.code==='auth/invalid-phone-number') msg='Invalid phone number.';
+          if(e.code==='auth/invalid-phone-number') msg='Invalid phone number format.';
           post({type:'error', error:msg, code:e.code||''});
+          // Re-init verifier for next attempt
+          initVerifier();
         });
     }
 
-    document.addEventListener('message', handleMessage);
-    window.addEventListener('message', handleMessage);
+    // Listen for messages from React Native
     function handleMessage(event){
       try{
-        var data=JSON.parse(event.data);
+        var data = (typeof event.data === 'string') ? JSON.parse(event.data) : event.data;
         if(data.action==='sendOtp') sendOtp(data.phone);
+        if(data.action==='ping') post({type:'pong', ready:ready});
       }catch(e){}
     }
+    document.addEventListener('message', handleMessage);
+    window.addEventListener('message', handleMessage);
 
+    // Start initializing
     initVerifier();
   <\/script>
 </body>
@@ -109,25 +126,25 @@ const HTML = `
 
 const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const webViewRef = useRef<WebView>(null);
-  const [visible, setVisible] = useState(false);
+  const [showOverlay, setShowOverlay] = useState(false);
   const pendingRef = useRef<{
     resolve: (id: string) => void;
     reject: (err: Error) => void;
   } | null>(null);
   const phoneRef = useRef<string | null>(null);
   const readyRef = useRef(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
-    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+    if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
     if (failsafeRef.current) { clearTimeout(failsafeRef.current); failsafeRef.current = null; }
   }, []);
 
-  // Inject sendOtp call into the WebView
   const injectSendOtp = useCallback((phone: string) => {
+    const safePhone = phone.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     webViewRef.current?.injectJavaScript(`
-      sendOtp('${phone.replace(/'/g, "\\'")}');
+      sendOtp('${safePhone}');
       true;
     `);
   }, []);
@@ -135,29 +152,48 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+      if (__DEV__) console.log('[PhoneAuth WebView]', data.type, data);
+
       switch (data.type) {
         case 'ready':
           readyRef.current = true;
-          // WebView + reCAPTCHA ready — now send the OTP request
+          // reCAPTCHA is ready — if we have a pending phone, send now
           if (phoneRef.current && pendingRef.current) {
             injectSendOtp(phoneRef.current);
           }
           break;
+
         case 'verificationId':
           cleanup();
-          setVisible(false);
+          setShowOverlay(false);
           pendingRef.current?.resolve(data.verificationId);
           pendingRef.current = null;
           phoneRef.current = null;
           break;
+
         case 'error':
           cleanup();
-          setVisible(false);
+          setShowOverlay(false);
           pendingRef.current?.reject(new Error(data.error));
           pendingRef.current = null;
           phoneRef.current = null;
           break;
+
+        case 'status':
+          // Debug status from WebView
+          if (__DEV__) console.log('[PhoneAuth]', data.message);
+          break;
+
+        case 'pong':
+          // Response to ping — if ready, send OTP now
+          if (data.ready && phoneRef.current && pendingRef.current) {
+            readyRef.current = true;
+            injectSendOtp(phoneRef.current);
+          }
+          break;
+
         case 'recaptcha-expired':
+          readyRef.current = false;
           break;
       }
     } catch {}
@@ -166,26 +202,45 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   useImperativeHandle(ref, () => ({
     sendOtp: (phoneNumber: string) => {
       return new Promise<string>((resolve, reject) => {
+        // Clean up any previous pending request
         cleanup();
+        if (pendingRef.current) {
+          pendingRef.current.reject(new Error('Cancelled'));
+        }
         pendingRef.current = { resolve, reject };
         phoneRef.current = phoneNumber;
-        readyRef.current = false;
-        setVisible(true);
+        setShowOverlay(true);
 
-        // Retry injection every 3s in case 'ready' message was missed
-        timeoutRef.current = setTimeout(function retry() {
-          if (pendingRef.current && phoneRef.current) {
-            injectSendOtp(phoneRef.current);
-            timeoutRef.current = setTimeout(retry, 3000);
-          }
-        }, 4000);
+        // If reCAPTCHA was already ready (WebView pre-loaded), send immediately
+        if (readyRef.current) {
+          injectSendOtp(phoneNumber);
+        }
 
-        // Failsafe: reject after 30s if no response
+        // Retry: ping WebView and re-inject every 3s
+        const startRetries = () => {
+          retryRef.current = setTimeout(function retry() {
+            if (!pendingRef.current || !phoneRef.current) return;
+            // Ping the WebView to check if it's ready
+            webViewRef.current?.injectJavaScript(`
+              if(typeof sendOtp==='function'){
+                if(ready) sendOtp('${phoneNumber.replace(/'/g, "\\'")}');
+                else post({type:'status',message:'Still waiting: ready='+ready});
+              } else {
+                post({type:'status',message:'sendOtp not defined yet'});
+              }
+              true;
+            `);
+            retryRef.current = setTimeout(retry, 3000);
+          }, 3000);
+        };
+        startRetries();
+
+        // Failsafe: reject after 30s
         failsafeRef.current = setTimeout(() => {
           if (pendingRef.current) {
             cleanup();
-            setVisible(false);
-            pendingRef.current.reject(new Error('Verification timed out. Please try again.'));
+            setShowOverlay(false);
+            pendingRef.current.reject(new Error('Verification timed out. Please check your internet connection and try again.'));
             pendingRef.current = null;
             phoneRef.current = null;
           }
@@ -194,31 +249,44 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
     },
   }));
 
-  if (!visible) return null;
-
   return (
-    <Modal visible transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          <ActivityIndicator color={C.primary} size="large" />
-          <Text style={styles.text}>Verifying…</Text>
-        </View>
+    <>
+      {/* WebView is always mounted so Firebase + reCAPTCHA can pre-load */}
+      <View style={styles.webviewContainer} pointerEvents="none">
         <WebView
           ref={webViewRef}
           source={{ html: HTML, baseUrl: `https://${AUTH_DOMAIN}` }}
           onMessage={onMessage}
           javaScriptEnabled
           domStorageEnabled
+          thirdPartyCookiesEnabled
           style={styles.webview}
           originWhitelist={['*']}
-          onError={() => {
-            setVisible(false);
-            pendingRef.current?.reject(new Error('WebView failed to load'));
-            pendingRef.current = null;
+          onError={(e) => {
+            if (__DEV__) console.log('[PhoneAuth] WebView error:', e.nativeEvent);
+            if (pendingRef.current) {
+              cleanup();
+              setShowOverlay(false);
+              pendingRef.current.reject(new Error('Verification service failed to load. Please try again.'));
+              pendingRef.current = null;
+              phoneRef.current = null;
+            }
           }}
         />
       </View>
-    </Modal>
+
+      {/* Loading overlay shown only during OTP send */}
+      {showOverlay && (
+        <Modal visible transparent animationType="fade">
+          <View style={styles.overlay}>
+            <View style={styles.card}>
+              <ActivityIndicator color={C.primary} size="large" />
+              <Text style={styles.text}>Sending OTP…</Text>
+            </View>
+          </View>
+        </Modal>
+      )}
+    </>
   );
 });
 
@@ -226,6 +294,20 @@ PhoneAuthWebView.displayName = 'PhoneAuthWebView';
 export default PhoneAuthWebView;
 
 const styles = StyleSheet.create({
+  webviewContainer: {
+    position: 'absolute',
+    bottom: -500,
+    left: 0,
+    width: 300,
+    height: 400,
+    overflow: 'hidden',
+    opacity: 0.01,
+  },
+  webview: {
+    width: 300,
+    height: 400,
+    backgroundColor: 'transparent',
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.95)',
@@ -242,11 +324,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: C.mid,
     fontWeight: '500',
-  },
-  webview: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0.01,
   },
 });
