@@ -114,11 +114,22 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
     resolve: (id: string) => void;
     reject: (err: Error) => void;
   } | null>(null);
+  const phoneRef = useRef<string | null>(null);
   const readyRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+    if (failsafeRef.current) { clearTimeout(failsafeRef.current); failsafeRef.current = null; }
+  }, []);
+
+  // Inject sendOtp call into the WebView
+  const injectSendOtp = useCallback((phone: string) => {
+    webViewRef.current?.injectJavaScript(`
+      sendOtp('${phone.replace(/'/g, "\\'")}');
+      true;
+    `);
   }, []);
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
@@ -127,50 +138,58 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
       switch (data.type) {
         case 'ready':
           readyRef.current = true;
+          // WebView + reCAPTCHA ready — now send the OTP request
+          if (phoneRef.current && pendingRef.current) {
+            injectSendOtp(phoneRef.current);
+          }
           break;
         case 'verificationId':
           cleanup();
           setVisible(false);
           pendingRef.current?.resolve(data.verificationId);
           pendingRef.current = null;
+          phoneRef.current = null;
           break;
         case 'error':
           cleanup();
           setVisible(false);
           pendingRef.current?.reject(new Error(data.error));
           pendingRef.current = null;
+          phoneRef.current = null;
           break;
         case 'recaptcha-expired':
           break;
       }
     } catch {}
-  }, [cleanup]);
+  }, [cleanup, injectSendOtp]);
 
   useImperativeHandle(ref, () => ({
     sendOtp: (phoneNumber: string) => {
       return new Promise<string>((resolve, reject) => {
+        cleanup();
         pendingRef.current = { resolve, reject };
+        phoneRef.current = phoneNumber;
         readyRef.current = false;
         setVisible(true);
 
-        const trySend = () => {
-          webViewRef.current?.injectJavaScript(`
-            handleMessage({ data: '${JSON.stringify({ action: 'sendOtp', phone: phoneNumber }).replace(/'/g, "\\'")}' });
-            true;
-          `);
-        };
+        // Retry injection every 3s in case 'ready' message was missed
+        timeoutRef.current = setTimeout(function retry() {
+          if (pendingRef.current && phoneRef.current) {
+            injectSendOtp(phoneRef.current);
+            timeoutRef.current = setTimeout(retry, 3000);
+          }
+        }, 4000);
 
-        // Give WebView time to mount and reCAPTCHA to initialise
-        timeoutRef.current = setTimeout(trySend, 2500);
-
-        // Failsafe: reject after 20s if no response
-        setTimeout(() => {
+        // Failsafe: reject after 30s if no response
+        failsafeRef.current = setTimeout(() => {
           if (pendingRef.current) {
+            cleanup();
             setVisible(false);
             pendingRef.current.reject(new Error('Verification timed out. Please try again.'));
             pendingRef.current = null;
+            phoneRef.current = null;
           }
-        }, 20000);
+        }, 30000);
       });
     },
   }));
