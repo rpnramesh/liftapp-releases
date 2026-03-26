@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   },
   text: {
     fontSize: 15,
-    color: C.mid,
+    color: '#6B7280',
     fontWeight: '500',
   },
 });
