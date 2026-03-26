@@ -261,7 +261,7 @@ function OtpLoginScreen({ onSuccess }) {
 }
 
 // ── HOME DASHBOARD ────────────────────────────────────────────────────────────
-function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, unreadNotifCount }) {
+function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount }) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
   const daysLeft = member ? daysUntilExpiry(member) : 0;
@@ -288,6 +288,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
       {/* Today's Workout Card */}
       {todayWorkout?.isRestDay ? (
         <View style={[hm.workoutCard, { backgroundColor: '#374151' }]}>
+          {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
           <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="moon-outline" size={22} color="#fff" />
@@ -298,13 +299,16 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
       ) : todayWorkout ? (
         <TouchableOpacity style={hm.workoutCard} onPress={() => onNavigate('Workouts')}>
           <View style={hm.workoutTop}>
-            <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
+            <View>
+              {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
+              <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.8)" />
-            <Text style={hm.workoutTime}>{todayWorkout.estimatedMinutes || '—'} min</Text>
+              <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.8)" />
+              <Text style={hm.workoutTime}>{todayWorkout.estimatedMinutes || '—'} min</Text>
+            </View>
           </View>
-          </View>
-          <Text style={hm.workoutName}>{todayWorkout.name}</Text>
+          <Text style={hm.workoutName}>{todayWorkout.dayLabel || todayWorkout.name}</Text>
           {workoutTimer?.running && (
             <View style={hm.timerPill}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -322,7 +326,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
             </View>
           )}
           <Text style={hm.workoutSub}>
-            {todayWorkout.exercises?.length || 0} exercises · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
+            {todayWorkout.exercises?.length || 0} exercises · {todayWorkout.exercises?.map(e => e.muscleGroup).filter((v, i, a) => v && a.indexOf(v) === i).join(', ') || 'Assigned by ' + (member?.trainerName || member?.trainer || 'your trainer')}
           </Text>
           <View style={hm.startBtn}>
             <Text style={hm.startBtnTxt}>
@@ -332,6 +336,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
         </TouchableOpacity>
       ) : (
         <View style={[hm.workoutCard, { opacity: 0.7 }]}>
+          {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
           <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
           <Text style={hm.workoutName}>{member?.trainerId ? 'No workout for today' : 'No trainer assigned'}</Text>
           <Text style={hm.workoutSub}>{member?.trainerId ? 'Check back later' : 'Accept a trainer invite in Profile'}</Text>
@@ -412,7 +417,8 @@ const hm = StyleSheet.create({
   badge: { position: 'absolute', top: 0, right: 0, backgroundColor: C.red, borderRadius: 8, width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
   badgeTxt: { color: '#fff', fontSize: 9, fontWeight: '700' },
   workoutCard: { backgroundColor: C.primary, borderRadius: 18, padding: 20, marginBottom: 20 },
-  workoutTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  workoutTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  planNameTag: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '700', marginBottom: 4 },
   workoutLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   workoutTime: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   workoutName: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 6 },
@@ -948,11 +954,32 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, planWeek, todayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes }) {
+function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes }) {
   const [view, setView] = useState('overview'); // 'overview' | 'logging'
+  const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayDay = dayNames[new Date().getDay()];
+  const todayFullDay = fullDayNames[new Date().getDay()];
+
+  // Build selected day's exercise list from fullPlan
+  const getSelectedDayData = () => {
+    if (selectedDayIdx === null || !fullPlan?.days) return null;
+    const day = fullPlan.days[selectedDayIdx];
+    if (!day) return null;
+    return day;
+  };
+  const selectedDay = getSelectedDayData();
+
+  // When a day card is tapped, check if it's today → clear selection; otherwise show that day
+  const handleDayPress = (idx, dayAbbr) => {
+    if (dayAbbr === todayDay) {
+      setSelectedDayIdx(null); // back to today view
+    } else {
+      setSelectedDayIdx(idx);
+    }
+  };
 
   if (view === 'logging' && todayWorkout) {
     return (
@@ -979,23 +1006,44 @@ function WorkoutsScreen({ member, assignment, planWeek, todayWorkout, activeWork
 
   return (
     <ScrollView style={g.screen}>
-      <Text style={g.pageTitle}>Workouts</Text>
+      {/* Plan header */}
+      {fullPlan?.name && (
+        <View style={{ marginBottom: 4 }}>
+          <Text style={g.pageTitle}>{fullPlan.name}</Text>
+          <Text style={{ fontSize: 13, color: C.mid, marginTop: -4, marginBottom: 8 }}>
+            {fullPlan.days?.length || 0} day plan · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
+          </Text>
+        </View>
+      )}
+      {!fullPlan?.name && <Text style={g.pageTitle}>Workouts</Text>}
 
-      {/* Weekly Plan */}
+      {/* Weekly Plan - tappable day cards */}
       {(planWeek || assignment?.weekPlan) && (
         <>
           <Text style={g.sec}>This Week</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
             {(planWeek || assignment.weekPlan).map((d, i) => {
               const isToday = d.day === todayDay;
+              const isSelected = selectedDayIdx === i;
+              const isActive = isSelected || (selectedDayIdx === null && isToday);
               return (
-                <View key={i} style={[wk.dayCard, isToday && wk.dayCardActive, d.rest && wk.dayCardRest]}>
-                  <Text style={[wk.dayName, isToday && { color: '#fff' }]}>{d.day}</Text>
-                  <Text style={[wk.dayLabel, isToday && { color: '#fff' }, d.rest && { color: C.mid }]} numberOfLines={2}>
+                <TouchableOpacity
+                  key={i}
+                  style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && d.rest && wk.dayCardRest]}
+                  onPress={() => handleDayPress(i, d.day)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[wk.dayName, isActive && { color: '#fff' }]}>{d.day}</Text>
+                  <Text style={[wk.dayLabel, isActive && { color: '#fff' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
                     {d.rest ? 'Rest' : d.label}
                   </Text>
                   {isToday && <View style={wk.todayDot} />}
-                </View>
+                  {d.exerciseCount > 0 && !d.rest && (
+                    <Text style={[{ fontSize: 9, color: C.mid, marginTop: 2 }, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
+                      {d.exerciseCount} ex
+                    </Text>
+                  )}
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
@@ -1013,64 +1061,127 @@ function WorkoutsScreen({ member, assignment, planWeek, todayWorkout, activeWork
         </View>
       )}
 
-      {/* Today's Workout */}
-      {todayWorkout ? (
+      {/* Selected day view (non-today) */}
+      {selectedDayIdx !== null && selectedDay ? (
         <>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <Text style={g.sec}>Today — {todayWorkout.name}</Text>
-            {workoutTimer?.running && (
-              <View style={wk.liveChip}>
-                <View style={wk.liveDot} />
-                <Text style={wk.liveTxt}>In Progress</Text>
-              </View>
-            )}
-            {workoutTimer?.completed && (
-              <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
-                <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
-              </View>
-            )}
+            <Text style={g.sec}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
+            <TouchableOpacity onPress={() => setSelectedDayIdx(null)}>
+              <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600' }}>← Back to today</Text>
+            </TouchableOpacity>
           </View>
-          {todayWorkout.exercises?.map(ex => (
-            <View key={ex.id} style={[wk.exCardStatic, workoutTimer?.running && wk.exCardActive]}>
-              <View style={wk.exIcon}>
-                <Ionicons name="barbell-outline" size={20} color={C.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={wk.exName}>{ex.name}</Text>
-                <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
-                {ex.note ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
-                    <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
-                  </View>
-                ) : null}
-              </View>
+          {selectedDay.restDay ? (
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="moon-outline" size={40} color={C.mid} />
+              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
+              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress</Text>
             </View>
-          ))}
-          <TouchableOpacity
-            style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
-            onPress={() => {
-              if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
-              setView('logging');
-            }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Ionicons
-                name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
-                size={16}
-                color="#fff"
-              />
-              <Text style={wk.startBtnTxt}>
-                {workoutTimer?.completed ? 'View Completed' : workoutTimer?.running ? 'Continue Workout' : 'Start Workout'}
+          ) : selectedDay.exercises?.length > 0 ? (
+            <>
+              <Text style={{ fontSize: 13, color: C.mid, marginBottom: 10 }}>
+                {selectedDay.exercises.length} exercises
               </Text>
+              {selectedDay.exercises.map((ex, idx) => (
+                <View key={ex.id || idx} style={wk.exCardStatic}>
+                  <View style={wk.exIcon}>
+                    <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={wk.exName}>{ex.name}</Text>
+                    <Text style={wk.exDetail}>
+                      {ex.mainSets || 3} sets × {ex.mainReps || 10} reps · {ex.mainRestSeconds || 60}s rest
+                    </Text>
+                    {ex.muscleGroup ? (
+                      <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text>
+                    ) : null}
+                    {ex.notes ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
+                        <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </>
+          ) : (
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="barbell-outline" size={40} color={C.mid} />
+              <Text style={{ fontSize: 16, fontWeight: '600', color: C.dark, marginTop: 12 }}>No exercises assigned</Text>
             </View>
-          </TouchableOpacity>
+          )}
         </>
       ) : (
-        <View style={{ alignItems: 'center', padding: 40 }}>
-          <Ionicons name="barbell-outline" size={40} color={C.mid} />
-          <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>No workout yet</Text>
-          <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Your trainer will assign a workout plan soon</Text>
-        </View>
+        /* Today's Workout (default view) */
+        <>
+          {todayWorkout && !todayWorkout.isRestDay ? (
+            <>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={g.sec}>Today — {todayWorkout.dayLabel || todayWorkout.name}</Text>
+                {workoutTimer?.running && (
+                  <View style={wk.liveChip}>
+                    <View style={wk.liveDot} />
+                    <Text style={wk.liveTxt}>In Progress</Text>
+                  </View>
+                )}
+                {workoutTimer?.completed && (
+                  <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
+                    <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
+                  </View>
+                )}
+              </View>
+              {todayWorkout.exercises?.map(ex => (
+                <View key={ex.id} style={[wk.exCardStatic, workoutTimer?.running && wk.exCardActive]}>
+                  <View style={wk.exIcon}>
+                    <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={wk.exName}>{ex.name}</Text>
+                    <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
+                    {ex.muscleGroup ? (
+                      <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text>
+                    ) : null}
+                    {ex.note ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
+                        <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                onPress={() => {
+                  if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                  setView('logging');
+                }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons
+                    name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
+                    size={16}
+                    color="#fff"
+                  />
+                  <Text style={wk.startBtnTxt}>
+                    {workoutTimer?.completed ? 'View Completed' : workoutTimer?.running ? 'Continue Workout' : 'Start Workout'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          ) : todayWorkout?.isRestDay ? (
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="moon-outline" size={40} color={C.mid} />
+              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
+              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress. Take it easy today.</Text>
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', padding: 40 }}>
+              <Ionicons name="barbell-outline" size={40} color={C.mid} />
+              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>No workout yet</Text>
+              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Your trainer will assign a workout plan soon</Text>
+            </View>
+          )}
+        </>
       )}
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -2983,6 +3094,7 @@ export default function App() {
   const [assignment, setAssignment] = useState(null);
   const [todayWorkout, setTodayWorkout] = useState(null);
   const [planWeek, setPlanWeek] = useState(null); // built from clientPlan days
+  const [fullPlan, setFullPlan] = useState(null); // full plan with all days & exercises
   const [activeWorkoutLog, setActiveWorkoutLog] = useState(null); // real-time sync with trainer
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
@@ -3041,7 +3153,7 @@ export default function App() {
     if (!gymOrTrainer || !uid) return;
     const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', uid);
     const unsub = onSnapshot(assignRef, async (snap) => {
-      if (!snap.exists()) { setAssignment(null); setTodayWorkout(null); setPlanWeek(null); return; }
+      if (!snap.exists()) { setAssignment(null); setTodayWorkout(null); setPlanWeek(null); setFullPlan(null); return; }
       const a = snap.data();
       setAssignment(a);
       if (a?.planId) {
@@ -3050,6 +3162,7 @@ export default function App() {
           const planSnap = await getDoc(doc(db, 'gyms', gymOrTrainer, 'clientPlans', a.planId));
           if (planSnap.exists()) {
             const plan = planSnap.data();
+            setFullPlan(plan); // store full plan for all-days view
             // Build week plan from plan days (with custom dayLabel)
             const dayAbbr = { 'Sunday': 'Sun', 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat' };
             if (plan.days?.length) {
@@ -3114,10 +3227,12 @@ export default function App() {
             }
           } else {
             setTodayWorkout(null);
+            setFullPlan(null);
           }
-        } catch (e) { console.log('Plan fetch error:', e); setTodayWorkout(null); }
+        } catch (e) { console.log('Plan fetch error:', e); setTodayWorkout(null); setFullPlan(null); }
       } else {
         setTodayWorkout(null);
+        setFullPlan(null);
       }
     });
     return () => unsub();
@@ -3237,6 +3352,7 @@ export default function App() {
             workoutTimer={workoutTimer}
             assignment={assignment}
             todayWorkout={todayWorkout}
+            fullPlan={fullPlan}
             unreadNotifCount={unreadNotifCount}
             onNavigate={(dest) => {
               if (dest === 'Notifications') setScreen('notifications');
@@ -3251,6 +3367,7 @@ export default function App() {
             member={member}
             assignment={assignment}
             planWeek={planWeek}
+            fullPlan={fullPlan}
             todayWorkout={todayWorkout}
             activeWorkoutLog={activeWorkoutLog}
             workoutTimer={workoutTimer}
