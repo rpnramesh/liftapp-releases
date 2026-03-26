@@ -30,8 +30,8 @@ import {
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import { onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { auth, db } from './shared/firebase/config';
 import PhoneAuthWebView from './shared/components/PhoneAuthWebView';
+import { auth, db } from './shared/firebase/config';
 
 // ── Shared services ───────────────────────────────────────────────────────────
 import { daysUntilExpiry, subscribeToMember, updateMember } from './shared/services/member.service';
@@ -488,7 +488,7 @@ const ev = StyleSheet.create({
 });
 
 // ── WORKOUT LOGGING VIEW ──────────────────────────────────────────────────────
-function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes }) {
+function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, todayWorkout, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes }) {
   const [expanded, setExpanded] = useState(null);
   const [setWeights, setSetWeights] = useState(setWeightsExternal || {});
   const [lastWeights, setLastWeights] = useState({});
@@ -703,15 +703,31 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             }
           }
 
-          // Save workout log
+          // Save workout log (format compatible with trainer app)
           const logRef = doc(collection(db, 'gyms', gymOrTrainer, 'workoutLogs'));
           await setDoc(logRef, {
             id: logRef.id,
             memberId,
+            memberName: memberName || '',
             gymId: gymId || null,
-            workoutId: workoutId || '',
-            workoutName: workoutName || '',
-            durationSeconds: elapsed,
+            planId: workoutId || '',
+            planName: workoutName || '',
+            dayLabel: todayWorkout?.dayLabel || '',
+            status: 'completed',
+            completedExercises: exercises.map(ex => ({
+              exerciseId: ex.id,
+              exerciseName: ex.name,
+              muscleGroup: ex.muscleGroup || 'Other',
+              targetSets: ex.sets,
+              targetReps: ex.reps,
+              actualSets: ex.sets,
+              actualReps: String(ex.reps),
+              weight: parseFloat(setWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
+              restSeconds: ex.rest || 60,
+              completed: true,
+              notes: ex.note || '',
+            })),
+            // Legacy format for backward compat
             exerciseLogs: exercises.map(ex => ({
               exerciseId: ex.id,
               exerciseName: ex.name,
@@ -722,7 +738,11 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                 done: true,
               })),
             })),
+            durationSeconds: elapsed,
+            startedAt: Date.now() - (elapsed * 1000),
             completedAt: Date.now(),
+            loggedAt: new Date().toISOString(),
+            updatedAt: Date.now(),
           });
 
           // Update member's lastWorkoutAt
@@ -928,7 +948,7 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, todayWorkout, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes }) {
+function WorkoutsScreen({ member, assignment, planWeek, todayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes }) {
   const [view, setView] = useState('overview'); // 'overview' | 'logging'
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -946,6 +966,7 @@ function WorkoutsScreen({ member, assignment, todayWorkout, workoutTimer, startW
         memberId={member?.id}
         workoutId={todayWorkout.id}
         workoutName={todayWorkout.name}
+        todayWorkout={todayWorkout}
         doneSets={workoutDoneSets}
         setDoneSetsExternal={setWorkoutDoneSets}
         setWeightsExternal={workoutSetWeights}
@@ -961,17 +982,17 @@ function WorkoutsScreen({ member, assignment, todayWorkout, workoutTimer, startW
       <Text style={g.pageTitle}>Workouts</Text>
 
       {/* Weekly Plan */}
-      {assignment?.weekPlan && (
+      {(planWeek || assignment?.weekPlan) && (
         <>
           <Text style={g.sec}>This Week</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-            {assignment.weekPlan.map((d, i) => {
+            {(planWeek || assignment.weekPlan).map((d, i) => {
               const isToday = d.day === todayDay;
               return (
                 <View key={i} style={[wk.dayCard, isToday && wk.dayCardActive, d.rest && wk.dayCardRest]}>
                   <Text style={[wk.dayName, isToday && { color: '#fff' }]}>{d.day}</Text>
-                  <Text style={[wk.dayLabel, isToday && { color: '#fff' }, d.rest && { color: C.mid }]}>
-                    {d.label}
+                  <Text style={[wk.dayLabel, isToday && { color: '#fff' }, d.rest && { color: C.mid }]} numberOfLines={2}>
+                    {d.rest ? 'Rest' : d.label}
                   </Text>
                   {isToday && <View style={wk.todayDot} />}
                 </View>
@@ -979,6 +1000,17 @@ function WorkoutsScreen({ member, assignment, todayWorkout, workoutTimer, startW
             })}
           </ScrollView>
         </>
+      )}
+
+      {/* Trainer-started workout notification */}
+      {activeWorkoutLog?.startedBy === 'trainer' && activeWorkoutLog.status === 'incomplete' && (
+        <View style={{ backgroundColor: '#DBEAFE', borderRadius: 12, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Ionicons name="person-outline" size={20} color={C.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: C.primary }}>Trainer started a workout for you</Text>
+            <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{activeWorkoutLog.dayLabel || activeWorkoutLog.planName} · Tap Start to begin</Text>
+          </View>
+        </View>
       )}
 
       {/* Today's Workout */}
@@ -2950,6 +2982,8 @@ export default function App() {
   const [member, setMember] = useState(null);
   const [assignment, setAssignment] = useState(null);
   const [todayWorkout, setTodayWorkout] = useState(null);
+  const [planWeek, setPlanWeek] = useState(null); // built from clientPlan days
+  const [activeWorkoutLog, setActiveWorkoutLog] = useState(null); // real-time sync with trainer
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   // Workout timer
@@ -3007,7 +3041,7 @@ export default function App() {
     if (!gymOrTrainer || !uid) return;
     const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', uid);
     const unsub = onSnapshot(assignRef, async (snap) => {
-      if (!snap.exists()) { setAssignment(null); setTodayWorkout(null); return; }
+      if (!snap.exists()) { setAssignment(null); setTodayWorkout(null); setPlanWeek(null); return; }
       const a = snap.data();
       setAssignment(a);
       if (a?.planId) {
@@ -3016,6 +3050,17 @@ export default function App() {
           const planSnap = await getDoc(doc(db, 'gyms', gymOrTrainer, 'clientPlans', a.planId));
           if (planSnap.exists()) {
             const plan = planSnap.data();
+            // Build week plan from plan days (with custom dayLabel)
+            const dayAbbr = { 'Sunday': 'Sun', 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat' };
+            if (plan.days?.length) {
+              const wp = plan.days.map(d => ({
+                day: dayAbbr[d.dayLabel] || d.dayLabel?.slice(0, 3) || '?',
+                label: d.dayLabel || '',
+                rest: !!d.restDay,
+                exerciseCount: d.exercises?.length || 0,
+              }));
+              setPlanWeek(wp);
+            }
             // Find today's workout from the plan's days array
             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             const todayLabel = dayNames[new Date().getDay()];
@@ -3073,6 +3118,54 @@ export default function App() {
         } catch (e) { console.log('Plan fetch error:', e); setTodayWorkout(null); }
       } else {
         setTodayWorkout(null);
+      }
+    });
+    return () => unsub();
+  }, [member?.gymId, member?.trainerId, uid]);
+
+  // ── Active workout log listener (real-time sync with trainer edits) ─────────
+  useEffect(() => {
+    const gymOrTrainer = member?.gymId || member?.trainerId;
+    if (!gymOrTrainer || !uid) return;
+    // Listen for today's incomplete workout logs (trainer may start one)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const q = query(
+      collection(db, 'gyms', gymOrTrainer, 'workoutLogs'),
+      where('memberId', '==', uid),
+      where('status', '==', 'incomplete'),
+    );
+    const unsub = onSnapshot(q, snap => {
+      if (snap.empty) { setActiveWorkoutLog(null); return; }
+      // Get the most recent incomplete log
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      logs.sort((a, b) => (b.startedAt || b.completedAt || 0) - (a.startedAt || a.completedAt || 0));
+      const latest = logs[0];
+      // Only show if started today
+      if (latest.startedAt && latest.startedAt >= todayStart.getTime()) {
+        setActiveWorkoutLog(latest);
+        // If trainer started this workout, sync exercises to todayWorkout format
+        if (latest.startedBy === 'trainer' && latest.completedExercises?.length > 0) {
+          // Apply trainer's exercise edits (weight, sets, reps, rest) to local state
+          const wDone = {};
+          const wWeights = {};
+          latest.completedExercises.forEach(ex => {
+            if (ex.completed) {
+              for (let s = 1; s <= (ex.actualSets || 3); s++) {
+                wDone[`${ex.exerciseId}_${s}`] = true;
+              }
+            }
+            if (ex.weight > 0) {
+              for (let s = 1; s <= (ex.actualSets || 3); s++) {
+                wWeights[`${ex.exerciseId}_${s}`] = String(ex.weight);
+              }
+            }
+          });
+          setWorkoutDoneSets(prev => ({ ...prev, ...wDone }));
+          setWorkoutSetWeights(prev => ({ ...prev, ...wWeights }));
+        }
+      } else {
+        setActiveWorkoutLog(null);
       }
     });
     return () => unsub();
@@ -3157,7 +3250,9 @@ export default function App() {
           <WorkoutsScreen
             member={member}
             assignment={assignment}
+            planWeek={planWeek}
             todayWorkout={todayWorkout}
+            activeWorkoutLog={activeWorkoutLog}
             workoutTimer={workoutTimer}
             startWorkoutTimer={startWorkoutTimer}
             stopWorkoutTimer={stopWorkoutTimer}
