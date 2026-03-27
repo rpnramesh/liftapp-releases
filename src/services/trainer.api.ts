@@ -20,7 +20,7 @@ import {
     LiveClass, ManualClientPayload,
     MembershipStatus,
     PaymentRecord, ProgressPhoto,
-    TrainerDashboard, TrainerEarnings, TrainerNotification, TrainerProfile,
+    ScheduledSession, TrainerDashboard, TrainerEarnings, TrainerNotification, TrainerProfile,
     TrainerRegistrationPayload, TrainerVideo, VideoUploadPayload,
     WeightEntry, WorkoutLog, WorkoutPlan,
 } from '../types/trainer.types';
@@ -163,8 +163,29 @@ export const DashboardAPI = {
       .map(d => ({ id: d.id, ...(d.data() as any) }))
       .sort((a: any, b: any) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
       .slice(0, 10);
+    // Build todaySchedule from assignments (members who have a plan assigned)
+    const assignSnap = await getDocs(collection(db, 'gyms', gymId, 'assignments')).catch(() => ({ docs: [] as any[] }));
+    const todaySchedule: ScheduledSession[] = [];
+    for (const d of assignSnap.docs) {
+      const assign = d.data() as any;
+      const memberId = assign.memberId ?? d.id;
+      const member = members.find((m: any) => m.id === memberId);
+      if (!member) continue;
+      const memberLogs = recentLogs.filter((l: any) => l.memberId === memberId);
+      const lastLog = memberLogs[0];
+      const lastWorkoutStatus: 'completed' | 'incomplete' | 'not_started' =
+        lastLog?.status === 'completed' ? 'completed' :
+        lastLog?.status === 'incomplete' ? 'incomplete' : 'not_started';
+      todaySchedule.push({
+        clientId: memberId,
+        clientName: member.name ?? member.fullName ?? 'Member',
+        clientPhotoUrl: member.photoUrl ?? null,
+        planName: assign.planName ?? 'Workout Plan',
+        lastWorkoutStatus,
+      });
+    }
     return {
-      todaySchedule: [],
+      todaySchedule,
       recentActivity: recentLogs.map((l: any) => {
         const member = members.find(m => m.id === l.memberId);
         const secsAgo = Math.floor((ts() - (l.completedAt ?? ts())) / 1000);

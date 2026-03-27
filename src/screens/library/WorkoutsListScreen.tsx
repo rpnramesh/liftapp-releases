@@ -6,11 +6,13 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { collectionGroup, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { EmptyState, SkeletonCard } from '../../components/common';
+import { ActivityIndicator, Alert, FlatList, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Avatar, EmptyState, SkeletonCard } from '../../components/common';
 import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, R, S } from '../../constants/theme';
 import { auth, db } from '../../firebase/config';
+import { getTrainerId } from '../../services/session';
+import { ClientsAPI } from '../../services/trainer.api';
 import { MUSCLE_GROUP_ICONS } from '../../services/workoutDemoData';
 import { WorkoutAPI } from '../../services/workoutMockApi';
 import { formatDate } from '../../utils/trainer.utils';
@@ -20,6 +22,9 @@ export default function WorkoutsListScreen() {
   const [workouts, setWorkouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
+  const [startModal, setStartModal] = useState<{ workout: any } | null>(null);
+  const [clients, setClients] = useState<any[]>([]);
+  const [loadingClients, setLoadingClients] = useState(false);
 
   const loadWorkouts = useCallback(async () => {
     setLoading(true);
@@ -51,6 +56,28 @@ export default function WorkoutsListScreen() {
     }, err => { /* ignore */ });
     return () => unsub();
   }, []);
+
+  const openStartModal = async (workout: any) => {
+    setStartModal({ workout });
+    setLoadingClients(true);
+    try {
+      const result = await ClientsAPI.getClients(getTrainerId(), 'all');
+      setClients(result.clients ?? []);
+    } catch (e) {
+      setClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  };
+
+  const handleSelectClient = (client: any) => {
+    setStartModal(null);
+    // Navigate cross-tab to WorkoutLogs for the selected client
+    navigation.getParent()?.navigate('Clients', {
+      screen: 'WorkoutLogs',
+      params: { clientId: client.id, clientName: client.fullName ?? client.name ?? 'Client' },
+    });
+  };
 
   const handleDelete = (wkt) => {
     Alert.alert('Delete Workout', `Delete "${wkt.name}"? This cannot be undone.`, [
@@ -101,12 +128,18 @@ export default function WorkoutsListScreen() {
         )}
         <View style={styles.cardFooter}>
           <Text style={styles.createdAt}>Created {formatDate(item.createdAt)}</Text>
-          <TouchableOpacity style={styles.editBtn} onPress={() => navigation.navigate('CreateWorkout', { workout: item })}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.editBtnText}>Edit Workout</Text>
-              <IconSymbol name="chevron.right" size={14} color={C.primary} />
-            </View>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={styles.startBtn} onPress={() => openStartModal(item)}>
+              <IconSymbol name="play.fill" size={12} color={C.white} />
+              <Text style={styles.startBtnText}>Start</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.editBtn} onPress={() => navigation.navigate('CreateWorkout', { workout: item })}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.editBtnText}>Edit Workout</Text>
+                <IconSymbol name="chevron.right" size={14} color={C.primary} />
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
         {/* Recent personal workout logs (member) */}
         {workoutLogs.length > 0 && (
@@ -148,6 +181,41 @@ export default function WorkoutsListScreen() {
             subtitle="Add exercises first, then tap + Workout to create your first workout" />
         )}
       />
+
+      {/* Client picker modal for starting a workout */}
+      <Modal visible={!!startModal} transparent animationType="slide" onRequestClose={() => setStartModal(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 36, maxHeight: '70%' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginBottom: 4 }}>Start Workout for Client</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>{startModal?.workout?.name}</Text>
+            {loadingClients ? (
+              <ActivityIndicator color={C.primary} style={{ marginVertical: 24 }} />
+            ) : clients.length === 0 ? (
+              <Text style={{ color: C.mid, textAlign: 'center', padding: 24 }}>No clients found</Text>
+            ) : (
+              <FlatList
+                data={clients}
+                keyExtractor={c => c.id}
+                renderItem={({ item: c }) => (
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}
+                    onPress={() => handleSelectClient(c)}>
+                    <Avatar uri={c.profilePhotoUrl} name={c.fullName ?? c.name ?? ''} size={40} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: C.dark }}>{c.fullName ?? c.name}</Text>
+                      <Text style={{ fontSize: 12, color: C.mid }}>{c.assignedPlanName ?? 'No plan assigned'}</Text>
+                    </View>
+                    <IconSymbol name="chevron.right" size={16} color={C.mid} />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+            <TouchableOpacity style={{ marginTop: 16, alignSelf: 'center' }} onPress={() => setStartModal(null)}>
+              <Text style={{ color: C.mid, fontSize: 14 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -179,6 +247,8 @@ const styles = StyleSheet.create({
   muscleChipText: { fontSize: 11, color: C.primary, fontWeight: '600' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   createdAt: { fontSize: 11, color: C.mid },
+  startBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: S.md, paddingVertical: S.xs + 2, backgroundColor: C.primary, borderRadius: R.md },
+  startBtnText: { fontSize: 13, color: '#fff', fontWeight: '700' },
   editBtn: { paddingHorizontal: S.md, paddingVertical: S.xs + 2, backgroundColor: C.primaryBg, borderRadius: R.md },
   editBtnText: { fontSize: 13, color: C.primary, fontWeight: '600' },
 });
