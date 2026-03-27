@@ -1103,6 +1103,49 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   </View>
                 </View>
               ))}
+              {/* Start Workout button for this day */}
+              {(() => {
+                const isThisDayToday = (selectedDay.dayLabel || '').toLowerCase() === todayFullDay.toLowerCase();
+                const canStart = isThisDayToday || !todayWorkout;
+                if (!canStart) return null;
+                // Build todayWorkout from this selected day then switch to logging
+                const handleStartSelectedDay = () => {
+                  const exs = selectedDay.exercises.map(ex => ({
+                    id: ex.id || ex.name,
+                    name: ex.name,
+                    sets: ex.mainSets || 3,
+                    reps: ex.mainReps || 10,
+                    rest: ex.mainRestSeconds || 60,
+                    note: ex.notes || '',
+                    muscleGroup: ex.muscleGroup || '',
+                  }));
+                  const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+                  setTodayWorkout({
+                    id: fullPlan?.id || selectedDay.dayLabel,
+                    name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
+                    estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
+                    exercises: exs,
+                    dayLabel: selectedDay.dayLabel || todayFullDay,
+                  });
+                  setSelectedDayIdx(null);
+                  if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                  setView('logging');
+                };
+                return (
+                  <TouchableOpacity
+                    style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                    onPress={handleStartSelectedDay}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons
+                        name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'}
+                        size={16} color="#fff" />
+                      <Text style={wk.startBtnTxt}>
+                        {workoutTimer?.completed ? 'View Completed' : 'Start Workout'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })()}
             </>
           ) : (
             <View style={{ alignItems: 'center', padding: 40 }}>
@@ -3285,6 +3328,32 @@ export default function App() {
     });
     return () => unsub();
   }, [member?.gymId, member?.trainerId, uid]);
+
+  // ── Derive todayWorkout from active trainer-started log when plan has no match ─
+  useEffect(() => {
+    if (todayWorkout) return; // plan already provided one
+    if (!activeWorkoutLog) return;
+    if (activeWorkoutLog.status !== 'incomplete') return;
+    if (!activeWorkoutLog.completedExercises?.length) return;
+    const exercises = activeWorkoutLog.completedExercises.map(ex => ({
+      id: ex.exerciseId,
+      name: ex.exerciseName,
+      sets: ex.actualSets || ex.targetSets || 3,
+      reps: ex.actualReps || ex.targetReps || 10,
+      rest: ex.restSeconds || 60,
+      note: ex.notes || '',
+      muscleGroup: ex.muscleGroup || '',
+    }));
+    const estSecs = exercises.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+    const estimatedMinutes = Math.max(10, Math.round(estSecs / 60));
+    setTodayWorkout({
+      id: activeWorkoutLog.planId || activeWorkoutLog.id,
+      name: activeWorkoutLog.planName || "Today's Workout",
+      estimatedMinutes,
+      exercises,
+      dayLabel: activeWorkoutLog.dayLabel || new Date().toLocaleDateString('en-US', { weekday: 'long' }),
+    });
+  }, [activeWorkoutLog, todayWorkout]);
 
   // ── Workout timer ───────────────────────────────────────────────────────────
   const startWorkoutTimer = () => {
