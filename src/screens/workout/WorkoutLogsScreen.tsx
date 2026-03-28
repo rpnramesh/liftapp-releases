@@ -7,8 +7,8 @@ import { C } from '../../constants/theme';
 
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { collection, doc, getDoc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import React, { useCallback, useState } from 'react';
 import {
     Alert,
     FlatList,
@@ -55,20 +55,14 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   const [cachedPlan, setCachedPlan] = useState<any>(null);
   const [cachedGymId, setCachedGymId] = useState<string | null>(null);
 
-  const fetchLogs = useCallback(async () => {
+  // Reload helper for pull-to-refresh (re-mounts listener)
+  const [reloadKey, setReloadKey] = useState(0);
+  const triggerReload = useCallback(() => {
     setLoading(true);
-    try {
-      const r = await WorkoutAPI.getWorkoutLogs(getTrainerId(), clientId, 1);
-      setLogs(r.logs);
-    } catch (e) {
-      console.log('fetchLogs error', e);
-      setLogs([]);
-    } finally { setLoading(false); }
-  }, [clientId]);
+    setReloadKey(k => k + 1);
+  }, []);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
-  // Realtime subscription while focused
+  // Realtime subscription while focused — sort client-side to avoid composite index
   useFocusEffect(
     useCallback(() => {
       let unsub: (() => void) | null = null;
@@ -77,20 +71,35 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
       (async () => {
         try {
           const gymId = await getGymId();
-          const q = query(collection(db, 'gyms', gymId, 'workoutLogs'), where('memberId', '==', clientId), orderBy('completedAt', 'desc'));
+          if (!gymId) { setLoading(false); return; }
+          // Query without orderBy to avoid requiring a Firestore composite index
+          const q = query(
+            collection(db, 'gyms', gymId, 'workoutLogs'),
+            where('memberId', '==', clientId),
+          );
           unsub = onSnapshot(q, snap => {
-            const data = snap.docs.map(d => ({ id: d.id, ...(d.data() as WorkoutLog) }));
             if (!mounted) return;
+            const data = snap.docs
+              .map(d => ({ id: d.id, ...(d.data() as any) }))
+              // Sort newest first client-side
+              .sort((a: any, b: any) =>
+                (b.startedAt ?? b.completedAt ?? 0) - (a.startedAt ?? a.completedAt ?? 0),
+              );
             setLogs(data);
             setLoading(false);
-          }, err => { console.log('workoutLogs onSnapshot error', err); });
+          }, err => {
+            console.log('workoutLogs onSnapshot error', err);
+            if (mounted) { setLogs([]); setLoading(false); }
+          });
         } catch (e) {
           console.log('workoutLogs listener error', e);
+          if (mounted) { setLogs([]); setLoading(false); }
         }
       })();
 
       return () => { mounted = false; if (unsub) unsub(); };
-    }, [clientId]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clientId, reloadKey]),
   );
 
   const openNoteModal = (logId: string, existing?: string) => {
@@ -335,8 +344,8 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
 
   const renderLog = ({ item }: { item: WorkoutLog }) => {
     const statusColor = item.status === 'completed' ? C.green : C.mid;
-    const completedCount = item.completedExercises.filter(ex => ex.completed).length;
-    const totalCount = item.completedExercises.length;
+    const completedCount = (item.completedExercises ?? []).filter((ex: any) => ex.completed).length;
+    const totalCount = (item.completedExercises ?? []).length;
     const isExpanded = expandedLogId === item.id;
 
     return (
@@ -364,7 +373,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         </View>
 
         {/* Exercises list */}
-        {item.completedExercises.map(ex => renderExercise(item.id, ex, isExpanded))}
+        {(item.completedExercises ?? []).map((ex: any) => renderExercise(item.id, ex, isExpanded))}
 
         {/* Actions when expanded */}
         {isExpanded && item.status !== 'completed' && (
@@ -416,7 +425,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
           keyExtractor={item => item.id}
           renderItem={renderLog}
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchLogs} tintColor={C.primary} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={triggerReload} tintColor={C.primary} />}
           ListEmptyComponent={<EmptyState icon={<IconSymbol name="clipboard" size={40} color={C.mid} />} title="No workout logs yet" subtitle={`${clientName} hasn't logged any workouts yet.`} />}
         />
       )}
