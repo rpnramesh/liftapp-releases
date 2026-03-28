@@ -139,6 +139,7 @@ function OtpLoginScreen({ onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verificationId, setVerificationId] = useState(null);
+  const [webviewReady, setWebviewReady] = useState(false);
 
   const sendOtp = async () => {
     if (phone.length < 10) { setError('Enter a valid 10-digit mobile number'); return; }
@@ -198,13 +199,19 @@ function OtpLoginScreen({ onSuccess }) {
 
   return (
     <SafeAreaView style={ot.container}>
-      <PhoneAuthWebView ref={phoneAuthRef} />
+      <PhoneAuthWebView ref={phoneAuthRef} onReady={setWebviewReady} />
       <Text style={ot.heading}>{step === 'phone' ? 'Welcome to Lift' : 'Verify OTP'}</Text>
       <Text style={ot.sub}>
         {step === 'phone'
           ? 'Enter your mobile number to continue'
           : `OTP sent to +91 ${phone}`}
       </Text>
+      {!webviewReady && step === 'phone' && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <ActivityIndicator size="small" color={C.primary} />
+          <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
+        </View>
+      )}
 
       {step === 'phone' ? (
         <>
