@@ -49,6 +49,12 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
+  // Day picker modal state
+  const [dayPickerVisible, setDayPickerVisible] = useState(false);
+  const [planDays, setPlanDays] = useState<any[]>([]);
+  const [cachedPlan, setCachedPlan] = useState<any>(null);
+  const [cachedGymId, setCachedGymId] = useState<string | null>(null);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
@@ -104,46 +110,52 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
     } finally { setSavingNote(false); }
   };
 
-  // ─── Start a new workout for the client ──────────────────────────────────
-  const startWorkout = async () => {
+  // ─── Load plan days and open day picker ─────────────────────────────────
+  const openDayPicker = async () => {
     setStarting(true);
     try {
-      const trainerId = getTrainerId();
       const gymId = await getGymId();
+      setCachedGymId(gymId);
 
-      // Load client's assigned plan
       const assignSnap = await getDoc(doc(db, 'gyms', gymId, 'assignments', clientId)).catch(() => null);
       if (!assignSnap?.exists() || !assignSnap.data().planId) {
-        Alert.alert('No Plan Assigned', `${clientName} doesn't have a workout plan assigned yet.`);
-        setStarting(false);
+        Alert.alert('No Plan Assigned', `${clientName} doesn't have a workout plan assigned yet.\nAssign a plan first from the Clients tab.`);
         return;
       }
       const assign = assignSnap.data();
       const planSnap = await getDoc(doc(db, 'gyms', gymId, 'clientPlans', assign.planId)).catch(() => null);
       if (!planSnap?.exists()) {
         Alert.alert('Plan Not Found', 'The assigned plan could not be loaded.');
-        setStarting(false);
         return;
       }
       const plan = planSnap.data();
-      const planDays = (plan.days ?? []).filter((d: any) => !d.restDay && d.exercises?.length > 0);
-      if (planDays.length === 0) {
+      const workoutDays = (plan.days ?? []).filter((d: any) => !d.restDay && d.exercises?.length > 0);
+      if (workoutDays.length === 0) {
         Alert.alert('Empty Plan', 'The plan has no workout days with exercises.');
-        setStarting(false);
         return;
       }
+      setCachedPlan(plan);
+      setPlanDays(workoutDays);
+      setDayPickerVisible(true);
+    } catch (e: any) {
+      console.log('openDayPicker error:', e);
+      Alert.alert('Error', e.message ?? 'Failed to load plan');
+    } finally { setStarting(false); }
+  };
 
-      // Find next day to do (cycle through plan days)
-      const existingLogs = logs ?? [];
-      const lastDay = existingLogs.length > 0 ? existingLogs[0]?.dayLabel : null;
-      let nextDayIdx = 0;
-      if (lastDay) {
-        const lastIdx = planDays.findIndex((d: any) => d.dayLabel === lastDay);
-        if (lastIdx >= 0) nextDayIdx = (lastIdx + 1) % planDays.length;
-      }
-      const day = planDays[nextDayIdx];
+  // ─── Start a workout log for a specific plan day ─────────────────────────
+  const startWorkoutForDay = async (day: any) => {
+    setDayPickerVisible(false);
+    setStarting(true);
+    try {
+      const trainerId = getTrainerId();
+      const gymId = cachedGymId ?? await getGymId();
+      const plan = cachedPlan;
+      if (!plan) return;
 
-      // Create a new workout log
+      const assignSnap = await getDoc(doc(db, 'gyms', gymId, 'assignments', clientId)).catch(() => null);
+      const assign = assignSnap?.data() ?? {};
+
       const logRef = doc(collection(db, 'gyms', gymId, 'workoutLogs'));
       const now = Date.now();
       const newLog = {
@@ -152,7 +164,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         memberName: clientName,
         trainerId,
         gymId,
-        planId: assign.planId,
+        planId: assign.planId ?? plan.id ?? '',
         planName: plan.name ?? assign.planName ?? 'Workout',
         dayLabel: day.dayLabel,
         status: 'incomplete',
@@ -179,7 +191,7 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
       await setDoc(logRef, newLog);
       setExpandedLogId(logRef.id);
     } catch (e: any) {
-      console.log('startWorkout error:', e);
+      console.log('startWorkoutForDay error:', e);
       Alert.alert('Error', e.message ?? 'Failed to start workout');
     } finally { setStarting(false); }
   };
@@ -390,10 +402,10 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
         <Text style={styles.headerTitle}>{clientName}'s Workout Logs</Text>
       </View>
 
-      {/* Start Workout button */}
-      <TouchableOpacity style={styles.startBtn} onPress={startWorkout} disabled={starting}>
+      {/* Log Workout button — opens day picker */}
+      <TouchableOpacity style={styles.startBtn} onPress={openDayPicker} disabled={starting}>
         <IconSymbol name="play.fill" size={18} color={C.white} />
-        <Text style={styles.startBtnText}>{starting ? 'Starting…' : 'Start Workout for Client'}</Text>
+        <Text style={styles.startBtnText}>{starting ? 'Loading Plan…' : 'Log Workout for Client'}</Text>
       </TouchableOpacity>
 
       {loading && !logs ? (
@@ -408,6 +420,40 @@ export default function WorkoutLogsScreen({ navigation, route }: Props) {
           ListEmptyComponent={<EmptyState icon={<IconSymbol name="clipboard" size={40} color={C.mid} />} title="No workout logs yet" subtitle={`${clientName} hasn't logged any workouts yet.`} />}
         />
       )}
+
+      {/* Day Picker Modal */}
+      <Modal visible={dayPickerVisible} transparent animationType="slide" onRequestClose={() => setDayPickerVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { paddingBottom: 40 }]}>
+            <Text style={styles.modalTitle}>Select Workout Day</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>
+              {cachedPlan?.name || 'Assigned Plan'} · Choose the day to log for {clientName}
+            </Text>
+            {planDays.map((day: any, idx: number) => {
+              const exCount = day.exercises?.length ?? 0;
+              const muscles = (day.exercises ?? [])
+                .map((e: any) => e.muscleGroup).filter((v: string, i: number, a: string[]) => v && a.indexOf(v) === i)
+                .join(', ');
+              return (
+                <TouchableOpacity
+                  key={day.dayLabel ?? idx}
+                  style={styles.dayPickerRow}
+                  onPress={() => startWorkoutForDay(day)}
+                >
+                  <View style={styles.dayPickerLeft}>
+                    <Text style={styles.dayPickerLabel}>{day.dayLabel}</Text>
+                    <Text style={styles.dayPickerSub}>{exCount} exercises{muscles ? ` · ${muscles}` : ''}</Text>
+                  </View>
+                  <IconSymbol name="chevron.right" size={16} color={C.mid} />
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={{ marginTop: 16, alignSelf: 'center' }} onPress={() => setDayPickerVisible(false)}>
+              <Text style={{ color: C.mid, fontSize: 14 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={!!noteModal} transparent animationType="slide" onRequestClose={() => setNoteModal(null)}>
         <View style={styles.modalOverlay}>
@@ -486,4 +532,8 @@ const styles = StyleSheet.create({
   modalSheet: { backgroundColor: C.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 36 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: C.dark, marginBottom: 16 },
   noteInput: { borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 12, fontSize: 14, textAlignVertical: 'top', minHeight: 100, marginBottom: 16, color: C.dark },
+  dayPickerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  dayPickerLeft: { flex: 1, gap: 2 },
+  dayPickerLabel: { fontSize: 15, fontWeight: '700', color: C.dark },
+  dayPickerSub: { fontSize: 12, color: C.mid },
 });
