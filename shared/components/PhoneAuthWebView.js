@@ -44,7 +44,7 @@ const HTML = `
     var verifier = null;
     var ready = false;
     var pendingPhone = null;
-    var scriptsLoaded = 0;
+    var otpSent = false;
 
     function post(obj){
       try{ window.ReactNativeWebView.postMessage(JSON.stringify(obj)); }catch(e){}
@@ -66,7 +66,7 @@ const HTML = `
 
     function initVerifier(auth){
       try{ if(verifier) verifier.clear(); }catch(e){}
-      verifier = null; ready = false;
+      verifier = null; ready = false; otpSent = false;
       try{
         verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container',{
           size:'invisible',
@@ -91,9 +91,12 @@ const HTML = `
     }
 
     function doSendOtp(auth, phone){
+      if(otpSent) return;   // guard: only one active sign-in at a time
+      otpSent = true;
       auth.signInWithPhoneNumber(phone, verifier)
         .then(function(r){ post({type:'verificationId', verificationId:r.verificationId}); })
         .catch(function(e){
+          otpSent = false;  // allow retry on error
           var msg = e.message || 'Failed to send OTP';
           if(e.code==='auth/too-many-requests') msg='Too many attempts. Please try again later.';
           if(e.code==='auth/invalid-phone-number') msg='Invalid phone number format.';
@@ -218,10 +221,15 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
           break;
 
         case 'pong':
-          if (data.ready && phoneRef.current && pendingRef.current) {
+          if (data.ready) {
             readyRef.current = true;
             onReady?.(true);
-            injectSendOtp(phoneRef.current);
+            // Stop the retry loop — WebView confirmed it is alive and ready
+            if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
+            // One final inject as safety-net; WebView's otpSent guard prevents double-send
+            if (phoneRef.current && pendingRef.current) {
+              injectSendOtp(phoneRef.current);
+            }
           }
           break;
 
@@ -273,12 +281,12 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
             cleanup();
             setShowOverlay(false);
             pendingRef.current.reject(new Error(
-              'Verification took too long. Please check your internet connection and try again.'
+              'OTP request timed out. Please tap \'Send OTP\' again.'
             ));
             pendingRef.current = null;
             phoneRef.current = null;
           }
-        }, 45000);
+        }, 90000);
       });
     },
   }));
