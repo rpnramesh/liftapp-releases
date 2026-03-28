@@ -261,7 +261,7 @@ function OtpLoginScreen({ onSuccess }) {
 }
 
 // ── HOME DASHBOARD ────────────────────────────────────────────────────────────
-function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount }) {
+function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount, onStartWorkout }) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
   const daysLeft = member ? daysUntilExpiry(member) : 0;
@@ -269,6 +269,10 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
   const bmi = member && member.height > 0
     ? (member.weight / ((member.height / 100) ** 2)).toFixed(1)
     : '—';
+
+  // Plan name: prefer fullPlan.name, fallback to assignment.planName or member.currentPlanName
+  const planName = fullPlan?.name || assignment?.planName || member?.currentPlanName || '';
+  const hasPlan = !!(fullPlan || assignment?.planId || member?.currentPlanId);
 
   return (
     <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
@@ -287,20 +291,23 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
 
       {/* Today's Workout Card */}
       {todayWorkout?.isRestDay ? (
-        <View style={[hm.workoutCard, { backgroundColor: '#374151' }]}>
-          {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
+        <TouchableOpacity style={[hm.workoutCard, { backgroundColor: '#374151' }]} onPress={() => onNavigate('Workouts')} activeOpacity={0.85}>
+          {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
           <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Ionicons name="moon-outline" size={22} color="#fff" />
             <Text style={hm.workoutName}>Rest Day</Text>
           </View>
           <Text style={hm.workoutSub}>Recovery is part of progress. Take it easy today.</Text>
-        </View>
+          <View style={hm.startBtn}>
+            <Text style={hm.startBtnTxt}>View Weekly Plan →</Text>
+          </View>
+        </TouchableOpacity>
       ) : todayWorkout ? (
-        <TouchableOpacity style={hm.workoutCard} onPress={() => onNavigate('Workouts')}>
+        <TouchableOpacity style={hm.workoutCard} onPress={() => onNavigate('Workouts')} activeOpacity={0.9}>
           <View style={hm.workoutTop}>
             <View>
-              {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
+              {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
               <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -328,18 +335,44 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
           <Text style={hm.workoutSub}>
             {todayWorkout.exercises?.length || 0} exercises · {todayWorkout.exercises?.map(e => e.muscleGroup).filter((v, i, a) => v && a.indexOf(v) === i).join(', ') || 'Assigned by ' + (member?.trainerName || member?.trainer || 'your trainer')}
           </Text>
+          {/* Direct Start Workout button — opens logging view immediately */}
+          <TouchableOpacity
+            style={[hm.startBtn, workoutTimer?.completed && { backgroundColor: 'rgba(16,185,129,0.35)' }]}
+            onPress={() => {
+              if (onStartWorkout && !workoutTimer?.completed) onStartWorkout();
+              else onNavigate('Workouts');
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Ionicons
+                name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play-circle-outline'}
+                size={16} color="#fff"
+              />
+              <Text style={hm.startBtnTxt}>
+                {workoutTimer?.running ? 'Continue Workout →' : workoutTimer?.completed ? 'View Completed →' : 'Start Workout →'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      ) : hasPlan ? (
+        <TouchableOpacity style={[hm.workoutCard, { backgroundColor: '#1E40AF' }]} onPress={() => onNavigate('Workouts')} activeOpacity={0.85}>
+          {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
+          <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Ionicons name="calendar-outline" size={20} color="#fff" />
+            <Text style={hm.workoutName}>No session today</Text>
+          </View>
+          <Text style={hm.workoutSub}>Tap to view your full weekly workout plan</Text>
           <View style={hm.startBtn}>
-            <Text style={hm.startBtnTxt}>
-              {workoutTimer?.running || workoutTimer?.completed ? 'View Details →' : 'Start Workout →'}
-            </Text>
+            <Text style={hm.startBtnTxt}>View Weekly Plan →</Text>
           </View>
         </TouchableOpacity>
       ) : (
         <View style={[hm.workoutCard, { opacity: 0.7 }]}>
-          {fullPlan?.name && <Text style={hm.planNameTag}>{fullPlan.name}</Text>}
           <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
-          <Text style={hm.workoutName}>{member?.trainerId ? 'No workout for today' : 'No trainer assigned'}</Text>
-          <Text style={hm.workoutSub}>{member?.trainerId ? 'Check back later' : 'Accept a trainer invite in Profile'}</Text>
+          <Text style={hm.workoutName}>{member?.trainerId ? 'No plan assigned yet' : 'No trainer assigned'}</Text>
+          <Text style={hm.workoutSub}>{member?.trainerId ? 'Your trainer will assign a workout plan soon' : 'Accept a trainer invite in Profile'}</Text>
         </View>
       )}
 
@@ -954,7 +987,7 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes }) {
+function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
   const [view, setView] = useState('overview'); // 'overview' | 'logging'
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
 
@@ -962,6 +995,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayDay = dayNames[new Date().getDay()];
   const todayFullDay = fullDayNames[new Date().getDay()];
+
+  // Auto-launch logging view when navigated from dashboard "Start Workout" button
+  useEffect(() => {
+    if (autoStartLogging && todayWorkout && !todayWorkout.isRestDay && view === 'overview') {
+      if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+      setView('logging');
+      if (setAutoStartLogging) setAutoStartLogging(false);
+    }
+  }, [autoStartLogging, todayWorkout]);
 
   // Build selected day's exercise list from fullPlan
   const getSelectedDayData = () => {
@@ -3146,6 +3188,7 @@ export default function App() {
   const [workoutDoneSets, setWorkoutDoneSets] = useState({});
   const [workoutSetWeights, setWorkoutSetWeights] = useState({});
   const [workoutRestEndTimes, setWorkoutRestEndTimes] = useState({});
+  const [autoStartWorkout, setAutoStartWorkout] = useState(false);
   const timerRef = useRef(null);
 
   // ── Auth state listener ─────────────────────────────────────────────────────
@@ -3423,6 +3466,10 @@ export default function App() {
             todayWorkout={todayWorkout}
             fullPlan={fullPlan}
             unreadNotifCount={unreadNotifCount}
+            onStartWorkout={() => {
+              setAutoStartWorkout(true);
+              setTab('Workouts');
+            }}
             onNavigate={(dest) => {
               if (dest === 'Notifications') setScreen('notifications');
               else if (dest === 'TrainerChat') setScreen('trainerChat');
@@ -3438,6 +3485,7 @@ export default function App() {
             planWeek={planWeek}
             fullPlan={fullPlan}
             todayWorkout={todayWorkout}
+            setTodayWorkout={setTodayWorkout}
             activeWorkoutLog={activeWorkoutLog}
             workoutTimer={workoutTimer}
             startWorkoutTimer={startWorkoutTimer}
@@ -3448,6 +3496,8 @@ export default function App() {
             setWorkoutSetWeights={setWorkoutSetWeights}
             restEndTimes={workoutRestEndTimes}
             setRestEndTimes={setWorkoutRestEndTimes}
+            autoStartLogging={autoStartWorkout}
+            setAutoStartLogging={setAutoStartWorkout}
           />
         );
       case 'Progress':
