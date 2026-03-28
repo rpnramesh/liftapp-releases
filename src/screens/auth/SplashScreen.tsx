@@ -302,6 +302,7 @@ export function OTPScreen({ navigation, route }: OTPProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verificationId, setVerificationId] = useState<string | null>(null);
+  const [webviewReady, setWebviewReady] = useState(false);
 
   useEffect(() => {
     if (timer <= 0) return;
@@ -398,7 +399,7 @@ export function OTPScreen({ navigation, route }: OTPProps) {
 
   return (
     <KeyboardSafeView style={{ flex: 1 }}>
-      <PhoneAuthWebView ref={phoneAuthRef} />
+      <PhoneAuthWebView ref={phoneAuthRef} onReady={setWebviewReady} />
       <View style={os.container}>
         <TouchableOpacity style={os.back} onPress={() => {
           if (step === 'otp') { setStep('phone'); setOtp(''); setError(''); }
@@ -414,6 +415,12 @@ export function OTPScreen({ navigation, route }: OTPProps) {
           <>
             <Text style={os.title}>Enter your mobile number</Text>
             <Text style={os.subtitle}>We'll send you a 6-digit OTP to verify</Text>
+            {!webviewReady && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color={C.primary} />
+                <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
+              </View>
+            )}
             <View style={os.phoneRow}>
               <Text style={os.prefix}>+91</Text>
               <TextInput style={[inp, { flex: 1 }]} placeholder="10-digit mobile number"

@@ -12,6 +12,7 @@ import { C } from '../../constants/theme';
 
 export interface PhoneAuthHandle {
   sendOtp: (phoneNumber: string) => Promise<string>;
+  onReady?: (ready: boolean) => void;
 }
 
 const AUTH_DOMAIN = 'lift-bfd12.firebaseapp.com';
@@ -39,14 +40,10 @@ const HTML = `
 </head>
 <body>
   <div id="recaptcha-container"></div>
-  <div id="status">Initialising…</div>
+  <div id="status">Loading…</div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"><\/script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"><\/script>
   <script>
     var config = ${FIREBASE_CONFIG};
-    var app = firebase.initializeApp(config);
-    var auth = firebase.auth();
     var verifier = null;
     var ready = false;
     var pendingPhone = null;
@@ -56,78 +53,117 @@ const HTML = `
     }
 
     window.onerror = function(msg, url, line) {
-      post({type:'error', error:'JS Error: ' + msg + ' (line ' + line + ')'});
+      post({type:'error', error:'JS error: ' + msg});
     };
 
-    function initVerifier(){
+    function initFirebase(){
+      try{
+        var app = firebase.initializeApp(config);
+        var auth = firebase.auth();
+        initVerifier(auth);
+      }catch(e){
+        post({type:'error', error:'Firebase init failed: '+e.message});
+      }
+    }
+
+    function initVerifier(auth){
       try{ if(verifier) verifier.clear(); }catch(e){}
       verifier = null; ready = false;
-      document.getElementById('status').textContent='Setting up verification…';
       try{
         verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container',{
           size:'invisible',
-          callback:function(){ post({type:'recaptcha-solved'}); },
-          'expired-callback':function(){ post({type:'recaptcha-expired'}); initVerifier(); }
+          callback:function(){ },
+          'expired-callback':function(){
+            ready = false;
+            setTimeout(function(){ initVerifier(auth); }, 500);
+          }
         });
         verifier.render().then(function(){
           ready = true;
-          document.getElementById('status').textContent='Ready';
           post({type:'ready'});
-          if(pendingPhone){ sendOtp(pendingPhone); }
+          if(pendingPhone){ doSendOtp(auth, pendingPhone); pendingPhone=null; }
         }).catch(function(e){
-          document.getElementById('status').textContent='reCAPTCHA failed: '+e.message;
-          post({type:'error', error:'reCAPTCHA init failed: '+e.message});
+          post({type:'error', error:'reCAPTCHA failed to load: '+e.message});
         });
       }catch(e){
-        document.getElementById('status').textContent='Setup error: '+e.message;
         post({type:'error', error:'reCAPTCHA setup error: '+e.message});
       }
+
+      window.__auth = auth;
     }
 
-    function sendOtp(phone){
-      if(!verifier||!ready){
-        pendingPhone=phone;
-        post({type:'status', message:'Waiting for reCAPTCHA (ready='+ready+')'});
-        return;
-      }
-      pendingPhone=null;
-      document.getElementById('status').textContent='Sending OTP to '+phone+'…';
+    function doSendOtp(auth, phone){
       auth.signInWithPhoneNumber(phone, verifier)
-        .then(function(result){
-          post({type:'verificationId', verificationId:result.verificationId});
-        })
+        .then(function(r){ post({type:'verificationId', verificationId:r.verificationId}); })
         .catch(function(e){
-          var msg=e.message||'Failed to send OTP';
-          if(e.code==='auth/too-many-requests') msg='Too many attempts. Try again later.';
+          var msg = e.message || 'Failed to send OTP';
+          if(e.code==='auth/too-many-requests') msg='Too many attempts. Please try again later.';
           if(e.code==='auth/invalid-phone-number') msg='Invalid phone number format.';
           post({type:'error', error:msg, code:e.code||''});
-          // Re-init verifier for next attempt
-          initVerifier();
+          setTimeout(function(){ initVerifier(window.__auth); }, 200);
         });
     }
 
-    // Listen for messages from React Native
     function handleMessage(event){
       try{
         var data = (typeof event.data === 'string') ? JSON.parse(event.data) : event.data;
-        if(data.action==='sendOtp') sendOtp(data.phone);
+        if(data.action==='sendOtp'){
+          if(!ready || !verifier){
+            pendingPhone = data.phone;
+            post({type:'status', message:'Queued — waiting for reCAPTCHA'});
+          } else {
+            doSendOtp(window.__auth, data.phone);
+          }
+        }
         if(data.action==='ping') post({type:'pong', ready:ready});
       }catch(e){}
     }
     document.addEventListener('message', handleMessage);
     window.addEventListener('message', handleMessage);
 
-    // Start initializing
-    initVerifier();
+    function loadScript(url, onLoad, onError){
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = onLoad;
+      s.onerror = onError;
+      document.head.appendChild(s);
+    }
+
+    var PRIMARY_APP  = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js';
+    var PRIMARY_AUTH = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js';
+    var FALLBACK_APP  = 'https://cdn.jsdelivr.net/npm/firebase@10.14.1/firebase-app-compat.min.js';
+    var FALLBACK_AUTH = 'https://cdn.jsdelivr.net/npm/firebase@10.14.1/firebase-auth-compat.min.js';
+
+    function loadAuthScript(onDone){
+      loadScript(PRIMARY_AUTH, onDone, function(){
+        loadScript(FALLBACK_AUTH, onDone, function(){
+          post({type:'error', error:'Could not load authentication library. Check your internet connection.'});
+        });
+      });
+    }
+
+    function loadAppScript(onDone){
+      loadScript(PRIMARY_APP, onDone, function(){
+        loadScript(FALLBACK_APP, onDone, function(){
+          post({type:'error', error:'Could not load authentication library. Check your internet connection.'});
+        });
+      });
+    }
+
+    loadAppScript(function(){
+      loadAuthScript(function(){
+        initFirebase();
+      });
+    });
   <\/script>
 </body>
 </html>
 `;
 
-const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
+const PhoneAuthWebView = forwardRef<PhoneAuthHandle, { onReady?: (ready: boolean) => void }>(({ onReady }, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [webviewKey, setWebviewKey] = useState(0);
+  const [webviewKey] = useState(0);
   const pendingRef = useRef<{
     resolve: (id: string) => void;
     reject: (err: Error) => void;
@@ -136,30 +172,22 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const readyRef = useRef(false);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
     if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
     if (failsafeRef.current) { clearTimeout(failsafeRef.current); failsafeRef.current = null; }
-    if (reloadRef.current) { clearTimeout(reloadRef.current); reloadRef.current = null; }
   }, []);
-
-  // Auto-reload WebView if reCAPTCHA hasn't become ready after 15s
-  React.useEffect(() => {
-    if (readyRef.current) return;
-    reloadRef.current = setTimeout(() => {
-      if (!readyRef.current) {
-        console.log('[PhoneAuth] No ready signal after 15s — reloading WebView');
-        setWebviewKey(k => k + 1);
-      }
-    }, 15000);
-    return () => { if (reloadRef.current) clearTimeout(reloadRef.current); };
-  }, [webviewKey]);
 
   const injectSendOtp = useCallback((phone: string) => {
     const safePhone = phone.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     webViewRef.current?.injectJavaScript(`
-      sendOtp('${safePhone}');
+      (function(){
+        if(typeof window.__auth !== 'undefined' && ready && verifier){
+          doSendOtp(window.__auth, '${safePhone}');
+        } else {
+          pendingPhone = '${safePhone}';
+        }
+      })();
       true;
     `);
   }, []);
@@ -167,12 +195,11 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
-      if (__DEV__) console.log('[PhoneAuth WebView]', data.type, data);
 
       switch (data.type) {
         case 'ready':
           readyRef.current = true;
-          // reCAPTCHA is ready — if we have a pending phone, send now
+          onReady?.(true);
           if (phoneRef.current && pendingRef.current) {
             injectSendOtp(phoneRef.current);
           }
@@ -194,30 +221,23 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
           phoneRef.current = null;
           break;
 
-        case 'status':
-          // Debug status from WebView
-          if (__DEV__) console.log('[PhoneAuth]', data.message);
-          break;
-
         case 'pong':
-          // Response to ping — if ready, send OTP now
           if (data.ready && phoneRef.current && pendingRef.current) {
             readyRef.current = true;
+            onReady?.(true);
             injectSendOtp(phoneRef.current);
           }
           break;
 
-        case 'recaptcha-expired':
-          readyRef.current = false;
+        default:
           break;
       }
     } catch {}
-  }, [cleanup, injectSendOtp]);
+  }, [cleanup, injectSendOtp, onReady]);
 
   useImperativeHandle(ref, () => ({
     sendOtp: (phoneNumber: string) => {
       return new Promise<string>((resolve, reject) => {
-        // Clean up any previous pending request
         cleanup();
         if (pendingRef.current) {
           pendingRef.current.reject(new Error('Cancelled'));
@@ -226,45 +246,38 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
         phoneRef.current = phoneNumber;
         setShowOverlay(true);
 
-        // If WebView hasn't loaded yet, force reload it
-        if (!readyRef.current) {
-          setWebviewKey(k => k + 1);
-        }
-
-        // If reCAPTCHA was already ready (WebView pre-loaded), send immediately
         if (readyRef.current) {
           injectSendOtp(phoneNumber);
+        } else {
+          webViewRef.current?.injectJavaScript(`
+            pendingPhone = '${phoneNumber.replace(/'/g, "\\'")}';
+            true;
+          `);
         }
 
-        // Retry: ping WebView and re-inject every 3s
         const startRetries = () => {
           retryRef.current = setTimeout(function retry() {
-            if (!pendingRef.current || !phoneRef.current) return;
-            // Ping the WebView to check if it's ready
+            if (!pendingRef.current) return;
             webViewRef.current?.injectJavaScript(`
-              if(typeof sendOtp==='function'){
-                if(ready) sendOtp('${phoneNumber.replace(/'/g, "\\'")}');
-                else post({type:'status',message:'Still waiting: ready='+ready});
-              } else {
-                post({type:'status',message:'sendOtp not defined yet'});
-              }
+              post({type:'pong', ready:ready});
               true;
             `);
-            retryRef.current = setTimeout(retry, 3000);
-          }, 3000);
+            retryRef.current = setTimeout(retry, 2000);
+          }, 2000);
         };
         startRetries();
 
-        // Failsafe: reject after 60s
         failsafeRef.current = setTimeout(() => {
           if (pendingRef.current) {
             cleanup();
             setShowOverlay(false);
-            pendingRef.current.reject(new Error('Verification timed out. Please check your internet connection and try again.'));
+            pendingRef.current.reject(new Error(
+              'Verification took too long. Please check your internet connection and try again.'
+            ));
             pendingRef.current = null;
             phoneRef.current = null;
           }
-        }, 60000);
+        }, 45000);
       });
     },
   }));
@@ -276,7 +289,6 @@ const PhoneAuthWebView = forwardRef<PhoneAuthHandle>((_, ref) => {
           WebView while keeping it in the viewport so reCAPTCHA can initialise. */}
       <View style={styles.webviewContainer}>
         <WebView
-          key={webviewKey}
           ref={webViewRef}
           source={{ html: HTML, baseUrl: `https://${AUTH_DOMAIN}` }}
           onMessage={onMessage}
