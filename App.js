@@ -527,7 +527,7 @@ const ev = StyleSheet.create({
 });
 
 // ── WORKOUT LOGGING VIEW ──────────────────────────────────────────────────────
-function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, todayWorkout, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes }) {
+function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, todayWorkout, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes, activeWorkoutLogId }) {
   const [expanded, setExpanded] = useState(null);
   const [setWeights, setSetWeights] = useState(setWeightsExternal || {});
   const [lastWeights, setLastWeights] = useState({});
@@ -538,6 +538,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   const tickRef = useRef(null);
   const vibratedRef = useRef({});
   const notifIdRef = useRef(null);
+  const activeLogRef = useRef(null); // Firestore ref for the in-progress workout log
 
   // ── Notification setup (once on mount) ──────────────────────────────────────
   useEffect(() => {
@@ -642,6 +643,55 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
     load();
   }, []);
 
+  // Create (or reference) an incomplete workoutLog so the trainer sees "In Progress" immediately
+  useEffect(() => {
+    const gymOrTrainer = gymId || memberId;
+    if (!gymOrTrainer || !memberId) return;
+    if (workoutTimer?.completed) return; // already finished, don't create a new log
+    (async () => {
+      try {
+        const { collection: col, doc: docFn, setDoc: setDocFn, getDoc: getDocFn } = require('firebase/firestore');
+        const { db: fdb } = require('./shared/firebase/config');
+        if (activeWorkoutLogId) {
+          // Trainer already created this log — just reference it
+          activeLogRef.current = docFn(fdb, 'gyms', gymOrTrainer, 'workoutLogs', activeWorkoutLogId);
+        } else {
+          // Member-started workout — create an incomplete log so trainer can see "In Progress"
+          const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+          activeLogRef.current = logRef;
+          await setDocFn(logRef, {
+            id: logRef.id,
+            memberId,
+            memberName: memberName || '',
+            gymId: gymId || null,
+            planId: workoutId || '',
+            planName: workoutName || '',
+            dayLabel: todayWorkout?.dayLabel || '',
+            status: 'incomplete',
+            completedExercises: exercises.map(ex => ({
+              exerciseId: ex.id,
+              exerciseName: ex.name,
+              muscleGroup: ex.muscleGroup || 'Other',
+              targetSets: ex.sets,
+              targetReps: ex.reps,
+              actualSets: ex.sets,
+              actualReps: String(ex.reps),
+              weight: 0,
+              restSeconds: ex.rest || 60,
+              completed: false,
+              notes: ex.note || '',
+            })),
+            startedAt: Date.now(),
+            startedBy: 'member',
+            loggedAt: new Date().toISOString(),
+            completedAt: null,
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (e) { console.log('LoggingView: create incomplete log error:', e); }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const formatRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   // Only one timer ever active — replaces any existing timer
@@ -742,10 +792,8 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             }
           }
 
-          // Save workout log (format compatible with trainer app)
-          const logRef = doc(collection(db, 'gyms', gymOrTrainer, 'workoutLogs'));
-          await setDoc(logRef, {
-            id: logRef.id,
+          // Save (or update) workout log so trainer can see completion immediately
+          const completionData = {
             memberId,
             memberName: memberName || '',
             gymId: gymId || null,
@@ -782,7 +830,18 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             completedAt: Date.now(),
             loggedAt: new Date().toISOString(),
             updatedAt: Date.now(),
-          });
+          };
+          if (activeLogRef.current) {
+            // Update the in-progress log we created on mount (or the trainer-started log)
+            await updateDoc(activeLogRef.current, completionData).catch(async () => {
+              // Fallback: create new if update fails (doc may not exist)
+              const fb = doc(collection(db, 'gyms', gymOrTrainer, 'workoutLogs'));
+              await setDoc(fb, { id: fb.id, ...completionData });
+            });
+          } else {
+            const logRef = doc(collection(db, 'gyms', gymOrTrainer, 'workoutLogs'));
+            await setDoc(logRef, { id: logRef.id, ...completionData });
+          }
 
           // Update member's lastWorkoutAt
           const { updateDoc: upd, doc: d } = require('firebase/firestore');
@@ -990,6 +1049,9 @@ const lv = StyleSheet.create({
 function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
   const [view, setView] = useState('overview'); // 'overview' | 'logging'
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
+  // loggingWorkout: workout being logged (may differ from today's plan workout)
+  // Keeping this local avoids overwriting App-level todayWorkout with a non-today day
+  const [loggingWorkout, setLoggingWorkout] = useState(null);
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1023,19 +1085,23 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     }
   };
 
-  if (view === 'logging' && todayWorkout) {
+  // The workout actually being logged — prefer the explicitly chosen day, else today's plan day
+  const activeWorkout = loggingWorkout ?? todayWorkout;
+
+  if (view === 'logging' && activeWorkout) {
     return (
       <LoggingView
-        exercises={todayWorkout.exercises || []}
-        onBack={() => setView('overview')}
+        exercises={activeWorkout.exercises || []}
+        onBack={() => { setView('overview'); setLoggingWorkout(null); }}
         memberName={member?.name || 'there'}
         workoutTimer={workoutTimer}
         stopWorkoutTimer={stopWorkoutTimer}
         gymId={member?.gymId || member?.trainerId}
         memberId={member?.id}
-        workoutId={todayWorkout.id}
-        workoutName={todayWorkout.name}
-        todayWorkout={todayWorkout}
+        workoutId={activeWorkout.id}
+        workoutName={activeWorkout.name}
+        todayWorkout={activeWorkout}
+        activeWorkoutLogId={activeWorkoutLog?.id}
         doneSets={workoutDoneSets}
         setDoneSetsExternal={setWorkoutDoneSets}
         setWeightsExternal={workoutSetWeights}
@@ -1147,10 +1213,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               ))}
               {/* Start Workout button for this day */}
               {(() => {
-                const isThisDayToday = (selectedDay.dayLabel || '').toLowerCase() === todayFullDay.toLowerCase();
-                const canStart = isThisDayToday || !todayWorkout;
-                if (!canStart) return null;
-                // Build todayWorkout from this selected day then switch to logging
+                // Any non-rest, non-empty day can be started
                 const handleStartSelectedDay = () => {
                   const exs = selectedDay.exercises.map(ex => ({
                     id: ex.id || ex.name,
@@ -1162,7 +1225,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     muscleGroup: ex.muscleGroup || '',
                   }));
                   const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-                  setTodayWorkout({
+                  // Store in local state — does NOT overwrite the App-level todayWorkout
+                  // so the dashboard tile always shows today's scheduled workout correctly
+                  setLoggingWorkout({
                     id: fullPlan?.id || selectedDay.dayLabel,
                     name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
                     estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
