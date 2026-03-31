@@ -311,7 +311,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
           </View>
         </TouchableOpacity>
       ) : todayWorkout ? (
-        <TouchableOpacity style={hm.workoutCard} onPress={() => onNavigate('Workouts')} activeOpacity={0.9}>
+        <TouchableOpacity style={hm.workoutCard} onPress={() => { if (onStartWorkout && !workoutTimer?.completed) onStartWorkout(); else onNavigate('Workouts'); }} activeOpacity={0.9}>
           <View style={hm.workoutTop}>
             <View>
               {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
