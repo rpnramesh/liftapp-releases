@@ -757,10 +757,9 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
           const planSnap = await getDoc(planRef).catch(() => null);
           if (planSnap?.exists()) {
             const plan = planSnap.data();
-            const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-            const todayLabel = dayNames[new Date().getDay()];
-            const days = (plan.days ?? []).map(d =>
-              (d.dayLabel ?? '').toLowerCase() === todayLabel.toLowerCase()
+            const todayPlanIdx = (new Date().getDay() + 6) % 7;
+            const days = (plan.days ?? []).map((d, i) =>
+              i === todayPlanIdx
                 ? { ...d, startedAt: Date.now() }
                 : d
             );
@@ -788,10 +787,9 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             const planSnap = await getDoc(planRef).catch(() => null);
             if (planSnap?.exists()) {
               const plan = planSnap.data();
-              const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-              const todayLabel = dayNames[new Date().getDay()];
-              const days = (plan.days ?? []).map(d =>
-                (d.dayLabel ?? '').toLowerCase() === todayLabel.toLowerCase()
+              const todayPlanIdx = (new Date().getDay() + 6) % 7;
+              const days = (plan.days ?? []).map((d, i) =>
+                i === todayPlanIdx
                   ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: elapsed }
                   : d
               );
@@ -1064,6 +1062,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const todayDay = dayNames[new Date().getDay()];
   const todayFullDay = fullDayNames[new Date().getDay()];
+  // Plan days are always Mon=0...Sun=6; JS getDay() is Sun=0 Mon=1 ... → (getDay()+6)%7
+  const todayPlanIdx = (new Date().getDay() + 6) % 7;
 
   // Auto-launch logging view when navigated from dashboard "Start Workout" button
   useEffect(() => {
@@ -1084,8 +1084,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const selectedDay = getSelectedDayData();
 
   // When a day card is tapped, check if it's today → clear selection; otherwise show that day
-  const handleDayPress = (idx, dayAbbr) => {
-    if (dayAbbr === todayDay) {
+  const handleDayPress = (idx) => {
+    if (idx === todayPlanIdx) {
       setSelectedDayIdx(null); // back to today view
     } else {
       setSelectedDayIdx(idx);
@@ -1138,14 +1138,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           <Text style={g.sec}>This Week</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
             {(planWeek || assignment.weekPlan).map((d, i) => {
-              const isToday = d.day === todayDay;
+              const isToday = i === todayPlanIdx;
               const isSelected = selectedDayIdx === i;
               const isActive = isSelected || (selectedDayIdx === null && isToday);
               return (
                 <TouchableOpacity
                   key={i}
                   style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && d.rest && wk.dayCardRest]}
-                  onPress={() => handleDayPress(i, d.day)}
+                  onPress={() => handleDayPress(i)}
                   activeOpacity={0.7}
                 >
                   <Text style={[wk.dayName, isActive && { color: '#fff' }]}>{d.day}</Text>
@@ -3332,12 +3332,13 @@ export default function App() {
               }));
               setPlanWeek(wp);
             }
-            // Find today's workout from the plan's days array
-            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const todayLabel = dayNames[new Date().getDay()];
-            const todayDay = plan.days?.find(d => 
-              (d.dayLabel || '').toLowerCase() === todayLabel.toLowerCase()
-            );
+            // Find today's workout from the plan's days array.
+            // Plan days are always in WORKOUT_DAYS order: Mon=0, Tue=1, ..., Sun=6.
+            // JS getDay() returns Sun=0, Mon=1 ... so convert: (getDay()+6)%7
+            const todayPlanIdx = (new Date().getDay() + 6) % 7;
+            const todayDay = plan.days?.[todayPlanIdx];
+            const todayLabel = todayDay?.dayLabel ||
+              ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
             if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
               const exercises = todayDay.exercises.map(ex => ({
                 id: ex.id || ex.name,
