@@ -1092,6 +1092,91 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     }
   };
 
+  // Postpone a workout day: rotates the cycle so the postponed workout starts next Monday.
+  // If the day immediately after the postponed day is a rest day, offers to assign there instead.
+  const handlePostpone = (dayPlanIdx) => {
+    if (!fullPlan?.days || !assignment?.planId) return;
+    const gymId = member?.gymId || member?.trainerId;
+    if (!gymId) return;
+
+    const days = fullPlan.days;
+    const dayData = days[dayPlanIdx];
+    if (!dayData || dayData.restDay || dayData.completedAt) return;
+
+    const today = new Date();
+    const todayDateStr = today.toISOString().split('T')[0];
+
+    // Compute the calendar date for a given planIdx (Mon=0 … Sun=6), relative to today
+    const getDateForPlanIdx = (idx) => {
+      const diff = (idx - todayPlanIdx + 7) % 7;
+      const d = new Date(today);
+      d.setDate(today.getDate() + diff);
+      return d;
+    };
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const formatDate = (d) => `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+    // planIdx 0=Mon … 6=Sun → JS getDay() value: (planIdx+1)%7
+    const FULL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const planIdxToName = (idx) => FULL_DAY_NAMES[(idx + 1) % 7];
+
+    // Workout slot indices (non-rest days), in plan order Mon=0 … Sun=6
+    const workoutSlotIndices = days.map((_, i) => i).filter(i => !days[i].restDay);
+    const N = workoutSlotIndices.length;
+    if (N === 0) return;
+    const postponedWorkoutPos = workoutSlotIndices.indexOf(dayPlanIdx);
+    if (postponedWorkoutPos === -1) return; // already a rest day
+
+    // Full cycle rotation: new_workout[slot_i] = old_workout[(postponedWorkoutPos + slot_i) % N]
+    // Rest days stay in place; only workout slot exercises rotate.
+    const performRotation = () => {
+      const newDays = days.map((d, i) => {
+        if (d.restDay) return { dayLabel: d.dayLabel, restDay: true, exercises: [] };
+        const workoutPos = workoutSlotIndices.indexOf(i);
+        const sourcePos = (postponedWorkoutPos + workoutPos) % N;
+        const sourceIdx = workoutSlotIndices[sourcePos];
+        const src = days[sourceIdx];
+        return { dayLabel: d.dayLabel, restDay: false, exercises: src.exercises || [] };
+      });
+      const planRef = doc(db, 'gyms', gymId, 'clientPlans', assignment.planId);
+      updateDoc(planRef, { days: newDays, postponedDayIdx: dayPlanIdx, postponedOn: todayDateStr })
+        .catch(e => console.log('Postpone rotation error:', e));
+      Alert.alert('Workout Postponed ✓', 'Your cycle has been rotated. The updated schedule takes effect from next week.');
+    };
+
+    // Simple swap: postponed day → rest, target rest day → gets postponed day's workout
+    const assignToRestDay = (restDayIdx) => {
+      const newDays = days.map((d, i) => {
+        if (i === dayPlanIdx) return { dayLabel: d.dayLabel, restDay: true, exercises: [] };
+        if (i === restDayIdx) return { dayLabel: d.dayLabel, restDay: false, exercises: days[dayPlanIdx].exercises || [] };
+        return { dayLabel: d.dayLabel, restDay: !!d.restDay, exercises: d.exercises || [] };
+      });
+      const planRef = doc(db, 'gyms', gymId, 'clientPlans', assignment.planId);
+      updateDoc(planRef, { days: newDays, postponedDayIdx: dayPlanIdx, postponedOn: todayDateStr })
+        .catch(e => console.log('Postpone assign error:', e));
+    };
+
+    // Walk forward day-by-day; on each rest day show a dialog, on workout day do full rotation
+    const checkPath = (fromIdx, depth = 0) => {
+      if (depth >= 7) { performRotation(); return; }
+      const nextIdx = (fromIdx + 1) % 7;
+      const nextDay = days[nextIdx];
+      if (!nextDay?.restDay) { performRotation(); return; }
+      // nextIdx is a rest day — ask user
+      const restDate = getDateForPlanIdx(nextIdx);
+      const restDayName = planIdxToName(nextIdx);
+      Alert.alert(
+        'Rest Day',
+        `${restDayName}, ${formatDate(restDate)} is a rest day.\nAssign your workout here or skip to rotate the cycle?`,
+        [
+          { text: `Assign to ${restDayName}`, onPress: () => assignToRestDay(nextIdx) },
+          { text: 'Skip (Rotate Cycle)', style: 'cancel', onPress: () => checkPath(nextIdx, depth + 1) },
+        ]
+      );
+    };
+
+    checkPath(dayPlanIdx);
+  };
+
   // The workout actually being logged — prefer the explicitly chosen day, else today's plan day
   const activeWorkout = loggingWorkout ?? todayWorkout;
 
@@ -1246,18 +1331,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   setView('logging');
                 };
                 return (
-                  <TouchableOpacity
-                    style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
-                    onPress={handleStartSelectedDay}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons
-                        name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'}
-                        size={16} color="#fff" />
-                      <Text style={wk.startBtnTxt}>
-                        {workoutTimer?.completed ? 'View Completed' : 'Start Workout'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                      onPress={handleStartSelectedDay}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons
+                          name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'}
+                          size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>
+                          {workoutTimer?.completed ? 'View Completed' : 'Start Workout'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
+                      <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(selectedDayIdx)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="calendar-outline" size={15} color={C.amber} />
+                          <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 );
               })()}
             </>
@@ -1324,6 +1419,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   </Text>
                 </View>
               </TouchableOpacity>
+              {!workoutTimer?.running && !workoutTimer?.completed && (
+                <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(todayPlanIdx)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="calendar-outline" size={15} color={C.amber} />
+                    <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </>
           ) : todayWorkout?.isRestDay ? (
             <View style={{ alignItems: 'center', padding: 40 }}>
@@ -1362,6 +1465,8 @@ const wk = StyleSheet.create({
   exDetail: { fontSize: 12, color: C.mid, marginTop: 2 },
   startBtn: { backgroundColor: C.primary, borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 8 },
   startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  postponeBtn: { borderWidth: 1.5, borderColor: C.amber, borderRadius: 14, padding: 14, alignItems: 'center', marginTop: 10 },
+  postponeBtnTxt: { color: C.amber, fontWeight: '600', fontSize: 14 },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
@@ -3324,10 +3429,13 @@ export default function App() {
             // Build week plan from plan days (with custom dayLabel)
             const dayAbbr = { 'Sunday': 'Sun', 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat' };
             if (plan.days?.length) {
-              const wp = plan.days.map(d => ({
+              const todayPlanIdxForWeek = (new Date().getDay() + 6) % 7;
+              const todayDateStrForWeek = new Date().toISOString().split('T')[0];
+              const postponedTodayForWeek = plan.postponedOn === todayDateStrForWeek && plan.postponedDayIdx === todayPlanIdxForWeek;
+              const wp = plan.days.map((d, i) => ({
                 day: dayAbbr[d.dayLabel] || d.dayLabel?.slice(0, 3) || '?',
                 label: d.dayLabel || '',
-                rest: !!d.restDay,
+                rest: !!d.restDay || (postponedTodayForWeek && i === todayPlanIdxForWeek),
                 exerciseCount: d.exercises?.length || 0,
               }));
               setPlanWeek(wp);
@@ -3339,7 +3447,12 @@ export default function App() {
             const todayDay = plan.days?.[todayPlanIdx];
             const todayLabel = todayDay?.dayLabel ||
               ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
-            if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
+            // If the user postponed today's workout, treat it as a rest day for the rest of the day
+            const todayDateStr = new Date().toISOString().split('T')[0];
+            const postponedToday = plan.postponedOn === todayDateStr && plan.postponedDayIdx === todayPlanIdx;
+            if (postponedToday) {
+              setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
+            } else if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
               const exercises = todayDay.exercises.map(ex => ({
                 id: ex.id || ex.name,
                 name: ex.name,
