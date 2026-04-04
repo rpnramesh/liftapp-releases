@@ -7,7 +7,7 @@
 //   3. Library workouts loaded fresh every time modal opens
 // ─────────────────────────────────────────────────────────────────────────────
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, deleteField, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -217,6 +217,9 @@ export default function CreatePlanScreen({ navigation, route }: Props) {
       });
 
       await setDoc(planRef, planData, { merge: true });
+      // Clear any member-set postponement so the freshly assigned/updated plan
+      // shows immediately instead of staying as a rest day.
+      await updateDoc(planRef, { postponedOn: deleteField(), postponedDayIdx: deleteField() }).catch(() => {});
 
       // Update assignment record
       await setDoc(doc(db, 'gyms', gymId, 'assignments', clientId), clean({
