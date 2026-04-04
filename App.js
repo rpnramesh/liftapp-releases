@@ -1052,7 +1052,7 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
+function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging, onWorkoutFinish, onViewHistory }) {
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
@@ -1528,13 +1528,29 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* Plan header */}
         {fullPlan?.name && (
           <View style={{ marginBottom: 4 }}>
-            <Text style={g.pageTitle}>{fullPlan.name}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <Text style={[g.pageTitle, { flex: 1 }]}>{fullPlan.name}</Text>
+              {onViewHistory && !isLogging && (
+                <TouchableOpacity onPress={onViewHistory} style={{ padding: 6, marginTop: 6 }}>
+                  <Ionicons name="time-outline" size={22} color={C.primary} />
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={{ fontSize: 13, color: C.mid, marginTop: -4, marginBottom: 8 }}>
               {fullPlan.days?.length || 0} day plan · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
             </Text>
           </View>
         )}
-        {!fullPlan?.name && <Text style={g.pageTitle}>Workouts</Text>}
+        {!fullPlan?.name && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[g.pageTitle, { flex: 1 }]}>Workouts</Text>
+            {onViewHistory && !isLogging && (
+              <TouchableOpacity onPress={onViewHistory} style={{ padding: 6 }}>
+                <Ionicons name="time-outline" size={22} color={C.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Weekly Plan - tappable day cards */}
         {(planWeek || assignment?.weekPlan) && (
@@ -1912,6 +1928,34 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 <Ionicons name="trophy-outline" size={36} color={C.green} />
                 <Text style={lv.finishTitle}>Workout Complete!</Text>
                 <Text style={lv.finishSub}>Great job, {memberName}!{'\n'}Total time: {formatElapsed(elapsed)}</Text>
+                {onWorkoutFinish && (
+                  <TouchableOpacity
+                    style={{ backgroundColor: C.green, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 16, width: '100%', alignItems: 'center' }}
+                    onPress={() => onWorkoutFinish({
+                      planName: activeWorkout?.name || '',
+                      dayLabel: activeWorkout?.dayLabel || '',
+                      durationSeconds: elapsed,
+                      exerciseCount: logExercises.length,
+                      exercises: logExercises.map(ex => ({
+                        exerciseName: ex.name,
+                        muscleGroup: ex.muscleGroup || '',
+                        targetSets: ex.sets,
+                        targetReps: ex.reps,
+                        actualSets: ex.sets,
+                        actualReps: String(ex.reps),
+                        weight: parseFloat(workoutSetWeights[`${ex.id}_1`] || '0'),
+                      })),
+                    })}>
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>View Summary →</Text>
+                  </TouchableOpacity>
+                )}
+                {onViewHistory && (
+                  <TouchableOpacity
+                    style={{ borderWidth: 1, borderColor: C.green, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 11, marginTop: 10, width: '100%', alignItems: 'center' }}
+                    onPress={onViewHistory}>
+                    <Text style={{ color: C.green, fontWeight: '600', fontSize: 14 }}>View History</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </KeyboardAvoidingView>
@@ -3824,6 +3868,228 @@ const g = StyleSheet.create({
   sec: { fontSize: 13, fontWeight: '700', color: C.mid, marginTop: 20, marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' },
 });
 
+// ── WORKOUT FINISH SCREEN ─────────────────────────────────────────────────────
+function WorkoutFinishScreen({ data, memberName, onBack, onViewHistory }) {
+  const muscles = [...new Set(
+    (data?.exercises || []).map(e => e.muscleGroup).filter(Boolean)
+  )];
+  const formatDuration = (secs) => {
+    const m = Math.floor((secs || 0) / 60);
+    const s = (secs || 0) % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s || 0}s`;
+  };
+  const totalSets = (data?.exercises || []).reduce((acc, ex) => acc + (ex.targetSets || ex.actualSets || 0), 0);
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 24, alignItems: 'center', paddingBottom: 48 }}>
+        <View style={wf.trophy}>
+          <Ionicons name="trophy" size={52} color={C.green} />
+        </View>
+        <Text style={wf.title}>Workout Complete!</Text>
+        <Text style={wf.sub}>Great work, {memberName || 'there'}!</Text>
+        {data?.planName ? (
+          <Text style={wf.planName}>{data.planName}{data.dayLabel ? ` · ${data.dayLabel}` : ''}</Text>
+        ) : null}
+        <View style={wf.statsRow}>
+          <View style={wf.statBox}>
+            <Ionicons name="time-outline" size={22} color={C.primary} />
+            <Text style={wf.statVal}>{formatDuration(data?.durationSeconds)}</Text>
+            <Text style={wf.statLbl}>Duration</Text>
+          </View>
+          <View style={wf.statBox}>
+            <Ionicons name="barbell-outline" size={22} color={C.primary} />
+            <Text style={wf.statVal}>{data?.exerciseCount || (data?.exercises?.length || 0)}</Text>
+            <Text style={wf.statLbl}>Exercises</Text>
+          </View>
+          <View style={wf.statBox}>
+            <Ionicons name="checkmark-circle-outline" size={22} color={C.green} />
+            <Text style={wf.statVal}>{totalSets}</Text>
+            <Text style={wf.statLbl}>Sets Done</Text>
+          </View>
+        </View>
+        {muscles.length > 0 && (
+          <View style={wf.musclesCard}>
+            <Text style={wf.musclesTitle}>Muscles Worked</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+              {muscles.map(m => (
+                <View key={m} style={wf.muscleChip}>
+                  <Text style={wf.muscleChipTxt}>{m}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+        {(data?.exercises || []).length > 0 && (
+          <View style={wf.breakdownCard}>
+            <Text style={[g.sec, { marginTop: 0, marginBottom: 12 }]}>Session Breakdown</Text>
+            {(data.exercises).map((ex, i) => (
+              <View key={i} style={[wf.exRow, i < data.exercises.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.light }]}>
+                <View style={wf.exCheck}><Text style={{ color: '#fff', fontSize: 11 }}>✓</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={wf.exName}>{ex.exerciseName || ex.name}</Text>
+                  <Text style={wf.exMeta}>
+                    {ex.actualSets || ex.targetSets} sets × {ex.actualReps || ex.targetReps} reps
+                    {ex.weight > 0 ? ` · ${ex.weight} kg` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+        <TouchableOpacity style={wf.histBtn} onPress={onViewHistory}>
+          <Ionicons name="list-outline" size={18} color={C.primary} />
+          <Text style={wf.histBtnTxt}>View Full History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={wf.doneBtn} onPress={onBack}>
+          <Text style={wf.doneBtnTxt}>Back to Workouts</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const wf = StyleSheet.create({
+  trophy: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', marginBottom: 20, marginTop: 12 },
+  title: { fontSize: 28, fontWeight: '800', color: C.dark, marginBottom: 6 },
+  sub: { fontSize: 16, color: C.mid, marginBottom: 8 },
+  planName: { fontSize: 13, color: C.primary, fontWeight: '600', marginBottom: 24, textAlign: 'center' },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, width: '100%' },
+  statBox: { flex: 1, backgroundColor: C.card, borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: C.light },
+  statVal: { fontSize: 20, fontWeight: '800', color: C.dark, marginTop: 6 },
+  statLbl: { fontSize: 11, color: C.mid, marginTop: 2, fontWeight: '500' },
+  musclesCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, width: '100%', marginBottom: 16, borderWidth: 1, borderColor: C.light },
+  musclesTitle: { fontSize: 13, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
+  muscleChip: { backgroundColor: C.blue2, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  muscleChipTxt: { fontSize: 12, fontWeight: '600', color: C.primary },
+  breakdownCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, width: '100%', marginBottom: 20, borderWidth: 1, borderColor: C.light },
+  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  exCheck: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
+  exName: { fontSize: 14, fontWeight: '600', color: C.dark },
+  exMeta: { fontSize: 12, color: C.mid, marginTop: 2 },
+  histBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24, width: '100%', justifyContent: 'center', marginBottom: 12 },
+  histBtnTxt: { color: C.primary, fontWeight: '700', fontSize: 15 },
+  doneBtn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, width: '100%', alignItems: 'center' },
+  doneBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
+});
+
+// ── WORKOUT HISTORY SCREEN ─────────────────────────────────────────────────────
+function WorkoutHistoryScreen({ member, memberId, onBack }) {
+  const gymOrTrainer = member?.gymId || member?.trainerId;
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    if (!gymOrTrainer || !memberId) { setLoading(false); return; }
+    const { collection: col, query: qFn, where: whr, orderBy, getDocs } = require('firebase/firestore');
+    const { db: fdb } = require('./shared/firebase/config');
+    const qr = qFn(
+      col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'),
+      whr('memberId', '==', memberId),
+      whr('status', '==', 'completed'),
+      orderBy('completedAt', 'desc')
+    );
+    getDocs(qr).then(snap => {
+      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [gymOrTrainer, memberId]);
+
+  const formatDate = (ts) => {
+    if (!ts) return '';
+    return new Date(ts).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const formatDur = (secs) => {
+    if (!secs) return '—';
+    const m = Math.floor(secs / 60);
+    return m > 0 ? `${m} min` : `${secs}s`;
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <View style={wh.header}>
+        <TouchableOpacity onPress={onBack}>
+          <Text style={{ color: C.primary, fontSize: 15 }}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={wh.headerTitle}>Workout History</Text>
+        <View style={{ width: 50 }} />
+      </View>
+      <ScrollView style={{ padding: 16 }}>
+        {loading && <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />}
+        {!loading && logs.length === 0 && (
+          <View style={{ alignItems: 'center', marginTop: 60 }}>
+            <Ionicons name="barbell-outline" size={48} color={C.light} />
+            <Text style={{ fontSize: 16, color: C.mid, marginTop: 12 }}>No workouts logged yet.</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginTop: 4 }}>Finish your first workout to see it here!</Text>
+          </View>
+        )}
+        {logs.map(log => {
+          const isOpen = expanded === log.id;
+          const exercises = log.completedExercises || log.exerciseLogs || [];
+          const exCount = exercises.length;
+          return (
+            <TouchableOpacity
+              key={log.id}
+              style={[wh.card, isOpen && wh.cardOpen]}
+              onPress={() => setExpanded(isOpen ? null : log.id)}
+              activeOpacity={0.8}
+            >
+              <View style={wh.cardHeader}>
+                <View style={wh.greenDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={wh.cardTitle}>{log.planName || 'Workout'}{log.dayLabel ? ` · ${log.dayLabel}` : ''}</Text>
+                  <Text style={wh.cardDate}>{formatDate(log.completedAt)}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                  <Text style={wh.cardDur}>{formatDur(log.durationSeconds)}</Text>
+                  <Text style={{ fontSize: 11, color: C.mid }}>{exCount} ex</Text>
+                </View>
+                <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.mid} style={{ marginLeft: 4 }} />
+              </View>
+              {isOpen && exercises.length > 0 && (
+                <View style={wh.exList}>
+                  {exercises.map((ex, i) => (
+                    <View key={i} style={wh.exRow}>
+                      <View style={wh.exBadge}><Text style={wh.exBadgeTxt}>{i + 1}</Text></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={wh.exName}>{ex.exerciseName || ex.name}</Text>
+                        <Text style={wh.exMeta}>
+                          {(ex.targetSets || ex.actualSets || (ex.sets?.length))} sets × {ex.targetReps || ex.actualReps} reps
+                          {ex.weight > 0 ? ` · ${ex.weight} kg` : ''}
+                          {ex.muscleGroup ? ` · ${ex.muscleGroup}` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const wh = StyleSheet.create({
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light, backgroundColor: C.card },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: C.dark },
+  card: { backgroundColor: C.card, borderRadius: 14, marginBottom: 12, padding: 16, borderWidth: 1, borderColor: C.light, elevation: 1 },
+  cardOpen: { borderColor: C.primary },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  greenDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.green },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
+  cardDate: { fontSize: 12, color: C.mid, marginTop: 2 },
+  cardDur: { fontSize: 14, fontWeight: '700', color: C.primary },
+  exList: { borderTopWidth: 1, borderTopColor: C.light, marginTop: 12, paddingTop: 12, gap: 8 },
+  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  exBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: C.blue2, alignItems: 'center', justifyContent: 'center' },
+  exBadgeTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
+  exName: { fontSize: 14, fontWeight: '600', color: C.dark },
+  exMeta: { fontSize: 11, color: C.mid, marginTop: 1 },
+});
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('splash');
@@ -3846,6 +4112,7 @@ export default function App() {
   const [workoutSetWeights, setWorkoutSetWeights] = useState({});
   const [workoutRestEndTimes, setWorkoutRestEndTimes] = useState({});
   const [autoStartWorkout, setAutoStartWorkout] = useState(false);
+  const [workoutFinishData, setWorkoutFinishData] = useState(null);
   const timerRef = useRef(null);
   const planUnsubRef = useRef(null); // nested plan onSnapshot cleanup
 
@@ -4135,6 +4402,21 @@ export default function App() {
   if (screen === 'trainerChat') return (
     <TrainerChatScreen member={member} onBack={() => setScreen('main')} />
   );
+  if (screen === 'workoutFinish') return (
+    <WorkoutFinishScreen
+      data={workoutFinishData}
+      memberName={member?.name || 'there'}
+      onBack={() => { setScreen('main'); setTab('Workouts'); }}
+      onViewHistory={() => setScreen('workoutHistory')}
+    />
+  );
+  if (screen === 'workoutHistory') return (
+    <WorkoutHistoryScreen
+      member={member}
+      memberId={uid}
+      onBack={() => setScreen('main')}
+    />
+  );
 
   const tabs = [
     { name: 'Home', icon: 'home', iconOutline: 'home-outline' },
@@ -4188,6 +4470,8 @@ export default function App() {
             setRestEndTimes={setWorkoutRestEndTimes}
             autoStartLogging={autoStartWorkout}
             setAutoStartLogging={setAutoStartWorkout}
+            onWorkoutFinish={(data) => { setWorkoutFinishData(data); setScreen('workoutFinish'); }}
+            onViewHistory={() => setScreen('workoutHistory')}
           />
         );
       case 'Progress':
