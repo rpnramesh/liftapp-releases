@@ -10,6 +10,7 @@ import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Animated,
     AppState,
     Dimensions,
@@ -1052,48 +1053,217 @@ const lv = StyleSheet.create({
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
 function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
-  const [view, setView] = useState('overview'); // 'overview' | 'logging'
+  // ── View state ──────────────────────────────────────────────────────────────
+  const [isLogging, setIsLogging] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
-  // loggingWorkout: workout being logged (may differ from today's plan workout)
-  // Keeping this local avoids overwriting App-level todayWorkout with a non-today day
+  // loggingWorkout: set when starting a non-today day to avoid overwriting todayWorkout
   const [loggingWorkout, setLoggingWorkout] = useState(null);
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // ── Inline logging state ────────────────────────────────────────────────────
+  const [expanded, setExpanded] = useState(null);
+  const [localSetWeights, setLocalSetWeights] = useState({});
+  const [lastWeights, setLastWeights] = useState({});
+  const [restTimers, setRestTimers] = useState({});
+  const [isPaused, setIsPaused] = useState(false);
+
+  // ── Refs ────────────────────────────────────────────────────────────────────
+  const tickRef = useRef(null);
+  const vibratedRef = useRef({});
+  const notifIdRef = useRef(null);
+  const activeLogRef = useRef(null);
+  const pausedAtRef = useRef(null);
+  const pausedEndTimesRef = useRef(null);
+
+  // ── Day helpers ─────────────────────────────────────────────────────────────
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const todayDay = dayNames[new Date().getDay()];
   const todayFullDay = fullDayNames[new Date().getDay()];
-  // Plan days are always Mon=0...Sun=6; JS getDay() is Sun=0 Mon=1 ... → (getDay()+6)%7
+  // Plan days: Mon=0…Sun=6; JS getDay(): Sun=0,Mon=1… → (getDay()+6)%7
   const todayPlanIdx = (new Date().getDay() + 6) % 7;
 
-  // Auto-launch logging view when navigated from dashboard "Start Workout" button
+  // ── Auto-launch inline logging from dashboard "Start Workout" button ──────────
   useEffect(() => {
-    if (autoStartLogging && todayWorkout && !todayWorkout.isRestDay && view === 'overview') {
+    if (autoStartLogging && todayWorkout && !todayWorkout.isRestDay && !isLogging) {
       if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
-      setView('logging');
+      setIsLogging(true);
       if (setAutoStartLogging) setAutoStartLogging(false);
     }
   }, [autoStartLogging, todayWorkout]);
 
-  // Build selected day's exercise list from fullPlan
+  // ── Notification channel setup ───────────────────────────────────────────────
+  useEffect(() => {
+    const setup = async () => {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('rest-timer', {
+          name: 'Rest Timer',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 500, 500, 500],
+          sound: null,
+          bypassDnd: true,
+        });
+      }
+      await Notifications.requestPermissionsAsync();
+    };
+    setup().catch(() => {});
+    return () => {
+      if (notifIdRef.current) {
+        Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+        notifIdRef.current = null;
+      }
+    };
+  }, []);
+
+  // ── Schedule/cancel background rest-complete notification ────────────────────
+  useEffect(() => {
+    if (!isLogging || isPaused) return;
+    const entries = Object.entries(restEndTimes || {});
+    if (entries.length === 0) {
+      if (notifIdRef.current) {
+        Notifications.cancelScheduledNotificationAsync(notifIdRef.current).catch(() => {});
+        notifIdRef.current = null;
+      }
+      return;
+    }
+    const [, endTime] = entries[0];
+    const secsLeft = Math.ceil((endTime - Date.now()) / 1000);
+    if (secsLeft <= 0) return;
+    const prev = notifIdRef.current;
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title: '💪 Rest Complete!',
+        body: 'Time to start your next set!',
+        sound: false,
+        vibrate: [0, 500, 500, 500],
+        channelId: 'rest-timer',
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(endTime),
+      },
+    }).then(id => {
+      notifIdRef.current = id;
+      if (prev) Notifications.cancelScheduledNotificationAsync(prev).catch(() => {});
+    }).catch(() => {});
+  }, [restEndTimes, isLogging, isPaused]);
+
+  // ── Tick: recompute display timers every 500ms while logging ─────────────────
+  useEffect(() => {
+    if (!isLogging) {
+      clearInterval(tickRef.current);
+      return;
+    }
+    const compute = () => {
+      if (isPaused) return;
+      const now = Date.now();
+      const active = restEndTimes || {};
+      const newTimers = {};
+      for (const [k, end] of Object.entries(active)) {
+        const remaining = Math.max(0, Math.ceil((end - now) / 1000));
+        newTimers[k] = remaining;
+        if (remaining === 0 && !vibratedRef.current[k]) {
+          vibratedRef.current[k] = true;
+          Vibration.vibrate([0, 500, 500, 500]);
+        }
+      }
+      setRestTimers(newTimers);
+    };
+    compute();
+    tickRef.current = setInterval(compute, 500);
+    const appSub = AppState.addEventListener('change', state => {
+      if (state === 'active') compute();
+    });
+    return () => {
+      clearInterval(tickRef.current);
+      appSub.remove();
+    };
+  }, [isLogging, restEndTimes, isPaused]);
+
+  // ── Load last weights from AsyncStorage when logging starts ──────────────────
+  useEffect(() => {
+    if (!isLogging) return;
+    const exs = (loggingWorkout ?? todayWorkout)?.exercises || [];
+    const load = async () => {
+      const stored = {};
+      for (const ex of exs) {
+        for (let s = 1; s <= ex.sets; s++) {
+          try {
+            const val = await AsyncStorage.getItem(`lift_w_${ex.id}_s${s}`);
+            if (val) stored[`${ex.id}_${s}`] = val;
+          } catch (_) {}
+        }
+      }
+      setLastWeights(stored);
+    };
+    load();
+    setLocalSetWeights(workoutSetWeights || {});
+  }, [isLogging]);
+
+  // ── Create incomplete Firestore log when logging starts ──────────────────────
+  useEffect(() => {
+    if (!isLogging) return;
+    const gymOrTrainer = member?.gymId || member?.trainerId;
+    const memberId = member?.id;
+    if (!gymOrTrainer || !memberId || workoutTimer?.completed) return;
+    const activeWorkout = loggingWorkout ?? todayWorkout;
+    const exs = activeWorkout?.exercises || [];
+    (async () => {
+      try {
+        const { collection: col, doc: docFn, setDoc: setDocFn } = require('firebase/firestore');
+        const { db: fdb } = require('./shared/firebase/config');
+        const activeWorkoutLogId = activeWorkoutLog?.id;
+        if (activeWorkoutLogId) {
+          activeLogRef.current = docFn(fdb, 'gyms', gymOrTrainer, 'workoutLogs', activeWorkoutLogId);
+        } else {
+          const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+          activeLogRef.current = logRef;
+          await setDocFn(logRef, {
+            id: logRef.id,
+            memberId,
+            memberName: member?.name || '',
+            gymId: member?.gymId || null,
+            planId: activeWorkout?.id || '',
+            planName: activeWorkout?.name || '',
+            dayLabel: activeWorkout?.dayLabel || '',
+            status: 'incomplete',
+            completedExercises: exs.map(ex => ({
+              exerciseId: ex.id,
+              exerciseName: ex.name,
+              muscleGroup: ex.muscleGroup || 'Other',
+              targetSets: ex.sets,
+              targetReps: ex.reps,
+              actualSets: ex.sets,
+              actualReps: String(ex.reps),
+              weight: 0,
+              restSeconds: ex.rest || 60,
+              completed: false,
+              notes: ex.note || '',
+            })),
+            startedAt: Date.now(),
+            startedBy: 'member',
+            loggedAt: new Date().toISOString(),
+            completedAt: null,
+            updatedAt: Date.now(),
+          });
+        }
+      } catch (e) { console.log('Create incomplete log error:', e); }
+    })();
+  }, [isLogging]);
+
+  // ── Selected day helper ──────────────────────────────────────────────────────
   const getSelectedDayData = () => {
     if (selectedDayIdx === null || !fullPlan?.days) return null;
-    const day = fullPlan.days[selectedDayIdx];
-    if (!day) return null;
-    return day;
+    return fullPlan.days[selectedDayIdx] || null;
   };
   const selectedDay = getSelectedDayData();
 
-  // When a day card is tapped, check if it's today → clear selection; otherwise show that day
   const handleDayPress = (idx) => {
     if (idx === todayPlanIdx) {
-      setSelectedDayIdx(null); // back to today view
+      setSelectedDayIdx(null);
     } else {
       setSelectedDayIdx(idx);
     }
   };
 
-  // Postpone a workout day: rotates the cycle so the postponed workout starts next Monday.
-  // If the day immediately after the postponed day is a rest day, offers to assign there instead.
+  // ── Postpone handler ─────────────────────────────────────────────────────────
   const handlePostpone = (dayPlanIdx) => {
     if (!fullPlan?.days || !assignment?.planId) return;
     const gymId = member?.gymId || member?.trainerId;
@@ -1106,7 +1276,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     const today = new Date();
     const todayDateStr = today.toISOString().split('T')[0];
 
-    // Compute the calendar date for a given planIdx (Mon=0 … Sun=6), relative to today
     const getDateForPlanIdx = (idx) => {
       const diff = (idx - todayPlanIdx + 7) % 7;
       const d = new Date(today);
@@ -1114,20 +1283,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       return d;
     };
     const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const formatDate = (d) => `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
-    // planIdx 0=Mon … 6=Sun → JS getDay() value: (planIdx+1)%7
+    const formatDateLocal = (d) => `${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
     const FULL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const planIdxToName = (idx) => FULL_DAY_NAMES[(idx + 1) % 7];
 
-    // Workout slot indices (non-rest days), in plan order Mon=0 … Sun=6
     const workoutSlotIndices = days.map((_, i) => i).filter(i => !days[i].restDay);
     const N = workoutSlotIndices.length;
     if (N === 0) return;
     const postponedWorkoutPos = workoutSlotIndices.indexOf(dayPlanIdx);
-    if (postponedWorkoutPos === -1) return; // already a rest day
+    if (postponedWorkoutPos === -1) return;
 
-    // Full cycle rotation: new_workout[slot_i] = old_workout[(postponedWorkoutPos + slot_i) % N]
-    // Rest days stay in place; only workout slot exercises rotate.
     const performRotation = () => {
       const newDays = days.map((d, i) => {
         if (d.restDay) return { dayLabel: d.dayLabel, restDay: true, exercises: [] };
@@ -1143,7 +1308,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       Alert.alert('Workout Postponed ✓', 'Your cycle has been rotated. The updated schedule takes effect from next week.');
     };
 
-    // Simple swap: postponed day → rest, target rest day → gets postponed day's workout
     const assignToRestDay = (restDayIdx) => {
       const newDays = days.map((d, i) => {
         if (i === dayPlanIdx) return { dayLabel: d.dayLabel, restDay: true, exercises: [] };
@@ -1155,18 +1319,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         .catch(e => console.log('Postpone assign error:', e));
     };
 
-    // Walk forward day-by-day; on each rest day show a dialog, on workout day do full rotation
     const checkPath = (fromIdx, depth = 0) => {
       if (depth >= 7) { performRotation(); return; }
       const nextIdx = (fromIdx + 1) % 7;
       const nextDay = days[nextIdx];
       if (!nextDay?.restDay) { performRotation(); return; }
-      // nextIdx is a rest day — ask user
       const restDate = getDateForPlanIdx(nextIdx);
       const restDayName = planIdxToName(nextIdx);
       Alert.alert(
         'Rest Day',
-        `${restDayName}, ${formatDate(restDate)} is a rest day.\nAssign your workout here or skip to rotate the cycle?`,
+        `${restDayName}, ${formatDateLocal(restDate)} is a rest day.\nAssign your workout here or skip to rotate the cycle?`,
         [
           { text: `Assign to ${restDayName}`, onPress: () => assignToRestDay(nextIdx) },
           { text: 'Skip (Rotate Cycle)', style: 'cancel', onPress: () => checkPath(nextIdx, depth + 1) },
@@ -1177,171 +1339,304 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     checkPath(dayPlanIdx);
   };
 
-  // The workout actually being logged — prefer the explicitly chosen day, else today's plan day
+  // ── Inline logging helpers ───────────────────────────────────────────────────
   const activeWorkout = loggingWorkout ?? todayWorkout;
+  const logExercises = activeWorkout?.exercises || [];
+  const gymOrTrainer = member?.gymId || member?.trainerId;
+  const memberId = member?.id;
+  const memberName = member?.name || 'there';
 
-  if (view === 'logging' && activeWorkout) {
-    return (
-      <LoggingView
-        exercises={activeWorkout.exercises || []}
-        onBack={() => { setView('overview'); setLoggingWorkout(null); }}
-        memberName={member?.name || 'there'}
-        workoutTimer={workoutTimer}
-        stopWorkoutTimer={stopWorkoutTimer}
-        gymId={member?.gymId || member?.trainerId}
-        memberId={member?.id}
-        workoutId={activeWorkout.id}
-        workoutName={activeWorkout.name}
-        todayWorkout={activeWorkout}
-        activeWorkoutLogId={activeWorkoutLog?.id}
-        doneSets={workoutDoneSets}
-        setDoneSetsExternal={setWorkoutDoneSets}
-        setWeightsExternal={workoutSetWeights}
-        setSetWeightsExternal={setWorkoutSetWeights}
-        restEndTimes={restEndTimes}
-        setRestEndTimes={setRestEndTimes}
-      />
+  const allSetsOf = (ex) =>
+    Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => workoutDoneSets[k]);
+  const allDone = logExercises.length > 0 && logExercises.every(allSetsOf);
+  const doneCount = logExercises.filter(ex => allSetsOf(ex)).length;
+  const elapsed = workoutTimer?.elapsed || 0;
+  const elapsedColor = allDone ? C.green : elapsed > 3600 ? C.red : elapsed > 1800 ? C.amber : C.green;
+  const formatRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+  const startRestTimer = (stateKey, secs) => {
+    setRestEndTimes({ [stateKey]: Date.now() + secs * 1000 });
+  };
+
+  const adjustRest = (stateKey, delta) => {
+    setRestEndTimes(prev => {
+      const cur = prev?.[stateKey] ?? Date.now();
+      return { [stateKey]: Math.max(Date.now() + 10000, cur + delta * 1000) };
+    });
+  };
+
+  const handlePauseToggle = () => {
+    if (!isPaused) {
+      pausedAtRef.current = Date.now();
+      pausedEndTimesRef.current = { ...restEndTimes };
+      setIsPaused(true);
+    } else {
+      const pauseDuration = Date.now() - (pausedAtRef.current || Date.now());
+      if (pausedEndTimesRef.current && Object.keys(pausedEndTimesRef.current).length > 0) {
+        const extended = {};
+        for (const [k, endTime] of Object.entries(pausedEndTimesRef.current)) {
+          extended[k] = endTime + pauseDuration;
+        }
+        setRestEndTimes(extended);
+      }
+      pausedAtRef.current = null;
+      pausedEndTimesRef.current = null;
+      setIsPaused(false);
+    }
+  };
+
+  const markSetDone = async (exId, setNo, defaultRest, totalSets) => {
+    const stateKey = `${exId}_${setNo}`;
+    const val = localSetWeights[stateKey];
+    if (val) {
+      try { await AsyncStorage.setItem(`lift_w_${exId}_s${setNo}`, val); } catch (_) {}
+    }
+    const newDone = { ...workoutDoneSets, [stateKey]: true };
+    setWorkoutDoneSets(newDone);
+    vibratedRef.current = {};
+    setRestEndTimes({});
+
+    const allSetsOfThisExDone = Array.from(
+      { length: totalSets }, (_, i) => `${exId}_${i + 1}`
+    ).every(k => newDone[k]);
+    if (!allSetsOfThisExDone) startRestTimer(stateKey, defaultRest || 60);
+
+    const isAllDone = logExercises.every(ex =>
+      Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => newDone[k])
     );
-  }
 
-  return (
-    <ScrollView style={g.screen}>
-      {/* Plan header */}
-      {fullPlan?.name && (
-        <View style={{ marginBottom: 4 }}>
-          <Text style={g.pageTitle}>{fullPlan.name}</Text>
-          <Text style={{ fontSize: 13, color: C.mid, marginTop: -4, marginBottom: 8 }}>
-            {fullPlan.days?.length || 0} day plan · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
-          </Text>
-        </View>
-      )}
-      {!fullPlan?.name && <Text style={g.pageTitle}>Workouts</Text>}
+    const totalDoneCount = Object.values(newDone).filter(Boolean).length;
+    if (totalDoneCount === 1 && gymOrTrainer && memberId) {
+      try {
+        const { doc: docFn, updateDoc: upDoc, getDoc: gdoc } = require('firebase/firestore');
+        const { db: fdb } = require('./shared/firebase/config');
+        const assignRef = docFn(fdb, 'gyms', gymOrTrainer, 'assignments', memberId);
+        const assignSnap = await gdoc(assignRef).catch(() => null);
+        if (assignSnap?.exists() && assignSnap.data()?.planId) {
+          const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
+          const planSnap = await gdoc(planRef).catch(() => null);
+          if (planSnap?.exists()) {
+            const todayIdx = (new Date().getDay() + 6) % 7;
+            const days = (planSnap.data().days ?? []).map((d, i) =>
+              i === todayIdx ? { ...d, startedAt: Date.now() } : d
+            );
+            await upDoc(planRef, { days }).catch(() => {});
+          }
+        }
+      } catch (e) { console.log('startedAt write error:', e); }
+    }
 
-      {/* Weekly Plan - tappable day cards */}
-      {(planWeek || assignment?.weekPlan) && (
-        <>
-          <Text style={g.sec}>This Week</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-            {(planWeek || assignment.weekPlan).map((d, i) => {
-              const isToday = i === todayPlanIdx;
-              const isSelected = selectedDayIdx === i;
-              const isActive = isSelected || (selectedDayIdx === null && isToday);
-              return (
-                <TouchableOpacity
-                  key={i}
-                  style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && d.rest && wk.dayCardRest]}
-                  onPress={() => handleDayPress(i)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[wk.dayName, isActive && { color: '#fff' }]}>{d.day}</Text>
-                  <Text style={[wk.dayLabel, isActive && { color: '#fff' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
-                    {d.rest ? 'Rest' : d.label}
-                  </Text>
-                  {isToday && <View style={wk.todayDot} />}
-                  {d.exerciseCount > 0 && !d.rest && (
-                    <Text style={[{ fontSize: 9, color: C.mid, marginTop: 2 }, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
-                      {d.exerciseCount} ex
-                    </Text>
-                  )}
-                </TouchableOpacity>
+    if (isAllDone) {
+      const curElapsed = workoutTimer?.elapsed || 0;
+      stopWorkoutTimer(curElapsed);
+      if (gymOrTrainer && memberId) {
+        try {
+          const { doc: docFn, updateDoc: upDoc, getDoc: gdoc, collection: col, setDoc: sdoc } = require('firebase/firestore');
+          const { db: fdb } = require('./shared/firebase/config');
+          const assignRef = docFn(fdb, 'gyms', gymOrTrainer, 'assignments', memberId);
+          const assignSnap = await gdoc(assignRef).catch(() => null);
+          if (assignSnap?.exists() && assignSnap.data()?.planId) {
+            const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
+            const planSnap = await gdoc(planRef).catch(() => null);
+            if (planSnap?.exists()) {
+              const todayIdx = (new Date().getDay() + 6) % 7;
+              const days = (planSnap.data().days ?? []).map((d, i) =>
+                i === todayIdx
+                  ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: curElapsed }
+                  : d
               );
-            })}
-          </ScrollView>
-        </>
-      )}
+              await upDoc(planRef, { days }).catch(() => {});
+            }
+          }
+          const completionData = {
+            memberId, memberName,
+            gymId: member?.gymId || null,
+            planId: activeWorkout?.id || '',
+            planName: activeWorkout?.name || '',
+            dayLabel: activeWorkout?.dayLabel || '',
+            status: 'completed',
+            completedExercises: logExercises.map(ex => ({
+              exerciseId: ex.id, exerciseName: ex.name,
+              muscleGroup: ex.muscleGroup || 'Other',
+              targetSets: ex.sets, targetReps: ex.reps,
+              actualSets: ex.sets, actualReps: String(ex.reps),
+              weight: parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
+              restSeconds: ex.rest || 60, completed: true, notes: ex.note || '',
+            })),
+            exerciseLogs: logExercises.map(ex => ({
+              exerciseId: ex.id, exerciseName: ex.name,
+              sets: Array.from({ length: ex.sets }, (_, i) => ({
+                setNo: i + 1, reps: ex.reps,
+                weight: parseFloat(localSetWeights[`${ex.id}_${i + 1}`] || lastWeights[`${ex.id}_${i + 1}`] || '0'),
+                done: true,
+              })),
+            })),
+            durationSeconds: curElapsed,
+            startedAt: Date.now() - (curElapsed * 1000),
+            completedAt: Date.now(),
+            loggedAt: new Date().toISOString(),
+            updatedAt: Date.now(),
+          };
+          if (activeLogRef.current) {
+            await upDoc(activeLogRef.current, completionData).catch(async () => {
+              const fb = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+              await sdoc(fb, { id: fb.id, ...completionData });
+            });
+          } else {
+            const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+            await sdoc(logRef, { id: logRef.id, ...completionData });
+          }
+          await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: Date.now() }).catch(() => {});
+        } catch (e) { console.log('Workout complete write error:', e); }
+      }
+    }
+  };
 
-      {/* Trainer-started workout notification */}
-      {activeWorkoutLog?.startedBy === 'trainer' && activeWorkoutLog.status === 'incomplete' && (
-        <View style={{ backgroundColor: '#DBEAFE', borderRadius: 12, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Ionicons name="person-outline" size={20} color={C.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', color: C.primary }}>Trainer started a workout for you</Text>
-            <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{activeWorkoutLog.dayLabel || activeWorkoutLog.planName} · Tap Start to begin</Text>
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* Sticky workout timer header — visible only while logging */}
+      {isLogging && (
+        <View style={wk.stickyHeader}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={wk.stickyTitle}>Workout Log</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name={allDone ? 'checkmark-circle-outline' : 'time-outline'} size={13} color={elapsedColor} />
+              <Text style={[wk.stickyTimer, { color: elapsedColor }]}>{formatElapsed(elapsed)}</Text>
+            </View>
           </View>
-        </View>
-      )}
-
-      {/* Selected day view (non-today) */}
-      {selectedDayIdx !== null && selectedDay ? (
-        <>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <Text style={g.sec}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
-            <TouchableOpacity onPress={() => setSelectedDayIdx(null)}>
-              <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600' }}>← Back to today</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={wk.stickyCount}>{doneCount}/{logExercises.length} done</Text>
+            <TouchableOpacity onPress={handlePauseToggle} style={wk.pauseBtn}>
+              <Ionicons name={isPaused ? 'play' : 'pause-circle-outline'} size={28} color={C.primary} />
             </TouchableOpacity>
           </View>
-          {selectedDay.restDay ? (
-            <View style={{ alignItems: 'center', padding: 40 }}>
-              <Ionicons name="moon-outline" size={40} color={C.mid} />
-              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
-              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress</Text>
-            </View>
-          ) : selectedDay.exercises?.length > 0 ? (
-            <>
-              <Text style={{ fontSize: 13, color: C.mid, marginBottom: 10 }}>
-                {selectedDay.exercises.length} exercises
-              </Text>
-              {selectedDay.exercises.map((ex, idx) => (
-                <View key={ex.id || idx} style={wk.exCardStatic}>
-                  <View style={wk.exIcon}>
-                    <Ionicons name="barbell-outline" size={20} color={C.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={wk.exName}>{ex.name}</Text>
-                    <Text style={wk.exDetail}>
-                      {ex.mainSets || 3} sets × {ex.mainReps || 10} reps · {ex.mainRestSeconds || 60}s rest
-                    </Text>
-                    {ex.muscleGroup ? (
-                      <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text>
-                    ) : null}
-                    {ex.notes ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                        <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
-                        <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
-              {/* Start Workout button for this day */}
-              {(() => {
-                // Any non-rest, non-empty day can be started
-                const handleStartSelectedDay = () => {
-                  const exs = selectedDay.exercises.map(ex => ({
-                    id: ex.id || ex.name,
-                    name: ex.name,
-                    sets: ex.mainSets || 3,
-                    reps: ex.mainReps || 10,
-                    rest: ex.mainRestSeconds || 60,
-                    note: ex.notes || '',
-                    muscleGroup: ex.muscleGroup || '',
-                  }));
-                  const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-                  // Store in local state — does NOT overwrite the App-level todayWorkout
-                  // so the dashboard tile always shows today's scheduled workout correctly
-                  setLoggingWorkout({
-                    id: fullPlan?.id || selectedDay.dayLabel,
-                    name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
-                    estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
-                    exercises: exs,
-                    dayLabel: selectedDay.dayLabel || todayFullDay,
-                  });
-                  setSelectedDayIdx(null);
-                  if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
-                  setView('logging');
-                };
+        </View>
+      )}
+
+      <ScrollView style={g.screen}>
+        {/* Plan header */}
+        {fullPlan?.name && (
+          <View style={{ marginBottom: 4 }}>
+            <Text style={g.pageTitle}>{fullPlan.name}</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginTop: -4, marginBottom: 8 }}>
+              {fullPlan.days?.length || 0} day plan · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
+            </Text>
+          </View>
+        )}
+        {!fullPlan?.name && <Text style={g.pageTitle}>Workouts</Text>}
+
+        {/* Weekly Plan - tappable day cards */}
+        {(planWeek || assignment?.weekPlan) && (
+          <>
+            <Text style={g.sec}>This Week</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+              {(planWeek || assignment.weekPlan).map((d, i) => {
+                const isToday = i === todayPlanIdx;
+                const isSelected = selectedDayIdx === i;
+                const isActive = isSelected || (selectedDayIdx === null && isToday);
                 return (
+                  <TouchableOpacity
+                    key={i}
+                    style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && d.rest && wk.dayCardRest]}
+                    onPress={() => handleDayPress(i)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[wk.dayName, isActive && { color: '#fff' }]}>{d.day}</Text>
+                    <Text style={[{ fontSize: 9, color: C.mid, marginTop: 1 }, isActive && { color: 'rgba(255,255,255,0.8)' }]}>{d.date}</Text>
+                    {isToday && <View style={wk.todayDot} />}
+                    <Text style={[wk.dayLabel, isActive && { color: '#fff' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
+                      {d.rest ? 'Rest' : d.label}
+                    </Text>
+                    {d.exerciseCount > 0 && !d.rest && (
+                      <Text style={[{ fontSize: 9, color: C.mid, marginTop: 2 }, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
+                        {d.exerciseCount} ex
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Trainer-started workout notification */}
+        {activeWorkoutLog?.startedBy === 'trainer' && activeWorkoutLog.status === 'incomplete' && (
+          <View style={{ backgroundColor: '#DBEAFE', borderRadius: 12, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="person-outline" size={20} color={C.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.primary }}>Trainer started a workout for you</Text>
+              <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{activeWorkoutLog.dayLabel || activeWorkoutLog.planName} · Tap Start to begin</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Selected day view (non-today) */}
+        {selectedDayIdx !== null && selectedDay ? (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <Text style={g.sec}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
+              <TouchableOpacity onPress={() => setSelectedDayIdx(null)}>
+                <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600' }}>← Back to today</Text>
+              </TouchableOpacity>
+            </View>
+            {selectedDay.restDay ? (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Ionicons name="moon-outline" size={40} color={C.mid} />
+                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
+                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress</Text>
+              </View>
+            ) : selectedDay.exercises?.length > 0 ? (
+              <>
+                <Text style={{ fontSize: 13, color: C.mid, marginBottom: 10 }}>
+                  {selectedDay.exercises.length} exercises
+                </Text>
+                {selectedDay.exercises.map((ex, idx) => (
+                  <View key={ex.id || idx} style={wk.exCardStatic}>
+                    <View style={wk.exIcon}>
+                      <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={wk.exName}>{ex.name}</Text>
+                      <Text style={wk.exDetail}>
+                        {ex.mainSets || 3} sets × {ex.mainReps || 10} reps · {ex.mainRestSeconds || 60}s rest
+                      </Text>
+                      {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text> : null}
+                      {ex.notes ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
+                          <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+                {!isLogging && (
                   <>
                     <TouchableOpacity
                       style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
-                      onPress={handleStartSelectedDay}>
+                      onPress={() => {
+                        const exs = selectedDay.exercises.map(ex => ({
+                          id: ex.id || ex.name, name: ex.name,
+                          sets: ex.mainSets || 3, reps: ex.mainReps || 10,
+                          rest: ex.mainRestSeconds || 60, note: ex.notes || '',
+                          muscleGroup: ex.muscleGroup || '',
+                        }));
+                        const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+                        setLoggingWorkout({
+                          id: fullPlan?.id || selectedDay.dayLabel,
+                          name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
+                          estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
+                          exercises: exs,
+                          dayLabel: selectedDay.dayLabel || todayFullDay,
+                        });
+                        setSelectedDayIdx(null);
+                        if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                        setIsLogging(true);
+                      }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Ionicons
-                          name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'}
-                          size={16} color="#fff" />
-                        <Text style={wk.startBtnTxt}>
-                          {workoutTimer?.completed ? 'View Completed' : 'Start Workout'}
-                        </Text>
+                        <Ionicons name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'} size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>{workoutTimer?.completed ? 'View Completed' : 'Start Workout'}</Text>
                       </View>
                     </TouchableOpacity>
                     {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
@@ -1353,103 +1648,236 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       </TouchableOpacity>
                     )}
                   </>
-                );
-              })()}
-            </>
-          ) : (
-            <View style={{ alignItems: 'center', padding: 40 }}>
-              <Ionicons name="barbell-outline" size={40} color={C.mid} />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: C.dark, marginTop: 12 }}>No exercises assigned</Text>
-            </View>
-          )}
-        </>
-      ) : (
-        /* Today's Workout (default view) */
-        <>
-          {todayWorkout && !todayWorkout.isRestDay ? (
-            <>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <Text style={g.sec}>Today — {todayWorkout.dayLabel || todayWorkout.name}</Text>
-                {workoutTimer?.running && (
-                  <View style={wk.liveChip}>
-                    <View style={wk.liveDot} />
-                    <Text style={wk.liveTxt}>In Progress</Text>
-                  </View>
                 )}
-                {workoutTimer?.completed && (
-                  <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
-                    <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
-                  </View>
-                )}
+              </>
+            ) : (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Ionicons name="barbell-outline" size={40} color={C.mid} />
+                <Text style={{ fontSize: 16, fontWeight: '600', color: C.dark, marginTop: 12 }}>No exercises assigned</Text>
               </View>
-              {todayWorkout.exercises?.map(ex => (
-                <View key={ex.id} style={[wk.exCardStatic, workoutTimer?.running && wk.exCardActive]}>
-                  <View style={wk.exIcon}>
-                    <Ionicons name="barbell-outline" size={20} color={C.primary} />
+            )}
+          </>
+        ) : (
+          /* Today's Workout (default view) */
+          <>
+            {todayWorkout && !todayWorkout.isRestDay ? (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={g.sec}>Today — {todayWorkout.dayLabel || todayWorkout.name}</Text>
+                  {workoutTimer?.running && !isLogging && (
+                    <View style={wk.liveChip}>
+                      <View style={wk.liveDot} />
+                      <Text style={wk.liveTxt}>In Progress</Text>
+                    </View>
+                  )}
+                  {workoutTimer?.completed && (
+                    <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
+                      <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Static exercise list — always shown when not logging */}
+                {!isLogging && todayWorkout.exercises?.map(ex => (
+                  <View key={ex.id} style={wk.exCardStatic}>
+                    <View style={wk.exIcon}>
+                      <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={wk.exName}>{ex.name}</Text>
+                      <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
+                      {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text> : null}
+                      {ex.note ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
+                          <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={wk.exName}>{ex.name}</Text>
-                    <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
-                    {ex.muscleGroup ? (
-                      <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text>
-                    ) : null}
-                    {ex.note ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                        <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
-                        <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                ))}
+
+                {/* Start / Postpone — hidden once logging begins */}
+                {!isLogging && (
+                  <>
+                    <TouchableOpacity
+                      style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                      onPress={() => {
+                        if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                        setIsLogging(true);
+                      }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons
+                          name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
+                          size={16} color="#fff"
+                        />
+                        <Text style={wk.startBtnTxt}>
+                          {workoutTimer?.completed ? 'View Completed' : workoutTimer?.running ? 'Continue Workout' : 'Start Workout'}
+                        </Text>
                       </View>
-                    ) : null}
-                  </View>
+                    </TouchableOpacity>
+                    {!workoutTimer?.running && !workoutTimer?.completed && (
+                      <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(todayPlanIdx)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Ionicons name="calendar-outline" size={15} color={C.amber} />
+                          <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </>
+            ) : todayWorkout?.isRestDay ? (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Ionicons name="moon-outline" size={40} color={C.mid} />
+                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
+                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress. Take it easy today.</Text>
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Ionicons name="barbell-outline" size={40} color={C.mid} />
+                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>No workout yet</Text>
+                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Your trainer will assign a workout plan soon</Text>
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ── Inline workout logging cards ─────────────────────────────────── */}
+        {isLogging && (
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <Text style={[g.sec, { marginTop: 24 }]}>Exercises</Text>
+            {logExercises.map((ex) => {
+              const isOpen = expanded === ex.id;
+              const isDone = allSetsOf(ex);
+              const doneSetsCount = Array.from({ length: ex.sets }, (_, i) => workoutDoneSets[`${ex.id}_${i + 1}`]).filter(Boolean).length;
+              const isInProgress = doneSetsCount > 0 && !isDone;
+              return (
+                <View key={ex.id} style={[lv.exWrap, isDone && lv.exWrapDone, isInProgress && lv.exWrapActive]}>
+                  <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)}>
+                    <View style={[lv.exCheck, isDone && lv.exCheckDone, isInProgress && lv.exCheckActive]}>
+                      <Text style={{ color: isDone ? '#fff' : isInProgress ? C.amber : C.mid }}>{isDone ? '✓' : isInProgress ? '…' : ''}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[lv.exName, isDone && { color: C.mid }]}>{ex.name}</Text>
+                      <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps · Rest {ex.rest}s</Text>
+                      {isInProgress && (
+                        <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700', marginTop: 2 }}>
+                          {doneSetsCount}/{ex.sets} sets done
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={{ color: C.mid, fontSize: 13 }}>{isOpen ? '▲' : '▼'}</Text>
+                  </TouchableOpacity>
+
+                  {isOpen && (
+                    <View style={lv.setsContainer}>
+                      <ExerciseVideo uri={ex.videoUri} exerciseName={ex.name} />
+                      {Array.from({ length: ex.sets }, (_, i) => {
+                        const setNo = i + 1;
+                        const stateKey = `${ex.id}_${setNo}`;
+                        const isDoneSet = workoutDoneSets[stateKey];
+                        const lastW = lastWeights[stateKey];
+                        const restLeft = restTimers[stateKey];
+                        const restColor = restLeft !== undefined
+                          ? (restLeft < 20 ? C.red : restLeft < 40 ? C.amber : C.green)
+                          : C.green;
+                        return (
+                          <View key={setNo}>
+                            <View style={[lv.setRow, isDoneSet && lv.setRowDone]}>
+                              <View style={lv.setNumBadge}>
+                                <Text style={lv.setNumTxt}>S{setNo}</Text>
+                              </View>
+                              <View style={lv.repsBox}>
+                                <Text style={lv.repsVal}>{ex.reps}</Text>
+                                <Text style={lv.repsLbl}>reps</Text>
+                              </View>
+                              <View style={lv.lastBox}>
+                                <Text style={lv.lastVal}>{lastW || '—'}</Text>
+                                <Text style={lv.lastLbl}>last</Text>
+                              </View>
+                              <TextInput
+                                style={[lv.weightInput, isDoneSet && { opacity: 0.5 }]}
+                                placeholder={lastW || '0'}
+                                placeholderTextColor={C.mid}
+                                keyboardType="decimal-pad"
+                                value={localSetWeights[stateKey] || ''}
+                                editable={!isDoneSet}
+                                onChangeText={val => {
+                                  const updated = { ...localSetWeights, [stateKey]: val };
+                                  setLocalSetWeights(updated);
+                                  setWorkoutSetWeights(updated);
+                                }}
+                              />
+                              <Text style={lv.kgLbl}>kg</Text>
+                              {!isDoneSet ? (
+                                <TouchableOpacity
+                                  style={lv.doneBtn}
+                                  onPress={() => markSetDone(ex.id, setNo, ex.rest, ex.sets)}>
+                                  <Text style={lv.doneBtnTxt}>✓ Done</Text>
+                                </TouchableOpacity>
+                              ) : (
+                                <View style={lv.donedTag}><Text style={lv.donedTxt}>✓</Text></View>
+                              )}
+                            </View>
+                            {isDoneSet && restLeft !== undefined && restLeft > 0 && (
+                              <View style={lv.restRow}>
+                                <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, -10)}>
+                                  <Text style={lv.restAdjTxt}>−10s</Text>
+                                </TouchableOpacity>
+                                <View style={[lv.restTimerBox, { borderColor: restColor, backgroundColor: restColor + '15' }]}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                    <Ionicons name="sync-outline" size={14} color={restColor} />
+                                    <Text style={[lv.restTimerTxt, { color: restColor }]}>
+                                      {isPaused ? 'Paused' : `Rest ${formatRest(restLeft)}`}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, 10)}>
+                                  <Text style={lv.restAdjTxt}>+10s</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                            {isDoneSet && restLeft === 0 && (
+                              <View style={lv.restDoneRow}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <Ionicons name="checkmark-circle-outline" size={14} color={C.green} />
+                                  <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
+                                </View>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                      {ex.note ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                          <Ionicons name="chatbubble-outline" size={12} color={C.primary} />
+                          <Text style={lv.trainerNote}>"{ex.note}"</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  )}
                 </View>
-              ))}
-              <TouchableOpacity
-                style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
-                onPress={() => {
-                  if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
-                  setView('logging');
-                }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons
-                    name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text style={wk.startBtnTxt}>
-                    {workoutTimer?.completed ? 'View Completed' : workoutTimer?.running ? 'Continue Workout' : 'Start Workout'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              {!workoutTimer?.running && !workoutTimer?.completed && (
-                <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(todayPlanIdx)}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                    <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            </>
-          ) : todayWorkout?.isRestDay ? (
-            <View style={{ alignItems: 'center', padding: 40 }}>
-              <Ionicons name="moon-outline" size={40} color={C.mid} />
-              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
-              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress. Take it easy today.</Text>
-            </View>
-          ) : (
-            <View style={{ alignItems: 'center', padding: 40 }}>
-              <Ionicons name="barbell-outline" size={40} color={C.mid} />
-              <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>No workout yet</Text>
-              <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Your trainer will assign a workout plan soon</Text>
-            </View>
-          )}
-        </>
-      )}
-      <View style={{ height: 40 }} />
-    </ScrollView>
+              );
+            })}
+            {allDone && (
+              <View style={lv.finishCard}>
+                <Ionicons name="trophy-outline" size={36} color={C.green} />
+                <Text style={lv.finishTitle}>Workout Complete!</Text>
+                <Text style={lv.finishSub}>Great job, {memberName}!{'\n'}Total time: {formatElapsed(elapsed)}</Text>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        )}
+
+        <View style={{ height: 60 }} />
+      </ScrollView>
+    </View>
   );
 }
 
 const wk = StyleSheet.create({
-  dayCard: { backgroundColor: C.card, borderRadius: 12, padding: 12, marginRight: 8, alignItems: 'center', minWidth: 64, borderWidth: 1, borderColor: C.light },
+  dayCard: { backgroundColor: C.card, borderRadius: 12, padding: 12, marginRight: 8, alignItems: 'center', minWidth: 72, borderWidth: 1, borderColor: C.light },
   dayCardActive: { backgroundColor: C.primary, borderColor: C.primary },
   dayCardRest: { opacity: 0.5 },
   dayName: { fontSize: 12, fontWeight: '700', color: C.mid },
@@ -1467,6 +1895,11 @@ const wk = StyleSheet.create({
   startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
   postponeBtn: { borderWidth: 1.5, borderColor: C.amber, borderRadius: 14, padding: 14, alignItems: 'center', marginTop: 10 },
   postponeBtnTxt: { color: C.amber, fontWeight: '600', fontSize: 14 },
+  stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.light },
+  stickyTitle: { fontSize: 12, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
+  stickyTimer: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  stickyCount: { fontSize: 13, fontWeight: '600', color: C.primary },
+  pauseBtn: { padding: 4 },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
@@ -3427,17 +3860,25 @@ export default function App() {
             const plan = planSnap.data();
             setFullPlan(plan); // store full plan for all-days view
             // Build week plan from plan days (with custom dayLabel)
-            const dayAbbr = { 'Sunday': 'Sun', 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat' };
             if (plan.days?.length) {
               const todayPlanIdxForWeek = (new Date().getDay() + 6) % 7;
               const todayDateStrForWeek = new Date().toISOString().split('T')[0];
               const postponedTodayForWeek = plan.postponedOn === todayDateStrForWeek && plan.postponedDayIdx === todayPlanIdxForWeek;
-              const wp = plan.days.map((d, i) => ({
-                day: dayAbbr[d.dayLabel] || d.dayLabel?.slice(0, 3) || '?',
-                label: d.dayLabel || '',
-                rest: !!d.restDay || (postponedTodayForWeek && i === todayPlanIdxForWeek),
-                exerciseCount: d.exercises?.length || 0,
-              }));
+              const PLAN_DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              const todayDate = new Date();
+              const wp = plan.days.map((d, i) => {
+                const diff = (i - todayPlanIdxForWeek + 7) % 7;
+                const cardDate = new Date(todayDate);
+                cardDate.setDate(todayDate.getDate() + diff);
+                return {
+                  day: PLAN_DAY_ABBRS[i] || '?',
+                  date: `${cardDate.getDate()} ${MONTH_SHORT[cardDate.getMonth()]}`,
+                  label: d.dayLabel || '',
+                  rest: !!d.restDay || (postponedTodayForWeek && i === todayPlanIdxForWeek),
+                  exerciseCount: d.exercises?.length || 0,
+                };
+              });
               setPlanWeek(wp);
             }
             // Find today's workout from the plan's days array.
