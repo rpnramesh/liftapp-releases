@@ -1052,7 +1052,7 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
+function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging }) {
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
@@ -1061,6 +1061,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   // ── Inline logging state ────────────────────────────────────────────────────
   const [expanded, setExpanded] = useState(null);
+  const [expandedOverview, setExpandedOverview] = useState(null); // overview card expand
   const [localSetWeights, setLocalSetWeights] = useState({});
   const [lastWeights, setLastWeights] = useState({});
   const [restTimers, setRestTimers] = useState({});
@@ -1255,11 +1256,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   };
   const selectedDay = getSelectedDayData();
 
-  const handleDayPress = (idx) => {
-    if (idx === todayPlanIdx) {
+  const handleDayPress = (displayIdx) => {
+    const item = planWeek?.[displayIdx];
+    if (!item) return;
+    if (item.isToday) {
       setSelectedDayIdx(null);
     } else {
-      setSelectedDayIdx(idx);
+      setSelectedDayIdx(item.planIdx);
     }
   };
 
@@ -1300,7 +1303,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         const sourcePos = (postponedWorkoutPos + workoutPos) % N;
         const sourceIdx = workoutSlotIndices[sourcePos];
         const src = days[sourceIdx];
-        return { dayLabel: d.dayLabel, restDay: false, exercises: src.exercises || [] };
+        return { dayLabel: src.dayLabel || d.dayLabel, restDay: false, exercises: src.exercises || [] };
       });
       const planRef = doc(db, 'gyms', gymId, 'clientPlans', assignment.planId);
       updateDoc(planRef, { days: newDays, postponedDayIdx: dayPlanIdx, postponedOn: todayDateStr })
@@ -1365,12 +1368,18 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     });
   };
 
+  const pausedElapsedRef = useRef(0);
+
   const handlePauseToggle = () => {
     if (!isPaused) {
+      // Capture state before pausing
       pausedAtRef.current = Date.now();
+      pausedElapsedRef.current = workoutTimer?.elapsed || 0;
       pausedEndTimesRef.current = { ...restEndTimes };
       setIsPaused(true);
+      pauseWorkoutTimer();
     } else {
+      // Extend rest end-times by how long we were paused
       const pauseDuration = Date.now() - (pausedAtRef.current || Date.now());
       if (pausedEndTimesRef.current && Object.keys(pausedEndTimesRef.current).length > 0) {
         const extended = {};
@@ -1382,6 +1391,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       pausedAtRef.current = null;
       pausedEndTimesRef.current = null;
       setIsPaused(false);
+      resumeWorkoutTimer(pausedElapsedRef.current);
     }
   };
 
@@ -1532,8 +1542,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             <Text style={g.sec}>This Week</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
               {(planWeek || assignment.weekPlan).map((d, i) => {
-                const isToday = i === todayPlanIdx;
-                const isSelected = selectedDayIdx === i;
+                const isToday = d.isToday ?? (i === todayPlanIdx);
+                const planIdxForDay = d.planIdx ?? i;
+                const isSelected = selectedDayIdx === planIdxForDay;
                 const isActive = isSelected || (selectedDayIdx === null && isToday);
                 return (
                   <TouchableOpacity
@@ -1589,28 +1600,47 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             ) : selectedDay.exercises?.length > 0 ? (
               <>
                 <Text style={{ fontSize: 13, color: C.mid, marginBottom: 10 }}>
-                  {selectedDay.exercises.length} exercises
+                  {selectedDay.exercises.length} exercises · tap to expand
                 </Text>
-                {selectedDay.exercises.map((ex, idx) => (
-                  <View key={ex.id || idx} style={wk.exCardStatic}>
-                    <View style={wk.exIcon}>
-                      <Ionicons name="barbell-outline" size={20} color={C.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={wk.exName}>{ex.name}</Text>
-                      <Text style={wk.exDetail}>
-                        {ex.mainSets || 3} sets × {ex.mainReps || 10} reps · {ex.mainRestSeconds || 60}s rest
-                      </Text>
-                      {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text> : null}
-                      {ex.notes ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
-                          <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
+                {selectedDay.exercises.map((ex, idx) => {
+                  const exKey = ex.id || idx;
+                  const isOpen = expandedOverview === exKey;
+                  const sets = ex.mainSets || 3;
+                  const reps = ex.mainReps || 10;
+                  const rest = ex.mainRestSeconds || 60;
+                  return (
+                    <View key={exKey} style={wk.exCardStatic}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                        onPress={() => setExpandedOverview(isOpen ? null : exKey)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={wk.exIcon}>
+                          <Ionicons name="barbell-outline" size={20} color={C.primary} />
                         </View>
-                      ) : null}
+                        <View style={{ flex: 1 }}>
+                          <Text style={wk.exName}>{ex.name}</Text>
+                          <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>
+                            {sets} sets · {ex.muscleGroup || 'General'}
+                          </Text>
+                        </View>
+                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.mid} />
+                      </TouchableOpacity>
+                      {isOpen && (
+                        <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
+                          <Text style={wk.exDetail}>{sets} sets × {reps} reps · {rest}s rest</Text>
+                          {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary }}>{ex.muscleGroup}</Text> : null}
+                          {ex.notes ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
+                              <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      )}
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
                 {!isLogging && (
                   <>
                     <TouchableOpacity
@@ -1677,25 +1707,42 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   )}
                 </View>
 
-                {/* Static exercise list — always shown when not logging */}
-                {!isLogging && todayWorkout.exercises?.map(ex => (
-                  <View key={ex.id} style={wk.exCardStatic}>
-                    <View style={wk.exIcon}>
-                      <Ionicons name="barbell-outline" size={20} color={C.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={wk.exName}>{ex.name}</Text>
-                      <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
-                      {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary, marginTop: 2 }}>{ex.muscleGroup}</Text> : null}
-                      {ex.note ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
-                          <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                {/* Expandable exercise list — shown when not logging */}
+                {!isLogging && todayWorkout.exercises?.map(ex => {
+                  const isOpen = expandedOverview === ex.id;
+                  return (
+                    <View key={ex.id} style={wk.exCardStatic}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                        onPress={() => setExpandedOverview(isOpen ? null : ex.id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={wk.exIcon}>
+                          <Ionicons name="barbell-outline" size={20} color={C.primary} />
                         </View>
-                      ) : null}
+                        <View style={{ flex: 1 }}>
+                          <Text style={wk.exName}>{ex.name}</Text>
+                          <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>
+                            {ex.sets} sets · {ex.muscleGroup || 'General'}
+                          </Text>
+                        </View>
+                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.mid} />
+                      </TouchableOpacity>
+                      {isOpen && (
+                        <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
+                          <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
+                          {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary }}>{ex.muscleGroup}</Text> : null}
+                          {ex.note ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
+                              <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      )}
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
 
                 {/* Start / Postpone — hidden once logging begins */}
                 {!isLogging && (
@@ -3800,6 +3847,7 @@ export default function App() {
   const [workoutRestEndTimes, setWorkoutRestEndTimes] = useState({});
   const [autoStartWorkout, setAutoStartWorkout] = useState(false);
   const timerRef = useRef(null);
+  const planUnsubRef = useRef(null); // nested plan onSnapshot cleanup
 
   // ── Auth state listener ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -3843,112 +3891,108 @@ export default function App() {
   }, [uid]);
 
   // ── Workout assignment listener ─────────────────────────────────────────────
-  // Reads from clientPlans (where CreatePlanScreen saves plans)
+  // Uses nested onSnapshot on the plan so any change (e.g. postpone) auto-refreshes
   useEffect(() => {
     const gymOrTrainer = member?.gymId || member?.trainerId;
     if (!gymOrTrainer || !uid) return;
-    const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', uid);
-    const unsub = onSnapshot(assignRef, async (snap) => {
-      if (!snap.exists()) { setAssignment(null); setTodayWorkout(null); setPlanWeek(null); setFullPlan(null); return; }
-      const a = snap.data();
-      setAssignment(a);
-      if (a?.planId) {
-        try {
-          // Read from clientPlans — this is where CreatePlanScreen saves
-          const planSnap = await getDoc(doc(db, 'gyms', gymOrTrainer, 'clientPlans', a.planId));
-          if (planSnap.exists()) {
-            const plan = planSnap.data();
-            setFullPlan(plan); // store full plan for all-days view
-            // Build week plan from plan days (with custom dayLabel)
-            if (plan.days?.length) {
-              const todayPlanIdxForWeek = (new Date().getDay() + 6) % 7;
-              const todayDateStrForWeek = new Date().toISOString().split('T')[0];
-              const postponedTodayForWeek = plan.postponedOn === todayDateStrForWeek && plan.postponedDayIdx === todayPlanIdxForWeek;
-              const PLAN_DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-              const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-              const todayDate = new Date();
-              const wp = plan.days.map((d, i) => {
-                const diff = (i - todayPlanIdxForWeek + 7) % 7;
-                const cardDate = new Date(todayDate);
-                cardDate.setDate(todayDate.getDate() + diff);
-                return {
-                  day: PLAN_DAY_ABBRS[i] || '?',
-                  date: `${cardDate.getDate()} ${MONTH_SHORT[cardDate.getMonth()]}`,
-                  label: d.dayLabel || '',
-                  rest: !!d.restDay || (postponedTodayForWeek && i === todayPlanIdxForWeek),
-                  exerciseCount: d.exercises?.length || 0,
-                };
-              });
-              setPlanWeek(wp);
-            }
-            // Find today's workout from the plan's days array.
-            // Plan days are always in WORKOUT_DAYS order: Mon=0, Tue=1, ..., Sun=6.
-            // JS getDay() returns Sun=0, Mon=1 ... so convert: (getDay()+6)%7
-            const todayPlanIdx = (new Date().getDay() + 6) % 7;
-            const todayDay = plan.days?.[todayPlanIdx];
-            const todayLabel = todayDay?.dayLabel ||
-              ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
-            // If the user postponed today's workout, treat it as a rest day for the rest of the day
-            const todayDateStr = new Date().toISOString().split('T')[0];
-            const postponedToday = plan.postponedOn === todayDateStr && plan.postponedDayIdx === todayPlanIdx;
-            if (postponedToday) {
-              setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
-            } else if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
-              const exercises = todayDay.exercises.map(ex => ({
-                id: ex.id || ex.name,
-                name: ex.name,
-                sets: ex.mainSets || 3,
-                reps: ex.mainReps || 10,
-                rest: ex.mainRestSeconds || 60,
-                note: ex.notes || '',
-                muscleGroup: ex.muscleGroup || '',
-              }));
-              // Estimate duration: ~45s per set to perform + rest between sets
-              const estSecs = exercises.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-              const estimatedMinutes = Math.max(10, Math.round(estSecs / 60));
-              setTodayWorkout({
-                id: plan.id,
-                name: plan.name || "Today's Workout",
-                estimatedMinutes,
-                exercises,
-                dayLabel: todayLabel,
-              });
 
-              // Restore completed state if workout was finished today
-              if (todayDay.completedAt) {
-                const c = new Date(todayDay.completedAt);
-                const now = new Date();
-                const completedToday =
-                  c.getFullYear() === now.getFullYear() &&
-                  c.getMonth() === now.getMonth() &&
-                  c.getDate() === now.getDate();
-                if (completedToday) {
-                  const allDoneSets = {};
-                  exercises.forEach(ex => {
-                    for (let s = 1; s <= ex.sets; s++) {
-                      allDoneSets[`${ex.id}_${s}`] = true;
-                    }
-                  });
-                  setWorkoutDoneSets(allDoneSets);
-                  setWorkoutTimer({ running: false, elapsed: todayDay.durationSeconds || 0, completed: true });
-                }
-              }
-            } else if (todayDay?.restDay) {
-              setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
-            } else {
-              setTodayWorkout(null);
-            }
-          } else {
-            setTodayWorkout(null);
-            setFullPlan(null);
+    const applyPlan = (plan) => {
+      setFullPlan(plan);
+      const PLAN_DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const todayPlanIdx = (new Date().getDay() + 6) % 7;
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      const postponedToday = plan.postponedOn === todayDateStr && plan.postponedDayIdx === todayPlanIdx;
+
+      // Build week view: 7 slots centred on today (offset −3 … +3)
+      if (plan.days?.length) {
+        const todayDate = new Date();
+        const wp = Array.from({ length: 7 }, (_, displayIdx) => {
+          const offset = displayIdx - 3; // today always at display index 3
+          const cardDate = new Date(todayDate);
+          cardDate.setDate(todayDate.getDate() + offset);
+          const planIdx = (cardDate.getDay() + 6) % 7;
+          const d = plan.days[planIdx] || {};
+          const isPostponed = plan.postponedOn === todayDateStr && plan.postponedDayIdx === planIdx;
+          return {
+            day: PLAN_DAY_ABBRS[planIdx] || '?',
+            date: `${cardDate.getDate()} ${MONTH_SHORT[cardDate.getMonth()]}`,
+            label: d.dayLabel || '',
+            rest: !!d.restDay || isPostponed,
+            exerciseCount: d.exercises?.length || 0,
+            planIdx,
+            isToday: offset === 0,
+          };
+        });
+        setPlanWeek(wp);
+      }
+
+      // Today's workout
+      const todayDay = plan.days?.[todayPlanIdx];
+      const todayLabel = todayDay?.dayLabel ||
+        ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+      if (postponedToday) {
+        setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
+      } else if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
+        const exercises = todayDay.exercises.map(ex => ({
+          id: ex.id || ex.name,
+          name: ex.name,
+          sets: ex.mainSets || 3,
+          reps: ex.mainReps || 10,
+          rest: ex.mainRestSeconds || 60,
+          note: ex.notes || '',
+          muscleGroup: ex.muscleGroup || '',
+        }));
+        const estSecs = exercises.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+        setTodayWorkout({
+          id: plan.id,
+          name: plan.name || "Today's Workout",
+          estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
+          exercises,
+          dayLabel: todayLabel,
+        });
+        if (todayDay.completedAt) {
+          const c = new Date(todayDay.completedAt);
+          const now = new Date();
+          if (c.getFullYear() === now.getFullYear() && c.getMonth() === now.getMonth() && c.getDate() === now.getDate()) {
+            const allDoneSets = {};
+            exercises.forEach(ex => { for (let s = 1; s <= ex.sets; s++) allDoneSets[`${ex.id}_${s}`] = true; });
+            setWorkoutDoneSets(allDoneSets);
+            setWorkoutTimer({ running: false, elapsed: todayDay.durationSeconds || 0, completed: true });
           }
-        } catch (e) { console.log('Plan fetch error:', e); setTodayWorkout(null); setFullPlan(null); }
+        }
+      } else if (todayDay?.restDay) {
+        setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
       } else {
         setTodayWorkout(null);
-        setFullPlan(null);
+      }
+    };
+
+    const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', uid);
+    const unsub = onSnapshot(assignRef, (snap) => {
+      if (!snap.exists()) {
+        setAssignment(null); setTodayWorkout(null); setPlanWeek(null); setFullPlan(null);
+        if (planUnsubRef.current) { planUnsubRef.current(); planUnsubRef.current = null; }
+        return;
+      }
+      const a = snap.data();
+      setAssignment(a);
+      // Cancel previous plan listener if planId changed
+      if (planUnsubRef.current) { planUnsubRef.current(); planUnsubRef.current = null; }
+      if (a?.planId) {
+        const planRef = doc(db, 'gyms', gymOrTrainer, 'clientPlans', a.planId);
+        planUnsubRef.current = onSnapshot(planRef, (planSnap) => {
+          if (planSnap.exists()) {
+            applyPlan(planSnap.data());
+          } else {
+            setTodayWorkout(null); setFullPlan(null);
+          }
+        }, e => { console.log('Plan listen error:', e); setTodayWorkout(null); setFullPlan(null); });
+      } else {
+        setTodayWorkout(null); setFullPlan(null);
       }
     });
-    return () => unsub();
+    return () => { unsub(); if (planUnsubRef.current) { planUnsubRef.current(); planUnsubRef.current = null; } };
   }, [member?.gymId, member?.trainerId, uid]);
 
   // ── Active workout log listener (real-time sync with trainer edits) ─────────
@@ -4043,6 +4087,23 @@ export default function App() {
     setWorkoutTimer({ running: false, elapsed, completed: true });
   };
 
+  const pauseWorkoutTimer = () => {
+    clearInterval(timerRef.current);
+    setWorkoutTimer(prev => ({ ...prev, running: false }));
+  };
+
+  const resumeWorkoutTimer = (fromElapsed) => {
+    clearInterval(timerRef.current);
+    const resumeAt = Date.now();
+    setWorkoutTimer(prev => ({ ...prev, running: true }));
+    timerRef.current = setInterval(() => {
+      setWorkoutTimer(prev => prev.running
+        ? { ...prev, elapsed: fromElapsed + Math.floor((Date.now() - resumeAt) / 1000) }
+        : prev
+      );
+    }, 1000);
+  };
+
   const handleLogout = async () => {
     await auth.signOut();
     setMember(null);
@@ -4117,6 +4178,8 @@ export default function App() {
             workoutTimer={workoutTimer}
             startWorkoutTimer={startWorkoutTimer}
             stopWorkoutTimer={stopWorkoutTimer}
+            pauseWorkoutTimer={pauseWorkoutTimer}
+            resumeWorkoutTimer={resumeWorkoutTimer}
             workoutDoneSets={workoutDoneSets}
             setWorkoutDoneSets={setWorkoutDoneSets}
             workoutSetWeights={workoutSetWeights}
