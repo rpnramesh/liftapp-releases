@@ -1531,8 +1531,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Text style={[g.pageTitle, { flex: 1 }]}>{fullPlan.name}</Text>
               {onViewHistory && !isLogging && (
-                <TouchableOpacity onPress={onViewHistory} style={{ padding: 6, marginTop: 6 }}>
-                  <Ionicons name="time-outline" size={22} color={C.primary} />
+                <TouchableOpacity onPress={onViewHistory} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginTop: 4 }}>
+                  <Ionicons name="time-outline" size={16} color={C.primary} />
+                  <Text style={{ color: C.primary, fontSize: 12, fontWeight: '600' }}>History</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1545,8 +1546,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={[g.pageTitle, { flex: 1 }]}>Workouts</Text>
             {onViewHistory && !isLogging && (
-              <TouchableOpacity onPress={onViewHistory} style={{ padding: 6 }}>
-                <Ionicons name="time-outline" size={22} color={C.primary} />
+              <TouchableOpacity onPress={onViewHistory} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Ionicons name="time-outline" size={16} color={C.primary} />
+                <Text style={{ color: C.primary, fontSize: 12, fontWeight: '600' }}>History</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -3983,16 +3985,18 @@ function WorkoutHistoryScreen({ member, memberId, onBack }) {
     if (!gymOrTrainer || !memberId) { setLoading(false); return; }
     const { collection: col, query: qFn, where: whr, orderBy, getDocs } = require('firebase/firestore');
     const { db: fdb } = require('./shared/firebase/config');
+    // Note: only one where() + orderBy() to avoid requiring a composite Firestore index.
+    // status === 'completed' is filtered client-side.
     const qr = qFn(
       col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'),
       whr('memberId', '==', memberId),
-      whr('status', '==', 'completed'),
       orderBy('completedAt', 'desc')
     );
     getDocs(qr).then(snap => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLogs(all.filter(l => l.status === 'completed' || !l.status));
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(e => { console.log('WorkoutHistory query error:', e); setLoading(false); });
   }, [gymOrTrainer, memberId]);
 
   const formatDate = (ts) => {
