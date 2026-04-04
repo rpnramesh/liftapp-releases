@@ -30,7 +30,7 @@ import {
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import { onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, deleteField, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import PhoneAuthWebView from './shared/components/PhoneAuthWebView';
 import { auth, db } from './shared/firebase/config';
 
@@ -4173,7 +4173,18 @@ export default function App() {
       const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const todayPlanIdx = (new Date().getDay() + 6) % 7;
       const todayDateStr = new Date().toISOString().split('T')[0];
-      const postponedToday = plan.postponedOn === todayDateStr && plan.postponedDayIdx === todayPlanIdx;
+      // If the trainer updated the plan AFTER the member postponed, the postponement
+      // is stale — the new plan should show as a regular workout day.
+      // plan.updatedAt (trainer write) vs postponedOn date (member write, no updatedAt bump).
+      const postponedDateMs = plan.postponedOn ? new Date(plan.postponedOn).getTime() : 0;
+      const postponementOverriddenByTrainer = !!plan.postponedOn && (plan.updatedAt || 0) > postponedDateMs;
+      if (postponementOverriddenByTrainer) {
+        // Silently clear the stale fields from Firestore so this check isn't repeated
+        updateDoc(doc(db, 'gyms', gymOrTrainer, 'clientPlans', plan.id), {
+          postponedOn: deleteField(), postponedDayIdx: deleteField(),
+        }).catch(() => {});
+      }
+      const postponedToday = !postponementOverriddenByTrainer && plan.postponedOn === todayDateStr && plan.postponedDayIdx === todayPlanIdx;
 
       // Build week view: 7 slots centred on today (offset −3 … +3)
       if (plan.days?.length) {
@@ -4184,7 +4195,7 @@ export default function App() {
           cardDate.setDate(todayDate.getDate() + offset);
           const planIdx = (cardDate.getDay() + 6) % 7;
           const d = plan.days[planIdx] || {};
-          const isPostponed = plan.postponedOn === todayDateStr && plan.postponedDayIdx === planIdx;
+          const isPostponed = !postponementOverriddenByTrainer && plan.postponedOn === todayDateStr && plan.postponedDayIdx === planIdx;
           return {
             day: PLAN_DAY_ABBRS[planIdx] || '?',
             date: `${cardDate.getDate()} ${MONTH_SHORT[cardDate.getMonth()]}`,
