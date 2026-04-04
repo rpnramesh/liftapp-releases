@@ -6,11 +6,11 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useState,
 } from 'react';
 import { auth, db } from '../firebase/config';
 import { ProfileAPI } from '../services/trainer.api';
@@ -18,8 +18,12 @@ import { TrainerProfile } from '../types/trainer.types';
 
 // ─── Context shape ────────────────────────────────────────────────────────────
 
+export type UserAppRole = 'trainer' | 'member' | null;
+
 interface AuthState {
   trainerId: string | null;
+  memberId: string | null;          // set when userRole === 'member'
+  userRole: UserAppRole;            // determines which navigator is shown
   token: string | null;
   refreshToken: string | null;
   gymId: string | null;
@@ -52,6 +56,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     trainerId: null,
+    memberId: null,
+    userRole: null,
     token: null,
     refreshToken: null,
     gymId: null,
@@ -84,14 +90,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const token = await user.getIdToken();
 
-        // Check if trainer profile exists in Firestore
+        // ── Check member profile first ───────────────────────────────────
+        const memberSnap = await getDoc(doc(db, 'members', user.uid));
+        if (memberSnap.exists()) {
+          const mData = memberSnap.data();
+          setState(prev => ({
+            ...prev,
+            trainerId: null,
+            memberId: user.uid,
+            userRole: 'member',
+            token,
+            refreshToken: null,
+            gymId: mData.gymId ?? null,
+            isFreelance: false,
+            adminAccess: false,
+            profile: null,
+            isAuthenticated: true,
+            isLoading: false,
+          }));
+          return;
+        }
+
+        // ── Check trainer profile ────────────────────────────────────────
         const snap = await getDoc(doc(db, 'trainers', user.uid));
 
         if (!snap.exists()) {
-          // New trainer — profile will be created in RegistrationScreen
+          // New user — profile will be created in RegistrationScreen
           setState(prev => ({
             ...prev,
             trainerId: user.uid,
+            memberId: null,
+            userRole: 'trainer',
             token,
             gymId: null,
             isFreelance: false,
@@ -111,6 +140,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setState({
           trainerId: user.uid,
+          memberId: null,
+          userRole: 'trainer',
           token,
           refreshToken: null,
           gymId: data.gymId ?? null,
@@ -183,6 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
     setState({
       trainerId: null,
+      memberId: null,
+      userRole: null,
       token: null,
       refreshToken: null,
       gymId: null,
