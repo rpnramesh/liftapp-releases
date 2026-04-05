@@ -173,21 +173,63 @@ function OtpLoginScreen({ onSuccess }) {
       const uid = result.user.uid;
       const snap = await getDoc(doc(db, 'members', uid));
       if (!snap.exists()) {
+        // ── First login: check if a gym pre-created a member doc with the same phone ──
+        // Gym management app creates member docs with auto-generated IDs (not the auth UID).
+        // If found, inherit gym/plan data and migrate the workout assignment to this UID path.
+        let inherited = {};
+        let oldMemberId = null;
+        try {
+          const phone10 = phone.replace(/\D/g, '').slice(-10);
+          for (const fmt of [`+91${phone10}`, phone10]) {
+            const qsnap = await getDocs(query(collection(db, 'members'), where('phone', '==', fmt)));
+            if (!qsnap.empty) {
+              const d = qsnap.docs[0];
+              if (d.id !== uid) {
+                oldMemberId = d.id;
+                const data = d.data();
+                inherited = {
+                  name:             data.name            || '',
+                  gymId:            data.gymId            || '',
+                  trainerId:        data.trainerId        || null,
+                  height:           data.height           || 0,
+                  weight:           data.weight           || 0,
+                  goalWeight:       data.goalWeight       || 0,
+                  plan:             data.plan             || '',
+                  planStartDate:    data.planStartDate    || Date.now(),
+                  planEndDate:      data.planEndDate      || Date.now(),
+                  feePaidDate:      data.feePaidDate      || null,
+                  lastPaymentAmount:data.lastPaymentAmount|| null,
+                  createdAt:        data.createdAt        || Date.now(),
+                };
+              }
+              break;
+            }
+          }
+        } catch (e) { console.log('Phone lookup error:', e.message); }
+
+        // Create the auth-linked member document, merging any inherited gym data
         await setDoc(doc(db, 'members', uid), {
           id: uid,
           phone: `+91${phone}`,
-          name: '',
-          gymId: '',
-          trainerId: null,
-          height: 0,
-          weight: 0,
-          goalWeight: 0,
-          plan: '',
-          planStartDate: Date.now(),
-          planEndDate: Date.now(),
-          active: true,
-          createdAt: Date.now(),
+          name: '', gymId: '', trainerId: null,
+          height: 0, weight: 0, goalWeight: 0,
+          plan: '', planStartDate: Date.now(), planEndDate: Date.now(),
+          active: true, createdAt: Date.now(),
+          ...inherited,
         });
+
+        // If the pre-created member had a gym assignment, copy it to this UID's path
+        // so the workout plan shows up immediately without the gym needing to reassign.
+        if (inherited.gymId && oldMemberId) {
+          try {
+            const oldAssign = await getDoc(doc(db, 'gyms', inherited.gymId, 'assignments', oldMemberId));
+            if (oldAssign.exists()) {
+              await setDoc(doc(db, 'gyms', inherited.gymId, 'assignments', uid), {
+                ...oldAssign.data(), id: uid, memberId: uid,
+              });
+            }
+          } catch (e) { console.log('Assignment migration error:', e.message); }
+        }
       }
       onSuccess(uid);
     } catch (e) {
@@ -379,8 +421,16 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
       ) : (
         <View style={[hm.workoutCard, { opacity: 0.7 }]}>
           <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
-          <Text style={hm.workoutName}>{member?.trainerId ? 'No plan assigned yet' : 'No trainer assigned'}</Text>
-          <Text style={hm.workoutSub}>{member?.trainerId ? 'Your trainer will assign a workout plan soon' : 'Accept a trainer invite in Profile'}</Text>
+          <Text style={hm.workoutName}>
+            {member?.trainerId || member?.gymId ? 'No plan assigned yet' : 'No trainer assigned'}
+          </Text>
+          <Text style={hm.workoutSub}>
+            {member?.trainerId
+              ? 'Your trainer will assign a workout plan soon'
+              : member?.gymId
+                ? 'Your gym will assign a workout plan soon'
+                : 'Accept a trainer invite in Profile'}
+          </Text>
         </View>
       )}
 
