@@ -9,23 +9,23 @@ import { ResizeMode, Video } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    AppState,
-    Dimensions,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    Vibration,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  AppState,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
@@ -37,13 +37,13 @@ import { auth, db } from './shared/firebase/config';
 // ── Shared services ───────────────────────────────────────────────────────────
 import { daysUntilExpiry, subscribeToMember, updateMember } from './shared/services/member.service';
 import {
-    markAllRead as markAllNotifsRead,
-    markNotificationRead,
-    subscribeToNotifications,
+  markAllRead as markAllNotifsRead,
+  markNotificationRead,
+  subscribeToNotifications,
 } from './shared/services/notification.service';
 import {
-    subscribeToMeasurements,
-    subscribeToWeightLog
+  subscribeToMeasurements,
+  subscribeToWeightLog
 } from './shared/services/progress.service';
 
 const { width } = Dimensions.get('window');
@@ -317,23 +317,41 @@ const formatFullDate = (ts) => {
 };
 
 function MembershipDetailModal({ visible, onClose, member }) {
+  const [payments, setPayments] = useState([]);
+  const [loadingPayments, setLoadingPayments] = useState(true);
+
+  useEffect(() => {
+    if (!member?.id || !visible) return;
+    const unsub = onSnapshot(
+      collection(db, 'members', member.id, 'payments'),
+      snap => {
+        setPayments(
+          snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.paidDate || 0) - (a.paidDate || 0))
+        );
+        setLoadingPayments(false);
+      },
+      () => setLoadingPayments(false)
+    );
+    return () => unsub();
+  }, [member?.id, visible]);
+
   if (!member) return null;
   const daysLeft = daysUntilExpiry(member);
   const expired = Date.now() > (member.planEndDate || 0);
-  const status = expired ? 'Expired' : daysLeft <= 7 ? 'Expiring Soon' : 'Active';
-  const statusColor = expired ? C.red : daysLeft <= 7 ? C.amber : C.green;
+  const status = !member.active ? 'Inactive' : expired ? 'Expired' : daysLeft <= 7 ? 'Expiring Soon' : 'Active';
+  const statusColor = !member.active ? C.mid : expired ? C.red : daysLeft <= 7 ? C.amber : C.green;
 
   const rows = [
     { label: 'Membership Status', value: status, color: statusColor, bold: true },
-    { label: 'Membership Plan', value: member.plan || member.membershipPlan || '—' },
-    { label: 'Joining Date', value: formatFullDate(member.joiningDate || member.joinedAt || member.createdAt) },
+    { label: 'Membership Plan', value: member.plan || '—' },
+    { label: 'Plan Duration', value: member.planDurationMonths ? `${member.planDurationMonths} month${member.planDurationMonths > 1 ? 's' : ''}` : '—' },
+    { label: 'Joining Date', value: formatFullDate(member.createdAt) },
     { label: 'Plan Start Date', value: formatFullDate(member.planStartDate) },
     { label: 'Plan Expiry Date', value: formatFullDate(member.planEndDate) },
     { label: 'Days Remaining', value: expired ? 'Expired' : `${daysLeft} days`, color: statusColor },
-    { label: 'Amount Paid', value: member.amountPaid != null ? `₹${member.amountPaid}` : '—' },
-    { label: 'Paid Date', value: formatFullDate(member.paidDate || member.paymentDate) },
-    { label: 'Payment Status', value: member.paymentStatus || (member.amountPaid > 0 ? 'Paid' : '—'), color: member.paymentStatus === 'Paid' || member.amountPaid > 0 ? C.green : member.paymentStatus === 'Pending' ? C.amber : undefined },
-    { label: 'Payment Method', value: member.paymentMethod || '—' },
+    { label: 'Last Payment Amount', value: member.lastPaymentAmount != null ? `₹${Number(member.lastPaymentAmount).toLocaleString('en-IN')}` : '—' },
+    { label: 'Last Fee Paid Date', value: formatFullDate(member.feePaidDate) },
   ];
 
   return (
@@ -364,6 +382,43 @@ function MembershipDetailModal({ visible, onClose, member }) {
               <Text style={{ fontSize: 14, fontWeight: r.bold ? '800' : '600', color: r.color || C.dark, textAlign: 'right', flex: 1 }}>{r.value}</Text>
             </View>
           ))}
+
+          {/* Payment History */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: C.dark, marginBottom: 12 }}>💰 Payment History</Text>
+            {loadingPayments ? (
+              <ActivityIndicator size="small" color={C.primary} />
+            ) : payments.length === 0 ? (
+              <View style={{ backgroundColor: C.card, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: C.light, alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, color: C.mid }}>No payment records yet</Text>
+              </View>
+            ) : (
+              payments.map((p, i) => (
+                <View key={p.id || i} style={{ backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: C.light }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: C.dark }}>
+                      {p.amount != null ? `₹${Number(p.amount).toLocaleString('en-IN')}` : '—'}
+                    </Text>
+                    <View style={{ backgroundColor: C.blue2, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '600', color: C.primary }}>{p.plan || '—'}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, color: C.mid, marginTop: 4 }}>
+                    Paid on {formatFullDate(p.paidDate)}
+                    {p.planStartDate && p.planEndDate ? ` · Valid ${formatFullDate(p.planStartDate)} – ${formatFullDate(p.planEndDate)}` : ''}
+                  </Text>
+                </View>
+              ))
+            )}
+            {payments.length > 0 && (
+              <View style={{ backgroundColor: C.primary + '12', borderRadius: 12, padding: 14, marginTop: 4, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: C.mid }}>Total Paid</Text>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: C.primary }}>
+                  ₹{payments.reduce((s, p) => s + (Number(p.amount) || 0), 0).toLocaleString('en-IN')}
+                </Text>
+              </View>
+            )}
+          </View>
 
           {/* Gym info if available */}
           {member.gymName && (
@@ -2298,7 +2353,7 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
       setInputVal('');
     } catch (e) {
       console.log('Measurement save error:', e);
-      Alert.alert('Error', 'Failed to save. Please try again.');
+      Alert.alert('Save Error', (e && e.message) || 'Failed to save. Please try again.');
     } finally { setSaving(false); }
   };
 
@@ -2603,7 +2658,7 @@ function ProgressScreen({ member, gymId, memberId }) {
       setWeightInput('');
     } catch (e) {
       console.log('Weight log error:', e);
-      Alert.alert('Error', 'Failed to save weight. Please try again.');
+      Alert.alert('Save Error', (e && e.message) || 'Failed to save weight. Please try again.');
     } finally { setSaving(false); }
   };
 
