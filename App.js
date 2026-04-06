@@ -4724,8 +4724,8 @@ export default function App() {
 }
 
 const mn = StyleSheet.create({
-  tabBar: { flexDirection: 'row', backgroundColor: C.card, paddingVertical: 8, paddingBottom: 16, borderTopWidth: 1, borderTopColor: C.light },
-  tabItem: { flex: 1, alignItems: 'center' },
-  tabLbl: { fontSize: 9, color: C.mid, marginTop: 2, fontWeight: '500' },
+  tabBar: { flexDirection: 'row', backgroundColor: C.card, paddingVertical: 10, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.light },
+  tabItem: { flex: 1, alignItems: 'center', gap: 3 },
+  tabLbl: { fontSize: 10, color: C.mid, fontWeight: '600' },
   tabLblActive: { color: C.primary, fontWeight: '700' },
 });

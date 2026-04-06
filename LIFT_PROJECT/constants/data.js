@@ -16,50 +16,45 @@ export const MEMBER_DEFAULT = {
 };
 
 export const TODAY_WORKOUT = {
-  name: 'Push Day A',
+  name: 'Pull Day',
   time: '45 min',
   exercises: [
     {
-      id: '1', name: 'Bench Press', sets: 3, reps: 12, rest: 60,
-      note: 'Focus on full range of motion', done: false,
+      id: '1', name: 'Barbell Row', sets: 4, reps: 8, rest: 60,
+      note: 'Keep back straight', done: false,
       videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-      videoThumb: '🏋️',
     },
     {
-      id: '2', name: 'Incline Dumbbell Press', sets: 3, reps: 10, rest: 60,
+      id: '2', name: 'Pull-Ups', sets: 2, reps: 10, rest: 60,
       note: '', done: false,
       videoUri: 'https://www.w3schools.com/html/movie.mp4',
-      videoThumb: '💪',
     },
     {
-      id: '3', name: 'Shoulder Press', sets: 3, reps: 12, rest: 45,
-      note: 'Keep core tight', done: false,
+      id: '3', name: 'Lat Pulldown', sets: 2, reps: 10, rest: 60,
+      note: '', done: false,
       videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-      videoThumb: '🔝',
     },
     {
-      id: '4', name: 'Tricep Pushdown', sets: 3, reps: 15, rest: 45,
+      id: '4', name: 'Single-Arm Dumbbell Row', sets: 3, reps: 0, rest: 60,
       note: '', done: false,
       videoUri: 'https://www.w3schools.com/html/movie.mp4',
-      videoThumb: '💥',
     },
     {
-      id: '5', name: 'Lateral Raises', sets: 3, reps: 15, rest: 30,
+      id: '5', name: 'Rear Delt Fly', sets: 3, reps: 15, rest: 60,
       note: '', done: false,
       videoUri: 'https://www.w3schools.com/html/mov_bbb.mp4',
-      videoThumb: '🙌',
     },
   ],
 };
 
 export const WEEK = [
-  { day: 'Mon', label: 'Push Day A', rest: false },
-  { day: 'Tue', label: 'Pull Day',   rest: false },
-  { day: 'Wed', label: 'Rest',       rest: true  },
-  { day: 'Thu', label: 'Legs',       rest: false },
-  { day: 'Fri', label: 'Push Day B', rest: false },
-  { day: 'Sat', label: 'Cardio',     rest: false },
-  { day: 'Sun', label: 'Rest',       rest: true  },
+  { day: 'Sun', label: 'Pull Day', rest: false },
+  { day: 'Mon', label: 'Pull Day', rest: false },
+  { day: 'Tue', label: 'Pull Day', rest: false },
+  { day: 'Wed', label: 'Pull Day', rest: false },
+  { day: 'Thu', label: 'Pull Day', rest: false },
+  { day: 'Fri', label: 'Pull Day', rest: false },
+  { day: 'Sat', label: 'Pull Day', rest: false },
 ];
 
 export const VIDEOS = [
