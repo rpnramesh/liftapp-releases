@@ -50,10 +50,10 @@ const { width } = Dimensions.get('window');
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const C = {
-  primary: '#1A56DB', bg: '#F8FAFF', card: '#FFFFFF',
-  dark: '#111827', mid: '#6B7280', light: '#E5E7EB',
-  green: '#10B981', amber: '#F59E0B', red: '#EF4444',
-  blue2: '#EFF6FF', accent: '#1A56DB',
+  primary: '#2563EB', bg: '#F8F9FA', card: '#FFFFFF',
+  dark: '#1A1A2E', mid: '#8E8E93', light: '#F0F0F0',
+  green: '#22C55E', amber: '#F59E0B', red: '#EF4444',
+  blue2: '#EBF2FF', accent: '#2563EB',
 };
 
 const formatElapsed = (s) => {
@@ -1711,41 +1711,36 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         </View>
       )}
 
-      <ScrollView style={g.screen}>
-        {/* Plan header */}
-        {fullPlan?.name && (
-          <View style={{ marginBottom: 4 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Text style={[g.pageTitle, { flex: 1 }]}>{fullPlan.name}</Text>
-              {onViewHistory && !isLogging && (
-                <TouchableOpacity onPress={onViewHistory} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginTop: 4 }}>
-                  <Ionicons name="time-outline" size={16} color={C.primary} />
-                  <Text style={{ color: C.primary, fontSize: 12, fontWeight: '600' }}>History</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={{ fontSize: 13, color: C.mid, marginTop: -4, marginBottom: 8 }}>
-              {fullPlan.days?.length || 0} day plan · Assigned by {member?.trainerName || member?.trainer || 'your trainer'}
+      <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
+        {/* ═══ HEADER ═══ */}
+        <View style={wk.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={wk.headerTitle}>{fullPlan?.name || 'Workouts'}</Text>
+            <Text style={wk.headerSub}>
+              {fullPlan?.name
+                ? `${fullPlan.days?.length || 0} day plan · Assigned by ${member?.trainerName || member?.trainer || 'your trainer'}`
+                : 'Your workout plan'}
             </Text>
           </View>
-        )}
-        {!fullPlan?.name && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={[g.pageTitle, { flex: 1 }]}>Workouts</Text>
-            {onViewHistory && !isLogging && (
-              <TouchableOpacity onPress={onViewHistory} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blue2, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Ionicons name="time-outline" size={16} color={C.primary} />
-                <Text style={{ color: C.primary, fontSize: 12, fontWeight: '600' }}>History</Text>
+          <View style={{ marginLeft: 16, paddingTop: 4 }}>
+            {(workoutTimer?.running || workoutTimer?.completed) ? (
+              <View style={wk.timerPill}>
+                <View style={[wk.timerDot, workoutTimer?.completed && { backgroundColor: C.green }]} />
+                <Text style={[wk.timerVal, workoutTimer?.completed && { color: C.green }]}>{formatElapsed(elapsed)}</Text>
+              </View>
+            ) : onViewHistory && !isLogging ? (
+              <TouchableOpacity onPress={onViewHistory} style={wk.historyBtn}>
+                <Text style={wk.historyTxt}>History</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
-        )}
+        </View>
 
         {/* Weekly Plan - tappable day cards */}
         {(planWeek || assignment?.weekPlan) && (
           <>
-            <Text style={g.sec}>This Week</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+            <Text style={wk.sectionLabel}>THIS WEEK</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
               {(planWeek || assignment.weekPlan).map((d, i) => {
                 const isToday = d.isToday ?? (i === todayPlanIdx);
                 const planIdxForDay = d.planIdx ?? i;
@@ -1758,14 +1753,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     onPress={() => handleDayPress(i)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[wk.dayName, isActive && { color: '#fff' }]}>{d.day}</Text>
-                    <Text style={[{ fontSize: 9, color: C.mid, marginTop: 1 }, isActive && { color: 'rgba(255,255,255,0.8)' }]}>{d.date}</Text>
-                    {isToday && <View style={wk.todayDot} />}
-                    <Text style={[wk.dayLabel, isActive && { color: '#fff' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
+                    <Text style={[wk.dayName, isActive && wk.weekTxtW]}>{d.day}</Text>
+                    <Text style={[wk.dayDate, isActive && wk.weekTxtW]}>{d.date}</Text>
+                    {isActive && !d.rest && <View style={wk.todayDot} />}
+                    <Text style={[wk.dayLabel, isActive && { color: 'rgba(255,255,255,0.8)' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
                       {d.rest ? 'Rest' : d.label}
                     </Text>
                     {d.exerciseCount > 0 && !d.rest && (
-                      <Text style={[{ fontSize: 9, color: C.mid, marginTop: 2 }, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
+                      <Text style={[wk.dayExCount, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
                         {d.exerciseCount} ex
                       </Text>
                     )}
@@ -1773,6 +1768,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 );
               })}
             </ScrollView>
+            <View style={{ marginBottom: 20 }} />
           </>
         )}
 
@@ -1816,7 +1812,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   return (
                     <View key={exKey} style={wk.exCardStatic}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 }}
                         onPress={() => setExpandedOverview(isOpen ? null : exKey)}
                         activeOpacity={0.7}
                       >
@@ -1825,11 +1821,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={wk.exName}>{ex.name}</Text>
-                          <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>
-                            {sets} sets · {ex.muscleGroup || 'General'}
+                          <Text style={wk.exMeta}>
+                            {sets} sets × {reps} reps · {rest}s rest
                           </Text>
                         </View>
-                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.mid} />
+                        <Text style={wk.chevron}>›</Text>
                       </TouchableOpacity>
                       {isOpen && (
                         <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
@@ -1898,40 +1894,46 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             {todayWorkout && !todayWorkout.isRestDay ? (
               <>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={g.sec}>Today — {todayWorkout.dayLabel || todayWorkout.name}</Text>
-                  {workoutTimer?.running && !isLogging && (
-                    <View style={wk.liveChip}>
-                      <View style={wk.liveDot} />
-                      <Text style={wk.liveTxt}>In Progress</Text>
-                    </View>
-                  )}
-                  {workoutTimer?.completed && (
-                    <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
-                      <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
-                    </View>
-                  )}
+                  <Text style={wk.todayLabel}>TODAY — {(todayWorkout.dayLabel || todayWorkout.name || '').toUpperCase()}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {workoutTimer?.running && !isLogging && (
+                      <View style={wk.liveChip}>
+                        <View style={wk.liveDot} />
+                        <Text style={wk.liveTxt}>In Progress</Text>
+                      </View>
+                    )}
+                    {workoutTimer?.completed && (
+                      <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
+                        <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
                 {/* Expandable exercise list — shown when not logging */}
                 {!isLogging && todayWorkout.exercises?.map(ex => {
                   const isOpen = expandedOverview === ex.id;
+                  const isDone = allSetsOf(ex);
                   return (
-                    <View key={ex.id} style={wk.exCardStatic}>
+                    <View key={ex.id} style={[wk.exCardStatic, isDone && wk.exCardDone]}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 }}
                         onPress={() => setExpandedOverview(isOpen ? null : ex.id)}
                         activeOpacity={0.7}
                       >
-                        <View style={wk.exIcon}>
-                          <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                        <View style={[wk.exIcon, isDone && wk.exIconDone]}>
+                          {isDone
+                            ? <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>✓</Text>
+                            : <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                          }
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={wk.exName}>{ex.name}</Text>
-                          <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>
-                            {ex.sets} sets · {ex.muscleGroup || 'General'}
+                          <Text style={[wk.exName, isDone && wk.exNameDone]}>{ex.name}</Text>
+                          <Text style={wk.exMeta}>
+                            {ex.sets} sets × {ex.reps} reps · {ex.rest}s rest
                           </Text>
                         </View>
-                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.mid} />
+                        <Text style={wk.chevron}>›</Text>
                       </TouchableOpacity>
                       {isOpen && (
                         <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
@@ -2157,24 +2159,49 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 }
 
 const wk = StyleSheet.create({
-  dayCard: { backgroundColor: C.card, borderRadius: 12, padding: 12, marginRight: 8, alignItems: 'center', minWidth: 72, borderWidth: 1, borderColor: C.light },
+  /* Header */
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 0, paddingBottom: 4, marginBottom: 4 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: C.dark, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: C.mid, marginTop: 5, lineHeight: 18 },
+  timerPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: C.light, elevation: 1 },
+  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.green },
+  timerVal: { fontSize: 15, fontWeight: '800', color: C.green },
+  historyBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.primary + '30' },
+  historyTxt: { fontSize: 13, fontWeight: '600', color: C.primary },
+  /* Section */
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.mid, letterSpacing: 1.2, marginTop: 28, marginBottom: 14 },
+  todayLabel: { fontSize: 12, fontWeight: '700', color: C.mid, letterSpacing: 0.5, textTransform: 'uppercase' },
+  /* Week */
+  dayCard: { width: 80, paddingVertical: 14, borderRadius: 16, backgroundColor: C.card, marginRight: 10, alignItems: 'center', borderWidth: 1, borderColor: C.light, elevation: 1 },
   dayCardActive: { backgroundColor: C.primary, borderColor: C.primary },
   dayCardRest: { opacity: 0.5 },
-  dayName: { fontSize: 12, fontWeight: '700', color: C.mid },
-  dayLabel: { fontSize: 10, color: C.dark, marginTop: 4, textAlign: 'center', fontWeight: '500' },
-  todayDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff', marginTop: 6 },
-  exCardStatic: { backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12, elevation: 1 },
+  dayName: { fontSize: 11, fontWeight: '600', color: C.mid, letterSpacing: 0.5 },
+  dayDate: { fontSize: 14, fontWeight: '700', color: C.dark, marginTop: 4 },
+  weekTxtW: { color: '#fff' },
+  dayLabel: { fontSize: 10, fontWeight: '600', color: C.mid, marginTop: 6, textAlign: 'center' },
+  todayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#fff', marginTop: 8 },
+  dayExCount: { fontSize: 9, color: C.mid, marginTop: 2 },
+  /* Exercise cards */
+  exCardStatic: { backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: C.light, elevation: 1 },
+  exCardDone: { borderColor: C.green + '40' },
   exCardActive: { borderWidth: 1.5, borderColor: C.primary },
+  exIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: C.blue2, alignItems: 'center', justifyContent: 'center' },
+  exIconDone: { backgroundColor: C.green },
+  exName: { fontSize: 16, fontWeight: '600', color: C.dark },
+  exNameDone: { color: C.mid, textDecorationLine: 'line-through' },
+  exMeta: { fontSize: 12, color: C.mid, marginTop: 3 },
+  exDetail: { fontSize: 12, color: C.mid, marginTop: 2 },
+  chevron: { fontSize: 20, color: C.light, fontWeight: '300' },
+  /* Live chip */
   liveChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.primary + '15', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary },
   liveTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
-  exIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: C.blue2, alignItems: 'center', justifyContent: 'center' },
-  exName: { fontSize: 15, fontWeight: '600', color: C.dark },
-  exDetail: { fontSize: 12, color: C.mid, marginTop: 2 },
+  /* Buttons */
   startBtn: { backgroundColor: C.primary, borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 8 },
   startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
   postponeBtn: { borderWidth: 1.5, borderColor: C.amber, borderRadius: 14, padding: 14, alignItems: 'center', marginTop: 10 },
   postponeBtnTxt: { color: C.amber, fontWeight: '600', fontSize: 14 },
+  /* Sticky logging header */
   stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.light },
   stickyTitle: { fontSize: 12, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
   stickyTimer: { fontSize: 20, fontWeight: '800', marginTop: 2 },
@@ -3311,7 +3338,7 @@ const tcStyles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
     backgroundColor: '#FFFFFF',
   },
-  backBtn: { color: '#1A56DB', fontSize: 15, fontWeight: '500', width: 60 },
+  backBtn: { color: '#2563EB', fontSize: 15, fontWeight: '500', width: 60 },
   headerName: { fontSize: 15, fontWeight: '700', color: '#111827' },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 10, gap: 8 },
   msgRowMe: { flexDirection: 'row-reverse' },
@@ -3322,7 +3349,7 @@ const tcStyles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E5E7EB',
     borderBottomLeftRadius: 4,
   },
-  bubbleMe: { backgroundColor: '#1A56DB', borderBottomRightRadius: 4 },
+  bubbleMe: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
   bubbleText: { fontSize: 14, color: '#111827', lineHeight: 20 },
   bubbleTime: { fontSize: 10, color: '#6B7280', marginTop: 4, textAlign: 'right' },
   inputBar: {
@@ -3350,7 +3377,7 @@ const tcStyles = StyleSheet.create({
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
-    backgroundColor: '#1A56DB',
+    backgroundColor: '#2563EB',
     alignItems: 'center', justifyContent: 'center',
   },
 });
@@ -4598,7 +4625,7 @@ export default function App() {
 
   if (authLoading || screen === 'loading') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#1A56DB', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 52, fontWeight: '800', color: '#fff', letterSpacing: 6 }}>LIFT</Text>
         <ActivityIndicator color="#fff" style={{ marginTop: 30 }} />
       </View>
