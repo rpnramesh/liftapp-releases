@@ -2,6 +2,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Lift — Member Navigator
 // Bottom tabs: Home | Workouts | Progress | Profile
+// Home stack: MemberHome → Membership
+// Profile stack: MemberProfile → Membership
 // Workout stack: Hub → ActiveWorkout → WorkoutFinish → WorkoutHistory
 // ─────────────────────────────────────────────────────────────────────────────
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +11,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Screens
 import MemberHomeScreen from '../screens/member/MemberHomeScreen';
+import MemberMembershipScreen from '../screens/member/MemberMembershipScreen';
+import MemberProfileScreen from '../screens/member/MemberProfileScreen';
 import MemberProgressScreen from '../screens/member/MemberProgressScreen';
 import ActiveWorkoutScreen from '../screens/member/workout/ActiveWorkoutScreen';
 import WorkoutFinishScreen from '../screens/member/workout/WorkoutFinishScreen';
@@ -36,9 +38,20 @@ const BORDER = '#2A2D38';
 
 // ─── Stacks ───────────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
+const HomeStack = createNativeStackNavigator();
 const WorkoutStack = createNativeStackNavigator();
+const ProfileStack = createNativeStackNavigator();
 const AuthStack = createNativeStackNavigator();
 const RootStack = createNativeStackNavigator();
+
+function HomeStackNavigator() {
+  return (
+    <HomeStack.Navigator screenOptions={{ headerShown: false }}>
+      <HomeStack.Screen name="MemberHome" component={MemberHomeScreen} />
+      <HomeStack.Screen name="Membership" component={MemberMembershipScreen} />
+    </HomeStack.Navigator>
+  );
+}
 
 function WorkoutStackNavigator() {
   return (
@@ -55,30 +68,12 @@ function WorkoutStackNavigator() {
   );
 }
 
-// ─── Placeholder Profile screen ───────────────────────────────────────────────
-function MemberProfileScreen() {
-  const { logout } = useAuth();
+function ProfileStackNavigator() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#0A0B0F' }} edges={['top']}>
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        <Text style={{ fontSize: 48 }}>👤</Text>
-        <Text style={{ color: '#F1F3F9', fontSize: 20, fontWeight: '700' }}>Profile</Text>
-        <Text
-          style={{
-            color: '#EF4444',
-            fontSize: 15,
-            fontWeight: '600',
-            marginTop: 20,
-            padding: 12,
-            backgroundColor: 'rgba(239,68,68,0.12)',
-            borderRadius: 10,
-          }}
-          onPress={() => logout()}
-        >
-          Sign Out
-        </Text>
-      </View>
-    </SafeAreaView>
+    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+      <ProfileStack.Screen name="MemberProfile" component={MemberProfileScreen} />
+      <ProfileStack.Screen name="Membership" component={MemberMembershipScreen} />
+    </ProfileStack.Navigator>
   );
 }
 
@@ -116,10 +111,10 @@ function MemberTabNavigator() {
         },
       })}
     >
-      <Tab.Screen name="Home" component={MemberHomeScreen} />
+      <Tab.Screen name="Home" component={HomeStackNavigator} />
       <Tab.Screen name="Workouts" component={WorkoutStackNavigator} />
       <Tab.Screen name="Progress" component={MemberProgressScreen} />
-      <Tab.Screen name="Profile" component={MemberProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>
   );
 }

@@ -20,19 +20,29 @@ export interface Member {
   id: string;                  // Firebase UID
   gymId: string;
   trainerId: string | null;
+  trainerName?: string;
   name: string;
   phone: string;
   email?: string;
   height: number;              // cm
   weight: number;              // kg
   goalWeight: number;          // kg
+  age?: number;
+  gender?: string;
   plan: string;                // e.g. 'Monthly'
   planStartDate: number;       // timestamp
   planEndDate: number;         // timestamp
   active: boolean;
+  isFrozen?: boolean;
   fcmToken?: string;           // for push notifications
   createdAt: number;
   photoUrl?: string;
+  // ── Payment / Membership (written by Gym Management app) ──
+  joiningDate?: number;        // timestamp — first-ever joining date
+  amountPaid?: number;         // last payment amount
+  paidDate?: number;           // timestamp of last payment
+  paymentStatus?: 'paid' | 'pending' | 'overdue';
+  paymentMethod?: string;      // 'cash' | 'upi' | 'card' etc.
 }
 
 // ── Trainer ───────────────────────────────────────────────────────────────────
