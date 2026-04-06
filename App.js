@@ -310,8 +310,81 @@ function OtpLoginScreen({ onSuccess }) {
   );
 }
 
+// ── MEMBERSHIP DETAIL MODAL ──────────────────────────────────────────────────
+const formatFullDate = (ts) => {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+function MembershipDetailModal({ visible, onClose, member }) {
+  if (!member) return null;
+  const daysLeft = daysUntilExpiry(member);
+  const expired = Date.now() > (member.planEndDate || 0);
+  const status = expired ? 'Expired' : daysLeft <= 7 ? 'Expiring Soon' : 'Active';
+  const statusColor = expired ? C.red : daysLeft <= 7 ? C.amber : C.green;
+
+  const rows = [
+    { label: 'Membership Status', value: status, color: statusColor, bold: true },
+    { label: 'Membership Plan', value: member.plan || member.membershipPlan || '—' },
+    { label: 'Joining Date', value: formatFullDate(member.joiningDate || member.joinedAt || member.createdAt) },
+    { label: 'Plan Start Date', value: formatFullDate(member.planStartDate) },
+    { label: 'Plan Expiry Date', value: formatFullDate(member.planEndDate) },
+    { label: 'Days Remaining', value: expired ? 'Expired' : `${daysLeft} days`, color: statusColor },
+    { label: 'Amount Paid', value: member.amountPaid != null ? `₹${member.amountPaid}` : '—' },
+    { label: 'Paid Date', value: formatFullDate(member.paidDate || member.paymentDate) },
+    { label: 'Payment Status', value: member.paymentStatus || (member.amountPaid > 0 ? 'Paid' : '—'), color: member.paymentStatus === 'Paid' || member.amountPaid > 0 ? C.green : member.paymentStatus === 'Pending' ? C.amber : undefined },
+    { label: 'Payment Method', value: member.paymentMethod || '—' },
+  ];
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light }}>
+          <TouchableOpacity onPress={onClose}>
+            <Text style={{ color: C.primary, fontSize: 15, fontWeight: '600' }}>✕ Close</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: '800', color: C.dark }}>Membership Details</Text>
+          <View style={{ width: 60 }} />
+        </View>
+        <ScrollView style={{ padding: 20 }}>
+          {/* Status badge */}
+          <View style={{ alignItems: 'center', marginBottom: 24 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: statusColor + '22', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 28 }}>{expired ? '⚠️' : '💳'}</Text>
+            </View>
+            <View style={{ backgroundColor: statusColor + '22', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6 }}>
+              <Text style={{ color: statusColor, fontSize: 14, fontWeight: '700' }}>{status}</Text>
+            </View>
+          </View>
+
+          {/* Detail rows */}
+          {rows.map((r, i) => (
+            <View key={i} style={{ backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: C.light }}>
+              <Text style={{ fontSize: 13, color: C.mid, fontWeight: '500', flex: 1 }}>{r.label}</Text>
+              <Text style={{ fontSize: 14, fontWeight: r.bold ? '800' : '600', color: r.color || C.dark, textAlign: 'right', flex: 1 }}>{r.value}</Text>
+            </View>
+          ))}
+
+          {/* Gym info if available */}
+          {member.gymName && (
+            <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginTop: 12, borderWidth: 1, borderColor: C.light }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 6 }}>🏛 Gym</Text>
+              <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{member.gymName}</Text>
+              {member.gymAddress && <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{member.gymAddress}</Text>}
+              {member.gymPhone && <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>📞 {member.gymPhone}</Text>}
+            </View>
+          )}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ── HOME DASHBOARD ────────────────────────────────────────────────────────────
 function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount, onStartWorkout }) {
+  const [showMembership, setShowMembership] = useState(false);
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
   const daysLeft = member ? daysUntilExpiry(member) : 0;
@@ -325,6 +398,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
   const hasPlan = !!(fullPlan || assignment?.planId || member?.currentPlanId);
 
   return (
+    <>
     <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
       <View style={hm.header}>
         <View>
@@ -453,24 +527,30 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
       {(member?.trainerId || member?.gymId) && member?.planEndDate > 0 && (
         <View>
           {member?.trainerId && (
-            <View style={[hm.memberStrip, { borderLeftColor: daysColor }]}>
+            <TouchableOpacity style={[hm.memberStrip, { borderLeftColor: daysColor }]} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
               <View>
                 <Text style={hm.memberPlan}>
                   {member?.gymId ? 'Personal Training' : 'Training Plan'}
                 </Text>
                 <Text style={hm.memberSub}>Valid until {formatDate(member.planEndDate)}</Text>
               </View>
-              <Text style={[hm.daysLeft, { color: daysColor }]}>{daysLeft}d</Text>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[hm.daysLeft, { color: daysColor }]}>{daysLeft}d</Text>
+                <Text style={{ color: C.mid, fontSize: 16 }}>›</Text>
+              </View>
+            </TouchableOpacity>
           )}
           {member?.gymId && !member?.trainerId && (
-            <View style={[hm.memberStrip, { borderLeftColor: C.primary }]}>
+            <TouchableOpacity style={[hm.memberStrip, { borderLeftColor: C.primary }]} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
               <View>
                 <Text style={hm.memberPlan}>Gym Membership</Text>
                 <Text style={hm.memberSub}>Valid until {formatDate(member.planEndDate)}</Text>
               </View>
-              <Text style={[hm.daysLeft, { color: C.primary }]}>{daysLeft}d</Text>
-            </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[hm.daysLeft, { color: C.primary }]}>{daysLeft}d</Text>
+                <Text style={{ color: C.mid, fontSize: 16 }}>›</Text>
+              </View>
+            </TouchableOpacity>
           )}
         </View>
       )}
@@ -497,6 +577,8 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
 
       <View style={{ height: 30 }} />
     </ScrollView>
+    <MembershipDetailModal visible={showMembership} onClose={() => setShowMembership(false)} member={member} />
+    </>
   );
 }
 
@@ -2202,8 +2284,7 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
     if (!ns || !memberId) { Alert.alert('Error', 'Cannot save. Try again.'); return; }
     setSaving(true);
     try {
-      const { doc, collection, setDoc } = require('firebase/firestore');
-      const { db } = require('./shared/firebase/config');
+      // Use top-level imports — inline require() can fail in production builds
       const ref = doc(collection(db, 'gyms', ns, 'measurements'));
       await setDoc(ref, {
         id: ref.id,
@@ -2488,15 +2569,15 @@ function ProgressScreen({ member, gymId, memberId }) {
     // Use the same namespace as weight logs/measurements so gym members and freelance members both work
     const ns = gymId || (member && (member.trainerId || member.id));
     if (!ns) return;
-    const { collection, query, where, orderBy, onSnapshot } = require('firebase/firestore');
-    const { db } = require('./shared/firebase/config');
+    // Use top-level imports; removed orderBy to avoid composite index requirement
     const q = query(
       collection(db, 'gyms', ns, 'workoutLogs'),
       where('memberId', '==', memberId),
-      orderBy('completedAt', 'desc')
     );
     const unsub = onSnapshot(q, snap => {
-      setWorkoutLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      logs.sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+      setWorkoutLogs(logs);
     }, () => {});
     return () => unsub();
   }, [memberId, gymId, member?.trainerId]);
@@ -2507,9 +2588,7 @@ function ProgressScreen({ member, gymId, memberId }) {
     if (!val || !ns || !memberId) { Alert.alert('Error', 'Could not save. Try again.'); return; }
     setSaving(true);
     try {
-      // Write directly to Firestore — works for both gym and freelance members
-      const { doc, collection, setDoc, updateDoc } = require('firebase/firestore');
-      const { db } = require('./shared/firebase/config');
+      // Use top-level imports — inline require() can fail in production builds
       const logRef = doc(collection(db, 'gyms', ns, 'weightLogs'));
       await setDoc(logRef, {
         id: logRef.id,
@@ -3560,6 +3639,7 @@ const ti = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
+  const [showMembership, setShowMembership] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [draft, setDraft] = useState({
     name: member?.name || '',
@@ -3761,18 +3841,28 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
         <>
           <Text style={g.sec}>Membership</Text>
           {member?.trainerId && (
-            <View style={pf.memberCard}>
-              <Text style={pf.planName}>
-                {member?.gymId ? '🏋️ Personal Training' : '🏋️ Training Plan'}
-              </Text>
-              <Text style={pf.planSub}>Valid until {formatDate(member.planEndDate)} · {daysLeft} days left</Text>
-            </View>
+            <TouchableOpacity style={pf.memberCard} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={pf.planName}>
+                    {member?.gymId ? '🏋️ Personal Training' : '🏋️ Training Plan'}
+                  </Text>
+                  <Text style={pf.planSub}>Valid until {formatDate(member.planEndDate)} · {daysLeft} days left</Text>
+                </View>
+                <Text style={{ color: C.mid, fontSize: 18 }}>›</Text>
+              </View>
+            </TouchableOpacity>
           )}
           {member?.gymId && !member?.trainerId && (
-            <View style={pf.memberCard}>
-              <Text style={pf.planName}>🏛 Gym Membership</Text>
-              <Text style={pf.planSub}>Valid until {formatDate(member.planEndDate)} · {daysLeft} days left</Text>
-            </View>
+            <TouchableOpacity style={pf.memberCard} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={pf.planName}>🏛 Gym Membership</Text>
+                  <Text style={pf.planSub}>Valid until {formatDate(member.planEndDate)} · {daysLeft} days left</Text>
+                </View>
+                <Text style={{ color: C.mid, fontSize: 18 }}>›</Text>
+              </View>
+            </TouchableOpacity>
           )}
         </>
       )}
@@ -3855,6 +3945,7 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
           )}
         </SafeAreaView>
       </Modal>
+      <MembershipDetailModal visible={showMembership} onClose={() => setShowMembership(false)} member={member} />
     </ScrollView>
   );
 }
