@@ -164,6 +164,12 @@ function OtpLoginScreen({ onSuccess }) {
   const [verificationId, setVerificationId] = useState(null);
   const [webviewReady, setWebviewReady] = useState(false);
 
+  useEffect(() => {
+    if (webviewReady) return;
+    const t = setTimeout(() => setWebviewReady(true), 10000);
+    return () => clearTimeout(t);
+  }, [webviewReady]);
+
   const sendOtp = async () => {
     if (phone.length < 10) { setError('Enter a valid 10-digit mobile number'); return; }
     setError(''); setLoading(true);
@@ -752,6 +758,8 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   // restTimers: computed from restEndTimes each tick
   const [restTimers, setRestTimers] = useState({});
   const [allDone, setAllDone] = useState(!!workoutTimer?.completed);
+  const [customReps, setCustomReps] = useState({});
+  const [extraSets, setExtraSets] = useState({});
   const tickRef = useRef(null);
   const vibratedRef = useRef({});
   const notifIdRef = useRef(null);
@@ -949,7 +957,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
     if (!allSetsOfThisExDone) startRestTimer(stateKey, defaultRest || 60);
 
     const isAllDone = exercises.every(ex =>
-      Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => newDone[k])
+      Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => newDone[k])
     );
 
     // Write startedAt on first set completed (so trainer sees "In Progress")
@@ -1023,7 +1031,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
               muscleGroup: ex.muscleGroup || 'Other',
               targetSets: ex.sets,
               targetReps: ex.reps,
-              actualSets: ex.sets,
+              actualSets: getTotalSets(ex),
               actualReps: String(ex.reps),
               weight: parseFloat(setWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
               restSeconds: ex.rest || 60,
@@ -1034,7 +1042,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             exerciseLogs: exercises.map(ex => ({
               exerciseId: ex.id,
               exerciseName: ex.name,
-              sets: Array.from({ length: ex.sets }, (_, i) => ({
+              sets: Array.from({ length: getTotalSets(ex) }, (_, i) => ({
                 setNo: i + 1,
                 reps: ex.reps,
                 weight: parseFloat(setWeights[`${ex.id}_${i + 1}`] || lastWeights[`${ex.id}_${i + 1}`] || '0'),
@@ -1067,8 +1075,10 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
     }
   };
 
+  const getTotalSets = (ex) => ex.sets + (extraSets[ex.id] || 0);
+
   const allSetsOf = (ex) =>
-    Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => doneSets[k]);
+    Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => doneSets[k]);
 
   const doneCount = exercises.filter(ex => allSetsOf(ex)).length;
   const elapsed = workoutTimer?.elapsed || 0;
@@ -1091,11 +1101,12 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
         <Text style={lv.logCount}>{doneCount}/{exercises.length}</Text>
       </View>
 
-      <ScrollView style={{ padding: 16 }}>
+      <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
         {exercises.map((ex) => {
           const isOpen = expanded === ex.id;
+          const totalSets = getTotalSets(ex);
           const isDone = allSetsOf(ex);
-          const doneSetsCount = Array.from({ length: ex.sets }, (_, i) => doneSets[`${ex.id}_${i + 1}`]).filter(Boolean).length;
+          const doneSetsCount = Array.from({ length: totalSets }, (_, i) => doneSets[`${ex.id}_${i + 1}`]).filter(Boolean).length;
           const isInProgress = doneSetsCount > 0 && !isDone;
           return (
             <View key={ex.id} style={[lv.exWrap, isDone && lv.exWrapDone, isInProgress && lv.exWrapActive]}>
@@ -1108,13 +1119,13 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                     <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : isInProgress ? C.amber : C.mid} />
                     <Text style={[lv.exName, isDone && lv.exNameDone]}>{ex.name}</Text>
                   </View>
-                  <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
+                  <Text style={lv.exMeta}>{totalSets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
                   {isInProgress && (
                     <View style={lv.progressRow}>
                       <View style={lv.progressBarBg}>
-                        <View style={[lv.progressBarFill, { width: `${(doneSetsCount / ex.sets) * 100}%` }]} />
+                        <View style={[lv.progressBarFill, { width: `${(doneSetsCount / totalSets) * 100}%` }]} />
                       </View>
-                      <Text style={lv.progressText}>{doneSetsCount}/{ex.sets} sets</Text>
+                      <Text style={lv.progressText}>{doneSetsCount}/{totalSets} sets</Text>
                     </View>
                   )}
                 </View>
@@ -1132,7 +1143,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                     <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
                     <Text style={[lv.setHeaderTxt, { width: 56 }]}></Text>
                   </View>
-                  {Array.from({ length: ex.sets }, (_, i) => {
+                  {Array.from({ length: totalSets }, (_, i) => {
                     const setNo = i + 1;
                     const stateKey = `${ex.id}_${setNo}`;
                     const isDoneSet = doneSets[stateKey];
@@ -1148,7 +1159,14 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                             <Text style={[lv.setNumTxt, isDoneSet && lv.setNumTxtDone]}>{setNo}</Text>
                           </View>
                           <View style={lv.repsBox}>
-                            <Text style={[lv.repsVal, isDoneSet && { color: C.green }]}>{ex.reps}</Text>
+                            <TextInput
+                              style={[lv.repsInput, isDoneSet && { color: C.green }]}
+                              keyboardType="number-pad"
+                              maxLength={3}
+                              value={String(customReps[stateKey] ?? ex.reps)}
+                              editable={!isDoneSet}
+                              onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
+                            />
                           </View>
                           <View style={lv.lastBox}>
                             <Text style={lv.lastVal}>{lastW || '—'}</Text>
@@ -1173,7 +1191,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                             <TouchableOpacity
                               style={lv.doneBtn}
                               activeOpacity={0.7}
-                              onPress={() => markSetDone(ex.id, setNo, ex.rest, ex.sets)}>
+                              onPress={() => markSetDone(ex.id, setNo, ex.rest, totalSets)}>
                               <Ionicons name="checkmark" size={18} color="#fff" />
                             </TouchableOpacity>
                           ) : (
@@ -1185,6 +1203,13 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                       </View>
                     );
                   })}
+                  <TouchableOpacity
+                    style={lv.addSetBtn}
+                    activeOpacity={0.7}
+                    onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
+                    <Ionicons name="add-circle-outline" size={16} color={C.primary} />
+                    <Text style={lv.addSetTxt}>Add Set</Text>
+                  </TouchableOpacity>
                   {ex.note ? (
                     <View style={lv.trainerNoteRow}>
                       <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
@@ -1216,7 +1241,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                 <Text style={lv.finishStatLbl}>Exercises</Text>
               </View>
               <View style={[lv.finishStatBox, { borderLeftWidth: 1, borderLeftColor: '#E8E8ED' }]}>
-                <Text style={lv.finishStatVal}>{exercises.reduce((a, e) => a + (e.sets || 0), 0)}</Text>
+                <Text style={lv.finishStatVal}>{exercises.reduce((a, e) => a + getTotalSets(e), 0)}</Text>
                 <Text style={lv.finishStatLbl}>Total Sets</Text>
               </View>
             </View>
@@ -1260,6 +1285,9 @@ const lv = StyleSheet.create({
   setNumTxtDone: { color: C.green },
   repsBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   repsVal: { fontSize: 17, fontWeight: '800', color: C.dark },
+  repsInput: { fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', width: 44, paddingVertical: 2, paddingHorizontal: 0, borderBottomWidth: 1, borderBottomColor: '#E0E0E5' },
+  addSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
+  addSetTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
   lastBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   lastVal: { fontSize: 13, fontWeight: '600', color: '#B0B0B8' },
   weightGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -1313,6 +1341,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [restTimers, setRestTimers] = useState({});
   const [isPaused, setIsPaused] = useState(false);
   const [scrolledPastHeader, setScrolledPastHeader] = useState(false);
+  const [customReps, setCustomReps] = useState({});
+  const [extraSets, setExtraSets] = useState({});
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const tickRef = useRef(null);
@@ -1610,8 +1640,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const memberId = member?.id;
   const memberName = member?.name || 'there';
 
+  const getTotalSets = (ex) => ex.sets + (extraSets[ex.id] || 0);
+
   const allSetsOf = (ex) =>
-    Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => workoutDoneSets[k]);
+    Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => workoutDoneSets[k]);
   const allDone = logExercises.length > 0 && logExercises.every(allSetsOf);
   const doneCount = logExercises.filter(ex => allSetsOf(ex)).length;
   const elapsed = workoutTimer?.elapsed || 0;
@@ -1673,7 +1705,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     if (!allSetsOfThisExDone) startRestTimer(stateKey, defaultRest || 60);
 
     const isAllDone = logExercises.every(ex =>
-      Array.from({ length: ex.sets }, (_, i) => `${ex.id}_${i + 1}`).every(k => newDone[k])
+      Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => newDone[k])
     );
 
     const totalDoneCount = Object.values(newDone).filter(Boolean).length;
@@ -1730,13 +1762,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               exerciseId: ex.id, exerciseName: ex.name,
               muscleGroup: ex.muscleGroup || 'Other',
               targetSets: ex.sets, targetReps: ex.reps,
-              actualSets: ex.sets, actualReps: String(ex.reps),
+              actualSets: getTotalSets(ex), actualReps: String(ex.reps),
               weight: parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
               restSeconds: ex.rest || 60, completed: true, notes: ex.note || '',
             })),
             exerciseLogs: logExercises.map(ex => ({
               exerciseId: ex.id, exerciseName: ex.name,
-              sets: Array.from({ length: ex.sets }, (_, i) => ({
+              sets: Array.from({ length: getTotalSets(ex) }, (_, i) => ({
                 setNo: i + 1, reps: ex.reps,
                 weight: parseFloat(localSetWeights[`${ex.id}_${i + 1}`] || lastWeights[`${ex.id}_${i + 1}`] || '0'),
                 done: true,
@@ -1800,6 +1832,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         ref={scrollRef}
         style={g.screen}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y;
           setScrolledPastHeader(y > 120);
@@ -2121,12 +2154,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
         {/* ── Inline workout logging cards ─────────────────────────────────── */}
         {isLogging && (
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View>
             <Text style={lv.exercisesLabel}>EXERCISES</Text>
             {logExercises.map((ex) => {
               const isOpen = expanded === ex.id;
+              const totalSets = getTotalSets(ex);
               const isDone = allSetsOf(ex);
-              const doneSetsCount = Array.from({ length: ex.sets }, (_, i) => workoutDoneSets[`${ex.id}_${i + 1}`]).filter(Boolean).length;
+              const doneSetsCount = Array.from({ length: totalSets }, (_, i) => workoutDoneSets[`${ex.id}_${i + 1}`]).filter(Boolean).length;
               const isInProgress = doneSetsCount > 0 && !isDone;
               return (
                 <View key={ex.id} style={[lv.exWrap, isDone && lv.exWrapDone, isInProgress && lv.exWrapActive]}>
@@ -2139,13 +2173,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : isInProgress ? C.amber : C.mid} />
                         <Text style={[lv.exName, isDone && lv.exNameDone]}>{ex.name}</Text>
                       </View>
-                      <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
+                      <Text style={lv.exMeta}>{totalSets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
                       {isInProgress && (
                         <View style={lv.progressRow}>
                           <View style={lv.progressBarBg}>
-                            <View style={[lv.progressBarFill, { width: `${(doneSetsCount / ex.sets) * 100}%` }]} />
+                            <View style={[lv.progressBarFill, { width: `${(doneSetsCount / totalSets) * 100}%` }]} />
                           </View>
-                          <Text style={lv.progressText}>{doneSetsCount}/{ex.sets} sets</Text>
+                          <Text style={lv.progressText}>{doneSetsCount}/{totalSets} sets</Text>
                         </View>
                       )}
                     </View>
@@ -2163,7 +2197,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
                         <Text style={[lv.setHeaderTxt, { width: 56 }]}></Text>
                       </View>
-                      {Array.from({ length: ex.sets }, (_, i) => {
+                      {Array.from({ length: totalSets }, (_, i) => {
                         const setNo = i + 1;
                         const stateKey = `${ex.id}_${setNo}`;
                         const isDoneSet = workoutDoneSets[stateKey];
@@ -2179,7 +2213,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                 <Text style={[lv.setNumTxt, isDoneSet && lv.setNumTxtDone]}>{setNo}</Text>
                               </View>
                               <View style={lv.repsBox}>
-                                <Text style={[lv.repsVal, isDoneSet && { color: C.green }]}>{ex.reps}</Text>
+                                <TextInput
+                                  style={[lv.repsInput, isDoneSet && { color: C.green }]}
+                                  keyboardType="number-pad"
+                                  maxLength={3}
+                                  value={String(customReps[stateKey] ?? ex.reps)}
+                                  editable={!isDoneSet}
+                                  onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
+                                />
                               </View>
                               <View style={lv.lastBox}>
                                 <Text style={lv.lastVal}>{lastW || '—'}</Text>
@@ -2204,7 +2245,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                 <TouchableOpacity
                                   style={lv.doneBtn}
                                   activeOpacity={0.7}
-                                  onPress={() => markSetDone(ex.id, setNo, ex.rest, ex.sets)}>
+                                  onPress={() => markSetDone(ex.id, setNo, ex.rest, totalSets)}>
                                   <Ionicons name="checkmark" size={18} color="#fff" />
                                 </TouchableOpacity>
                               ) : (
@@ -2216,6 +2257,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           </View>
                         );
                       })}
+                      <TouchableOpacity
+                        style={lv.addSetBtn}
+                        activeOpacity={0.7}
+                        onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
+                        <Ionicons name="add-circle-outline" size={16} color={C.primary} />
+                        <Text style={lv.addSetTxt}>Add Set</Text>
+                      </TouchableOpacity>
                       {ex.note ? (
                         <View style={lv.trainerNoteRow}>
                           <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
@@ -2247,7 +2295,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     <Text style={lv.finishStatLbl}>Exercises</Text>
                   </View>
                   <View style={[lv.finishStatBox, { borderLeftWidth: 1, borderLeftColor: '#E8E8ED' }]}>
-                    <Text style={lv.finishStatVal}>{logExercises.reduce((a, e) => a + (e.sets || 0), 0)}</Text>
+                    <Text style={lv.finishStatVal}>{logExercises.reduce((a, e) => a + getTotalSets(e), 0)}</Text>
                     <Text style={lv.finishStatLbl}>Total Sets</Text>
                   </View>
                 </View>
@@ -2265,7 +2313,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         muscleGroup: ex.muscleGroup || '',
                         targetSets: ex.sets,
                         targetReps: ex.reps,
-                        actualSets: ex.sets,
+                        actualSets: getTotalSets(ex),
                         actualReps: String(ex.reps),
                         weight: parseFloat(workoutSetWeights[`${ex.id}_1`] || '0'),
                       })),
@@ -2285,7 +2333,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 )}
               </View>
             )}
-          </KeyboardAvoidingView>
+          </View>
         )}
 
         <View style={{ height: 60 }} />
