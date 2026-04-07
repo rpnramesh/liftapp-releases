@@ -17,6 +17,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -27,6 +28,7 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import { Audio } from 'expo-av';
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import { onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
@@ -67,6 +69,26 @@ const formatElapsed = (s) => {
 
 const formatDate = (ts) =>
   new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+
+// ── Rest complete sound player ────────────────────────────────────────────────
+const playRestCompleteSound = async () => {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg' },
+      { shouldPlay: true, volume: 1.0 }
+    );
+    sound.setOnPlaybackStatusUpdate(status => {
+      if (status.didJustFinish) sound.unloadAsync().catch(() => {});
+    });
+  } catch (e) { console.log('Sound play error:', e); }
+};
 
 // ── SPLASH ────────────────────────────────────────────────────────────────────
 function SplashScreen({ onDone }) {
@@ -806,6 +828,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
         if (remaining === 0 && !vibratedRef.current[k]) {
           vibratedRef.current[k] = true;
           Vibration.vibrate([0, 500, 500, 500]); // two vibrations
+          playRestCompleteSound();
         }
       }
       setRestTimers(newTimers);
@@ -1160,22 +1183,9 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                           )}
                         </View>
                         {isDoneSet && restLeft !== undefined && restLeft > 0 && (
-                          <View style={lv.restRow}>
-                            <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, -10)}>
-                              <Ionicons name="remove" size={14} color={C.dark} />
-                              <Text style={lv.restAdjTxt}>10s</Text>
-                            </TouchableOpacity>
-                            <View style={[lv.restTimerBox, { backgroundColor: restColor + '12' }]}>
-                              <Ionicons name="hourglass-outline" size={18} color={restColor} />
-                              <Text style={[lv.restTimerTxt, { color: restColor }]}>
-                                {formatRest(restLeft)}
-                              </Text>
-                              <Text style={[lv.restLabel, { color: restColor }]}>rest</Text>
-                            </View>
-                            <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, 10)}>
-                              <Ionicons name="add" size={14} color={C.dark} />
-                              <Text style={lv.restAdjTxt}>10s</Text>
-                            </TouchableOpacity>
+                          <View style={lv.restDoneRow}>
+                            <Ionicons name="hourglass-outline" size={14} color={C.amber} />
+                            <Text style={[lv.restDoneTxt, { color: C.amber }]}>Resting...</Text>
                           </View>
                         )}
                         {isDoneSet && restLeft === 0 && (
@@ -1314,6 +1324,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [lastWeights, setLastWeights] = useState({});
   const [restTimers, setRestTimers] = useState({});
   const [isPaused, setIsPaused] = useState(false);
+  const [scrolledPastHeader, setScrolledPastHeader] = useState(false);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const tickRef = useRef(null);
@@ -1322,6 +1333,19 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const activeLogRef = useRef(null);
   const pausedAtRef = useRef(null);
   const pausedEndTimesRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  // ── Floating rest timer (draggable) ─────────────────────────────────────────
+  const floatPan = useRef(new Animated.ValueXY({ x: width - 200, y: 100 })).current;
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { floatPan.extractOffset(); },
+      onPanResponderMove: Animated.event([null, { dx: floatPan.x, dy: floatPan.y }], { useNativeDriver: false }),
+      onPanResponderRelease: () => { floatPan.flattenOffset(); },
+    })
+  ).current;
 
   // ── Day helpers ─────────────────────────────────────────────────────────────
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1411,6 +1435,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         if (remaining === 0 && !vibratedRef.current[k]) {
           vibratedRef.current[k] = true;
           Vibration.vibrate([0, 500, 500, 500]);
+          playRestCompleteSound();
         }
       }
       setRestTimers(newTimers);
@@ -1751,17 +1776,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  // Active rest timer data for floating bubble
+  const activeRestEntry = Object.entries(restTimers).find(([, v]) => v > 0);
+  const activeRestKey = activeRestEntry?.[0];
+  const activeRestLeft = activeRestEntry?.[1];
+  const restDone = Object.entries(restTimers).some(([, v]) => v === 0) && !activeRestEntry;
+  const activeRestColor = activeRestLeft !== undefined
+    ? (activeRestLeft < 20 ? C.red : activeRestLeft < 40 ? C.amber : C.green)
+    : C.green;
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      {/* Sticky workout timer header — visible only while logging */}
+      {/* Sticky workout header — visible only while logging */}
       {isLogging && (
         <View style={wk.stickyHeader}>
           <View style={{ alignItems: 'center' }}>
             <Text style={wk.stickyTitle}>Workout Log</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name={allDone ? 'checkmark-circle-outline' : 'time-outline'} size={13} color={elapsedColor} />
-              <Text style={[wk.stickyTimer, { color: elapsedColor }]}>{formatElapsed(elapsed)}</Text>
-            </View>
+            {scrolledPastHeader && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name={allDone ? 'checkmark-circle-outline' : 'time-outline'} size={13} color={elapsedColor} />
+                <Text style={[wk.stickyTimer, { color: elapsedColor }]}>{formatElapsed(elapsed)}</Text>
+              </View>
+            )}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Text style={wk.stickyCount}>{doneCount}/{logExercises.length} done</Text>
@@ -1772,7 +1808,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         </View>
       )}
 
-      <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={g.screen}
+        showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          setScrolledPastHeader(y > 120);
+        }}
+        scrollEventThrottle={16}
+      >
         {/* ═══ HEADER ═══ */}
         <View style={wk.headerRow}>
           <View style={{ flex: 1 }}>
@@ -1784,12 +1829,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             </Text>
           </View>
           <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
-            {(workoutTimer?.running || workoutTimer?.completed) ? (
+            {(workoutTimer?.running || workoutTimer?.completed) && !scrolledPastHeader ? (
               <View style={wk.timerPill}>
                 <View style={[wk.timerDot, workoutTimer?.completed && { backgroundColor: C.green }]} />
                 <Text style={[wk.timerVal, workoutTimer?.completed && { color: C.green }]}>{formatElapsed(elapsed)}</Text>
               </View>
-            ) : onViewHistory && !isLogging ? (
+            ) : onViewHistory && !isLogging && !scrolledPastHeader ? (
               <TouchableOpacity onPress={onViewHistory} style={wk.historyBtn}>
                 <Ionicons name="time-outline" size={14} color={C.deepBlue} />
                 <Text style={wk.historyTxt}>History</Text>
@@ -2181,22 +2226,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                               )}
                             </View>
                             {isDoneSet && restLeft !== undefined && restLeft > 0 && (
-                              <View style={lv.restRow}>
-                                <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, -10)}>
-                                  <Ionicons name="remove" size={14} color={C.dark} />
-                                  <Text style={lv.restAdjTxt}>10s</Text>
-                                </TouchableOpacity>
-                                <View style={[lv.restTimerBox, { backgroundColor: restColor + '12' }]}>
-                                  <Ionicons name="hourglass-outline" size={18} color={restColor} />
-                                  <Text style={[lv.restTimerTxt, { color: restColor }]}>
-                                    {isPaused ? 'Paused' : formatRest(restLeft)}
-                                  </Text>
-                                  <Text style={[lv.restLabel, { color: restColor }]}>rest</Text>
-                                </View>
-                                <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, 10)}>
-                                  <Ionicons name="add" size={14} color={C.dark} />
-                                  <Text style={lv.restAdjTxt}>10s</Text>
-                                </TouchableOpacity>
+                              <View style={lv.restDoneRow}>
+                                <Ionicons name="hourglass-outline" size={14} color={C.amber} />
+                                <Text style={[lv.restDoneTxt, { color: C.amber }]}>Resting...</Text>
                               </View>
                             )}
                             {isDoneSet && restLeft === 0 && (
@@ -2282,6 +2314,30 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      {/* ── Floating draggable rest timer ─────────────────────────────── */}
+      {isLogging && activeRestLeft !== undefined && activeRestLeft > 0 && (
+        <Animated.View
+          style={[wk.floatRest, { transform: floatPan.getTranslateTransform(), backgroundColor: activeRestColor + '14', borderColor: activeRestColor + '40' }]}
+          {...panResponder.panHandlers}
+        >
+          <View style={[wk.floatRestInner, { backgroundColor: activeRestColor }]}>
+            <Ionicons name="hourglass-outline" size={16} color="#fff" />
+          </View>
+          <View style={{ alignItems: 'center', flex: 1 }}>
+            <Text style={[wk.floatRestTime, { color: activeRestColor }]}>{formatRest(activeRestLeft)}</Text>
+            <Text style={[wk.floatRestLabel, { color: activeRestColor }]}>rest</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, -10)}>
+              <Ionicons name="remove" size={12} color={C.dark} />
+            </TouchableOpacity>
+            <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, 10)}>
+              <Ionicons name="add" size={12} color={C.dark} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -2358,6 +2414,12 @@ const wk = StyleSheet.create({
   emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.deepBlue + '08', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
   emptySub: { fontSize: 14, color: C.mid, marginTop: 8, textAlign: 'center', lineHeight: 22 },
+  /* Floating rest timer */
+  floatRest: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 28, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1.5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, minWidth: 180 },
+  floatRestInner: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  floatRestTime: { fontSize: 22, fontWeight: '900', letterSpacing: 0.5 },
+  floatRestLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  floatRestAdj: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E8E8ED' },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
