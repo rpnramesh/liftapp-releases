@@ -53,7 +53,7 @@ const C = {
   primary: '#2563EB', bg: '#F8F9FA', card: '#FFFFFF',
   dark: '#1A1A2E', mid: '#8E8E93', light: '#F0F0F0',
   green: '#22C55E', amber: '#F59E0B', red: '#EF4444',
-  blue2: '#EBF2FF', accent: '#2563EB',
+  blue2: '#EBF2FF', accent: '#2563EB', deepBlue: '#1E40AF',
 };
 
 const formatElapsed = (s) => {
@@ -1076,25 +1076,39 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
           const isInProgress = doneSetsCount > 0 && !isDone;
           return (
             <View key={ex.id} style={[lv.exWrap, isDone && lv.exWrapDone, isInProgress && lv.exWrapActive]}>
-              <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)}>
+              <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)} activeOpacity={0.7}>
                 <View style={[lv.exCheck, isDone && lv.exCheckDone, isInProgress && lv.exCheckActive]}>
-                  <Text style={{ color: isDone ? '#fff' : isInProgress ? C.amber : C.mid }}>{isDone ? '✓' : isInProgress ? '…' : ''}</Text>
+                  {isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="barbell-outline" size={18} color={C.mid} />}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[lv.exName, isDone && { color: C.mid }]}>{ex.name}</Text>
-                  <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps · Rest {ex.rest}s</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : isInProgress ? C.amber : C.mid} />
+                    <Text style={[lv.exName, isDone && lv.exNameDone]}>{ex.name}</Text>
+                  </View>
+                  <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
                   {isInProgress && (
-                    <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700', marginTop: 2 }}>
-                      {doneSetsCount}/{ex.sets} sets done
-                    </Text>
+                    <View style={lv.progressRow}>
+                      <View style={lv.progressBarBg}>
+                        <View style={[lv.progressBarFill, { width: `${(doneSetsCount / ex.sets) * 100}%` }]} />
+                      </View>
+                      <Text style={lv.progressText}>{doneSetsCount}/{ex.sets} sets</Text>
+                    </View>
                   )}
                 </View>
-                <Text style={{ color: C.mid, fontSize: 13 }}>{isOpen ? '▲' : '▼'}</Text>
+                <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isDone ? C.green : isInProgress ? C.amber : '#C7C7CC'} />
               </TouchableOpacity>
 
               {isOpen && (
                 <View style={lv.setsContainer}>
                   <ExerciseVideo uri={ex.videoUri} exerciseName={ex.name} />
+                  {/* Set column headers */}
+                  <View style={lv.setHeaderRow}>
+                    <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
+                    <Text style={[lv.setHeaderTxt, { width: 48 }]}>REPS</Text>
+                    <Text style={[lv.setHeaderTxt, { width: 48 }]}>PREV</Text>
+                    <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
+                    <Text style={[lv.setHeaderTxt, { width: 56 }]}></Text>
+                  </View>
                   {Array.from({ length: ex.sets }, (_, i) => {
                     const setNo = i + 1;
                     const stateKey = `${ex.id}_${setNo}`;
@@ -1107,72 +1121,76 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                     return (
                       <View key={setNo}>
                         <View style={[lv.setRow, isDoneSet && lv.setRowDone]}>
-                          <View style={lv.setNumBadge}>
-                            <Text style={lv.setNumTxt}>S{setNo}</Text>
+                          <View style={[lv.setNumBadge, isDoneSet && lv.setNumBadgeDone]}>
+                            <Text style={[lv.setNumTxt, isDoneSet && lv.setNumTxtDone]}>{setNo}</Text>
                           </View>
                           <View style={lv.repsBox}>
-                            <Text style={lv.repsVal}>{ex.reps}</Text>
-                            <Text style={lv.repsLbl}>reps</Text>
+                            <Text style={[lv.repsVal, isDoneSet && { color: C.green }]}>{ex.reps}</Text>
                           </View>
                           <View style={lv.lastBox}>
                             <Text style={lv.lastVal}>{lastW || '—'}</Text>
-                            <Text style={lv.lastLbl}>last</Text>
                           </View>
-                          <TextInput
-                            style={[lv.weightInput, isDoneSet && { opacity: 0.5 }]}
-                            placeholder={lastW || '0'}
-                            placeholderTextColor={C.mid}
-                            keyboardType="decimal-pad"
-                            value={setWeights[stateKey] || ''}
-                            editable={!isDoneSet}
-                            onChangeText={val => {
-                              const updated = { ...setWeights, [stateKey]: val };
-                              setSetWeights(updated);
-                              setSetWeightsExternal(updated);
-                            }}
-                          />
-                          <Text style={lv.kgLbl}>kg</Text>
+                          <View style={lv.weightGroup}>
+                            <TextInput
+                              style={[lv.weightInput, isDoneSet && lv.weightInputDone]}
+                              placeholder={lastW || '0'}
+                              placeholderTextColor={'#C7C7CC'}
+                              keyboardType="decimal-pad"
+                              value={setWeights[stateKey] || ''}
+                              editable={!isDoneSet}
+                              onChangeText={val => {
+                                const updated = { ...setWeights, [stateKey]: val };
+                                setSetWeights(updated);
+                                setSetWeightsExternal(updated);
+                              }}
+                            />
+                            <Text style={lv.kgLbl}>kg</Text>
+                          </View>
                           {!isDoneSet ? (
                             <TouchableOpacity
                               style={lv.doneBtn}
+                              activeOpacity={0.7}
                               onPress={() => markSetDone(ex.id, setNo, ex.rest, ex.sets)}>
-                              <Text style={lv.doneBtnTxt}>✓ Done</Text>
+                              <Ionicons name="checkmark" size={18} color="#fff" />
                             </TouchableOpacity>
                           ) : (
-                            <View style={lv.donedTag}><Text style={lv.donedTxt}>✓</Text></View>
+                            <View style={lv.donedTag}>
+                              <Ionicons name="checkmark-circle" size={28} color={C.green} />
+                            </View>
                           )}
                         </View>
                         {isDoneSet && restLeft !== undefined && restLeft > 0 && (
                           <View style={lv.restRow}>
-                            <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, -10)}>
-                              <Text style={lv.restAdjTxt}>−10s</Text>
+                            <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, -10)}>
+                              <Ionicons name="remove" size={14} color={C.dark} />
+                              <Text style={lv.restAdjTxt}>10s</Text>
                             </TouchableOpacity>
-                            <View style={[lv.restTimerBox, { borderColor: restColor, backgroundColor: restColor + '15' }]}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                              <Ionicons name="sync-outline" size={14} color={restColor} />
-                              <Text style={[lv.restTimerTxt, { color: restColor }]}>Rest {formatRest(restLeft)}</Text>
+                            <View style={[lv.restTimerBox, { backgroundColor: restColor + '12' }]}>
+                              <Ionicons name="hourglass-outline" size={18} color={restColor} />
+                              <Text style={[lv.restTimerTxt, { color: restColor }]}>
+                                {formatRest(restLeft)}
+                              </Text>
+                              <Text style={[lv.restLabel, { color: restColor }]}>rest</Text>
                             </View>
-                            </View>
-                            <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, 10)}>
-                              <Text style={lv.restAdjTxt}>+10s</Text>
+                            <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, 10)}>
+                              <Ionicons name="add" size={14} color={C.dark} />
+                              <Text style={lv.restAdjTxt}>10s</Text>
                             </TouchableOpacity>
                           </View>
                         )}
                         {isDoneSet && restLeft === 0 && (
                           <View style={lv.restDoneRow}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                              <Ionicons name="checkmark-circle-outline" size={14} color={C.green} />
-                              <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
-                            </View>
+                            <Ionicons name="checkmark-circle" size={16} color={C.green} />
+                            <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
                           </View>
                         )}
                       </View>
                     );
                   })}
                   {ex.note ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="chatbubble-outline" size={12} color={C.primary} />
-                      <Text style={lv.trainerNote}>"{ex.note}"</Text>
+                    <View style={lv.trainerNoteRow}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
+                      <Text style={lv.trainerNote}>{ex.note}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -1181,10 +1199,29 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
           );
         })}
         {allDone && (
-          <View style={lv.finishCard}>
-            <Ionicons name="trophy-outline" size={36} color={C.green} />
+          <View style={lv.finishOverlay}>
+            <View style={lv.finishGlow} />
+            <View style={lv.finishIconCircle}>
+              <Ionicons name="trophy" size={44} color="#fff" />
+            </View>
             <Text style={lv.finishTitle}>Workout Complete!</Text>
-            <Text style={lv.finishSub}>Great job, {memberName}!{'\n'}Total time: {formatElapsed(elapsed)}</Text>
+            <Text style={lv.finishGreeting}>Great job, {memberName}!</Text>
+            <View style={lv.finishTimerRow}>
+              <Ionicons name="time-outline" size={20} color={C.green} />
+              <Text style={lv.finishTimerTxt}>{formatElapsed(elapsed)}</Text>
+            </View>
+            <Text style={lv.finishTimerLabel}>Total Duration</Text>
+            <View style={lv.finishDivider} />
+            <View style={lv.finishStatRow}>
+              <View style={lv.finishStatBox}>
+                <Text style={lv.finishStatVal}>{exercises.length}</Text>
+                <Text style={lv.finishStatLbl}>Exercises</Text>
+              </View>
+              <View style={[lv.finishStatBox, { borderLeftWidth: 1, borderLeftColor: '#E8E8ED' }]}>
+                <Text style={lv.finishStatVal}>{exercises.reduce((a, e) => a + (e.sets || 0), 0)}</Text>
+                <Text style={lv.finishStatLbl}>Total Sets</Text>
+              </View>
+            </View>
           </View>
         )}
         <View style={{ height: 40 }} />
@@ -1199,43 +1236,67 @@ const lv = StyleSheet.create({
   logTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
   globalTimer: { fontSize: 16, fontWeight: '800', marginTop: 2 },
   logCount: { fontSize: 14, fontWeight: '600', color: C.primary },
-  exWrap: { backgroundColor: C.card, borderRadius: 14, marginBottom: 12, overflow: 'hidden', elevation: 1, borderWidth: 1, borderColor: C.light },
-  exWrapDone: { borderColor: C.green, borderWidth: 1.5 },
-  exWrapActive: { borderColor: C.amber, borderWidth: 1.5 },
-  exCheckActive: { borderColor: C.amber },
-  exHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  exCheck: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: C.light, alignItems: 'center', justifyContent: 'center' },
-  exCheckDone: { backgroundColor: C.green, borderColor: C.green },
-  exName: { fontSize: 15, fontWeight: '700', color: C.dark },
-  exMeta: { fontSize: 12, color: C.mid, marginTop: 2 },
-  setsContainer: { borderTopWidth: 1, borderTopColor: C.light, paddingHorizontal: 14, paddingBottom: 12, paddingTop: 12 },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.light, gap: 6 },
-  setRowDone: { backgroundColor: '#F0FDF4', marginHorizontal: -14, paddingHorizontal: 14 },
-  setNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.blue2, alignItems: 'center', justifyContent: 'center' },
-  setNumTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
-  repsBox: { alignItems: 'center', width: 34 },
-  repsVal: { fontSize: 14, fontWeight: '700', color: C.dark },
-  repsLbl: { fontSize: 9, color: C.mid },
-  lastBox: { alignItems: 'center', width: 40 },
-  lastVal: { fontSize: 12, fontWeight: '600', color: C.amber },
-  lastLbl: { fontSize: 9, color: C.mid },
-  weightInput: { flex: 1, backgroundColor: C.bg, borderRadius: 8, padding: 7, fontSize: 14, color: C.dark, borderWidth: 1, borderColor: C.light, textAlign: 'center' },
-  kgLbl: { fontSize: 11, color: C.mid, fontWeight: '600' },
-  doneBtn: { backgroundColor: C.green, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7 },
-  doneBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 11 },
-  donedTag: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
-  donedTxt: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  restRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 10, backgroundColor: '#F8FAFF', marginHorizontal: -14, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.light },
-  restAdjBtn: { backgroundColor: C.light, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  restAdjTxt: { fontSize: 13, color: C.dark, fontWeight: '700' },
-  restTimerBox: { borderWidth: 2, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 6, minWidth: 130, alignItems: 'center' },
-  restTimerTxt: { fontSize: 16, fontWeight: '800' },
-  restDoneRow: { alignItems: 'center', paddingVertical: 8, backgroundColor: '#F0FDF4', marginHorizontal: -14, paddingHorizontal: 14 },
-  restDoneTxt: { fontSize: 13, color: C.green, fontWeight: '600' },
-  trainerNote: { fontSize: 12, color: C.primary, fontStyle: 'italic', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.light },
-  finishCard: { backgroundColor: '#F0FDF4', borderRadius: 18, padding: 32, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: C.green },
-  finishTitle: { fontSize: 22, fontWeight: '800', color: C.dark, marginTop: 10 },
-  finishSub: { fontSize: 14, color: C.mid, marginTop: 4, textAlign: 'center', lineHeight: 22 },
+  exercisesLabel: { fontSize: 11, fontWeight: '800', color: C.mid, letterSpacing: 1.5, marginTop: 24, marginBottom: 14 },
+  exWrap: { backgroundColor: C.card, borderRadius: 18, marginBottom: 14, overflow: 'hidden', elevation: 2, borderWidth: 1, borderColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+  exWrapDone: { borderColor: C.green + '35', backgroundColor: '#FAFFFE' },
+  exWrapActive: { borderColor: C.amber + '60', backgroundColor: '#FFFCF5' },
+  exCheckActive: { backgroundColor: C.amber, borderColor: C.amber },
+  exHeader: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14 },
+  exCheck: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#E0E0E5', alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
+  exCheckDone: { backgroundColor: C.green, borderColor: C.green, shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+  exName: { fontSize: 16, fontWeight: '700', color: C.dark, letterSpacing: -0.2 },
+  exNameDone: { color: '#A0A0A8', textDecorationLine: 'line-through', textDecorationColor: '#C8C8CE' },
+  exMeta: { fontSize: 12, color: C.mid, marginTop: 3, letterSpacing: 0.2 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  progressBarBg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: C.amber + '25', maxWidth: 80 },
+  progressBarFill: { height: 4, borderRadius: 2, backgroundColor: C.amber },
+  progressText: { fontSize: 11, fontWeight: '700', color: C.amber },
+  setsContainer: { borderTopWidth: 1, borderTopColor: '#EFEFEF', paddingHorizontal: 18, paddingBottom: 16, paddingTop: 8 },
+  setHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, gap: 8 },
+  setHeaderTxt: { fontSize: 10, fontWeight: '700', color: '#B0B0B8', letterSpacing: 0.8, textAlign: 'center' },
+  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F0F0F2', gap: 8, paddingHorizontal: 2 },
+  setRowDone: { backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 20, borderBottomColor: '#E2F5E9' },
+  setNumBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.deepBlue + '0C', alignItems: 'center', justifyContent: 'center' },
+  setNumBadgeDone: { backgroundColor: C.green + '15' },
+  setNumTxt: { fontSize: 14, fontWeight: '800', color: C.deepBlue },
+  setNumTxtDone: { color: C.green },
+  repsBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
+  repsVal: { fontSize: 17, fontWeight: '800', color: C.dark },
+  lastBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
+  lastVal: { fontSize: 13, fontWeight: '600', color: '#B0B0B8' },
+  weightGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  weightInput: { flex: 1, backgroundColor: '#F5F5F7', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 8, fontSize: 17, fontWeight: '700', color: C.dark, borderWidth: 1.5, borderColor: '#E8E8ED', textAlign: 'center', minHeight: 48 },
+  weightInputDone: { backgroundColor: '#F0FDF4', borderColor: C.green + '30', color: C.green, opacity: 0.7 },
+  kgLbl: { fontSize: 13, color: '#B0B0B8', fontWeight: '700' },
+  doneBtn: { width: 48, height: 48, borderRadius: 14, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+  donedTag: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  restRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 14, marginHorizontal: -18, paddingHorizontal: 18, backgroundColor: '#FAFBFF' },
+  restAdjBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1.5, borderColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  restAdjTxt: { fontSize: 13, color: C.dark, fontWeight: '800' },
+  restTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 12, minWidth: 140, justifyContent: 'center' },
+  restTimerTxt: { fontSize: 24, fontWeight: '800', letterSpacing: 0.5 },
+  restLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  restDoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 18, borderRadius: 0 },
+  restDoneTxt: { fontSize: 14, color: C.green, fontWeight: '700' },
+  trainerNoteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F0F0F2' },
+  trainerNote: { fontSize: 13, color: C.mid, fontStyle: 'italic', flex: 1, lineHeight: 18 },
+  finishOverlay: { alignItems: 'center', marginTop: 24, marginHorizontal: -18, paddingHorizontal: 24, paddingTop: 48, paddingBottom: 36, backgroundColor: '#FAFFFE', borderTopWidth: 1, borderTopColor: C.green + '20', overflow: 'hidden' },
+  finishGlow: { position: 'absolute', top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: C.green + '08' },
+  finishIconCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 8, marginBottom: 20 },
+  finishTitle: { fontSize: 28, fontWeight: '900', color: C.dark, letterSpacing: -0.5 },
+  finishGreeting: { fontSize: 17, fontWeight: '600', color: C.mid, marginTop: 6 },
+  finishTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24, backgroundColor: C.green + '0A', borderRadius: 20, paddingHorizontal: 28, paddingVertical: 14, borderWidth: 1, borderColor: C.green + '18' },
+  finishTimerTxt: { fontSize: 32, fontWeight: '900', color: C.dark, letterSpacing: 1 },
+  finishTimerLabel: { fontSize: 12, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 1, marginTop: 8 },
+  finishDivider: { width: 60, height: 2, borderRadius: 1, backgroundColor: '#E8E8ED', marginVertical: 24 },
+  finishStatRow: { flexDirection: 'row', alignItems: 'center' },
+  finishStatBox: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  finishStatVal: { fontSize: 28, fontWeight: '900', color: C.dark },
+  finishStatLbl: { fontSize: 12, fontWeight: '600', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
+  finishPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.green, borderRadius: 16, paddingVertical: 18, marginTop: 28, width: '100%', shadowColor: C.green, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 5 },
+  finishPrimaryTxt: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
+  finishSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: C.green + '40', borderRadius: 16, paddingVertical: 16, marginTop: 12, width: '100%', backgroundColor: '#fff' },
+  finishSecondaryTxt: { fontSize: 15, fontWeight: '700', color: C.green },
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
@@ -1718,11 +1779,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             <Text style={wk.headerTitle}>{fullPlan?.name || 'Workouts'}</Text>
             <Text style={wk.headerSub}>
               {fullPlan?.name
-                ? `${fullPlan.days?.length || 0} day plan · Assigned by ${member?.trainerName || member?.trainer || 'your trainer'}`
+                ? `${fullPlan.days?.length || 0} day plan  ·  Assigned by ${member?.trainerName || member?.trainer || 'your trainer'}`
                 : 'Your workout plan'}
             </Text>
           </View>
-          <View style={{ marginLeft: 16, paddingTop: 4 }}>
+          <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
             {(workoutTimer?.running || workoutTimer?.completed) ? (
               <View style={wk.timerPill}>
                 <View style={[wk.timerDot, workoutTimer?.completed && { backgroundColor: C.green }]} />
@@ -1730,6 +1791,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               </View>
             ) : onViewHistory && !isLogging ? (
               <TouchableOpacity onPress={onViewHistory} style={wk.historyBtn}>
+                <Ionicons name="time-outline" size={14} color={C.deepBlue} />
                 <Text style={wk.historyTxt}>History</Text>
               </TouchableOpacity>
             ) : null}
@@ -1740,7 +1802,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {(planWeek || assignment?.weekPlan) && (
           <>
             <Text style={wk.sectionLabel}>THIS WEEK</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10, paddingHorizontal: 2 }}>
               {(planWeek || assignment.weekPlan).map((d, i) => {
                 const isToday = d.isToday ?? (i === todayPlanIdx);
                 const planIdxForDay = d.planIdx ?? i;
@@ -1755,52 +1817,60 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   >
                     <Text style={[wk.dayName, isActive && wk.weekTxtW]}>{d.day}</Text>
                     <Text style={[wk.dayDate, isActive && wk.weekTxtW]}>{d.date}</Text>
-                    {isActive && !d.rest && <View style={wk.todayDot} />}
-                    <Text style={[wk.dayLabel, isActive && { color: 'rgba(255,255,255,0.8)' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
+                    {isActive && <View style={wk.activeLine} />}
+                    <Text style={[wk.dayLabel, isActive && { color: 'rgba(255,255,255,0.85)' }, !isActive && d.rest && { color: C.mid }]} numberOfLines={2}>
                       {d.rest ? 'Rest' : d.label}
                     </Text>
                     {d.exerciseCount > 0 && !d.rest && (
-                      <Text style={[wk.dayExCount, isActive && { color: 'rgba(255,255,255,0.7)' }]}>
-                        {d.exerciseCount} ex
-                      </Text>
+                      <View style={[wk.dayExPill, isActive && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                        <Text style={[wk.dayExCount, isActive && { color: 'rgba(255,255,255,0.9)' }]}>
+                          {d.exerciseCount} ex
+                        </Text>
+                      </View>
                     )}
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
-            <View style={{ marginBottom: 20 }} />
+            <View style={{ marginBottom: 16 }} />
           </>
         )}
 
         {/* Trainer-started workout notification */}
         {activeWorkoutLog?.startedBy === 'trainer' && activeWorkoutLog.status === 'incomplete' && (
-          <View style={{ backgroundColor: '#DBEAFE', borderRadius: 12, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Ionicons name="person-outline" size={20} color={C.primary} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: C.primary }}>Trainer started a workout for you</Text>
-              <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{activeWorkoutLog.dayLabel || activeWorkoutLog.planName} · Tap Start to begin</Text>
+          <View style={wk.trainerNotif}>
+            <View style={wk.trainerNotifIcon}>
+              <Ionicons name="person" size={18} color="#fff" />
             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={wk.trainerNotifTitle}>Trainer started a workout</Text>
+              <Text style={wk.trainerNotifSub}>{activeWorkoutLog.dayLabel || activeWorkoutLog.planName} · Tap Start to begin</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.primary} />
           </View>
         )}
 
         {/* Selected day view (non-today) */}
         {selectedDayIdx !== null && selectedDay ? (
           <>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <Text style={g.sec}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
-              <TouchableOpacity onPress={() => setSelectedDayIdx(null)}>
-                <Text style={{ fontSize: 13, color: C.primary, fontWeight: '600' }}>← Back to today</Text>
+            <View style={wk.selectedDayHeader}>
+              <Text style={wk.selectedDayTitle}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
+              <TouchableOpacity onPress={() => setSelectedDayIdx(null)} style={wk.backBtn} activeOpacity={0.7}>
+                <Ionicons name="arrow-back" size={14} color={C.primary} />
+                <Text style={wk.backBtnTxt}>Today</Text>
               </TouchableOpacity>
             </View>
             {selectedDay.restDay ? (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="moon-outline" size={40} color={C.mid} />
-                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
-                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress</Text>
+              <View style={wk.emptyState}>
+                <View style={wk.emptyIconCircle}>
+                  <Ionicons name="moon" size={32} color={C.deepBlue} />
+                </View>
+                <Text style={wk.emptyTitle}>Rest Day</Text>
+                <Text style={wk.emptySub}>Recovery is part of progress</Text>
               </View>
             ) : selectedDay.exercises?.length > 0 ? (
               <>
-                <Text style={{ fontSize: 13, color: C.mid, marginBottom: 10 }}>
+                <Text style={wk.exCountHint}>
                   {selectedDay.exercises.length} exercises · tap to expand
                 </Text>
                 {selectedDay.exercises.map((ex, idx) => {
@@ -1812,29 +1882,35 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   return (
                     <View key={exKey} style={wk.exCardStatic}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 }}
+                        style={wk.exCardTouch}
                         onPress={() => setExpandedOverview(isOpen ? null : exKey)}
                         activeOpacity={0.7}
                       >
                         <View style={wk.exIcon}>
-                          <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                          <Ionicons name="barbell-outline" size={22} color={C.deepBlue} />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={wk.exName}>{ex.name}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="fitness-outline" size={13} color={C.mid} />
+                            <Text style={wk.exName}>{ex.name}</Text>
+                          </View>
                           <Text style={wk.exMeta}>
-                            {sets} sets × {reps} reps · {rest}s rest
+                            {sets} sets × {reps} reps  •  {rest}s rest
                           </Text>
                         </View>
-                        <Text style={wk.chevron}>›</Text>
+                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={'#C7C7CC'} />
                       </TouchableOpacity>
                       {isOpen && (
-                        <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
-                          <Text style={wk.exDetail}>{sets} sets × {reps} reps · {rest}s rest</Text>
-                          {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary }}>{ex.muscleGroup}</Text> : null}
+                        <View style={wk.exExpandedContent}>
+                          {ex.muscleGroup ? (
+                            <View style={wk.exMusclePill}>
+                              <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
+                            </View>
+                          ) : null}
                           {ex.notes ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Ionicons name="chatbubble-outline" size={11} color={C.mid} />
-                              <Text style={{ fontSize: 11, color: C.mid }}>{ex.notes}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.deepBlue} />
+                              <Text style={wk.exNoteText}>{ex.notes}</Text>
                             </View>
                           ) : null}
                         </View>
@@ -1882,9 +1958,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 )}
               </>
             ) : (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="barbell-outline" size={40} color={C.mid} />
-                <Text style={{ fontSize: 16, fontWeight: '600', color: C.dark, marginTop: 12 }}>No exercises assigned</Text>
+              <View style={wk.emptyState}>
+                <View style={wk.emptyIconCircle}>
+                  <Ionicons name="barbell-outline" size={32} color={C.mid} />
+                </View>
+                <Text style={wk.emptyTitle}>No exercises assigned</Text>
               </View>
             )}
           </>
@@ -1903,8 +1981,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       </View>
                     )}
                     {workoutTimer?.completed && (
-                      <View style={[wk.liveChip, { backgroundColor: C.green + '22' }]}>
-                        <Text style={[wk.liveTxt, { color: C.green }]}>✓ Done</Text>
+                      <View style={wk.doneChip}>
+                        <Ionicons name="checkmark-circle" size={14} color={C.green} />
+                        <Text style={wk.doneTxt}>Done</Text>
                       </View>
                     )}
                   </View>
@@ -1917,32 +1996,38 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   return (
                     <View key={ex.id} style={[wk.exCardStatic, isDone && wk.exCardDone]}>
                       <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 }}
+                        style={wk.exCardTouch}
                         onPress={() => setExpandedOverview(isOpen ? null : ex.id)}
                         activeOpacity={0.7}
                       >
                         <View style={[wk.exIcon, isDone && wk.exIconDone]}>
                           {isDone
-                            ? <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>✓</Text>
-                            : <Ionicons name="barbell-outline" size={20} color={C.primary} />
+                            ? <Ionicons name="checkmark" size={22} color="#fff" />
+                            : <Ionicons name="barbell-outline" size={22} color={C.deepBlue} />
                           }
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[wk.exName, isDone && wk.exNameDone]}>{ex.name}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : C.mid} />
+                            <Text style={[wk.exName, isDone && wk.exNameDone]}>{ex.name}</Text>
+                          </View>
                           <Text style={wk.exMeta}>
-                            {ex.sets} sets × {ex.reps} reps · {ex.rest}s rest
+                            {ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest
                           </Text>
                         </View>
-                        <Text style={wk.chevron}>›</Text>
+                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isDone ? C.green : '#C7C7CC'} />
                       </TouchableOpacity>
                       {isOpen && (
-                        <View style={{ paddingTop: 10, paddingLeft: 54, gap: 4 }}>
-                          <Text style={wk.exDetail}>{ex.sets} sets × {ex.reps} reps · {ex.rest}s rest</Text>
-                          {ex.muscleGroup ? <Text style={{ fontSize: 11, color: C.primary }}>{ex.muscleGroup}</Text> : null}
+                        <View style={wk.exExpandedContent}>
+                          {ex.muscleGroup ? (
+                            <View style={wk.exMusclePill}>
+                              <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
+                            </View>
+                          ) : null}
                           {ex.note ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Ionicons name="chatbubble-outline" size={11} color={C.primary} />
-                              <Text style={{ fontSize: 11, color: C.primary }}>{ex.note}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.deepBlue} />
+                              <Text style={wk.exNoteText}>{ex.note}</Text>
                             </View>
                           ) : null}
                         </View>
@@ -1982,16 +2067,20 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 )}
               </>
             ) : todayWorkout?.isRestDay ? (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="moon-outline" size={40} color={C.mid} />
-                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>Rest Day</Text>
-                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Recovery is part of progress. Take it easy today.</Text>
+              <View style={wk.emptyState}>
+                <View style={wk.emptyIconCircle}>
+                  <Ionicons name="moon" size={32} color={C.deepBlue} />
+                </View>
+                <Text style={wk.emptyTitle}>Rest Day</Text>
+                <Text style={wk.emptySub}>Recovery is part of progress.{"\n"}Take it easy today.</Text>
               </View>
             ) : (
-              <View style={{ alignItems: 'center', padding: 40 }}>
-                <Ionicons name="barbell-outline" size={40} color={C.mid} />
-                <Text style={{ fontSize: 18, fontWeight: '700', color: C.dark, marginTop: 12 }}>No workout yet</Text>
-                <Text style={{ fontSize: 14, color: C.mid, marginTop: 6, textAlign: 'center' }}>Your trainer will assign a workout plan soon</Text>
+              <View style={wk.emptyState}>
+                <View style={wk.emptyIconCircle}>
+                  <Ionicons name="barbell-outline" size={32} color={C.mid} />
+                </View>
+                <Text style={wk.emptyTitle}>No workout yet</Text>
+                <Text style={wk.emptySub}>Your trainer will assign a{"\n"}workout plan soon</Text>
               </View>
             )}
           </>
@@ -2000,7 +2089,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* ── Inline workout logging cards ─────────────────────────────────── */}
         {isLogging && (
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <Text style={[g.sec, { marginTop: 24 }]}>Exercises</Text>
+            <Text style={lv.exercisesLabel}>EXERCISES</Text>
             {logExercises.map((ex) => {
               const isOpen = expanded === ex.id;
               const isDone = allSetsOf(ex);
@@ -2008,25 +2097,39 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               const isInProgress = doneSetsCount > 0 && !isDone;
               return (
                 <View key={ex.id} style={[lv.exWrap, isDone && lv.exWrapDone, isInProgress && lv.exWrapActive]}>
-                  <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)}>
+                  <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)} activeOpacity={0.7}>
                     <View style={[lv.exCheck, isDone && lv.exCheckDone, isInProgress && lv.exCheckActive]}>
-                      <Text style={{ color: isDone ? '#fff' : isInProgress ? C.amber : C.mid }}>{isDone ? '✓' : isInProgress ? '…' : ''}</Text>
+                      {isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="barbell-outline" size={18} color={C.mid} />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[lv.exName, isDone && { color: C.mid }]}>{ex.name}</Text>
-                      <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps · Rest {ex.rest}s</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : isInProgress ? C.amber : C.mid} />
+                        <Text style={[lv.exName, isDone && lv.exNameDone]}>{ex.name}</Text>
+                      </View>
+                      <Text style={lv.exMeta}>{ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest</Text>
                       {isInProgress && (
-                        <Text style={{ fontSize: 11, color: C.amber, fontWeight: '700', marginTop: 2 }}>
-                          {doneSetsCount}/{ex.sets} sets done
-                        </Text>
+                        <View style={lv.progressRow}>
+                          <View style={lv.progressBarBg}>
+                            <View style={[lv.progressBarFill, { width: `${(doneSetsCount / ex.sets) * 100}%` }]} />
+                          </View>
+                          <Text style={lv.progressText}>{doneSetsCount}/{ex.sets} sets</Text>
+                        </View>
                       )}
                     </View>
-                    <Text style={{ color: C.mid, fontSize: 13 }}>{isOpen ? '▲' : '▼'}</Text>
+                    <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isDone ? C.green : isInProgress ? C.amber : '#C7C7CC'} />
                   </TouchableOpacity>
 
                   {isOpen && (
                     <View style={lv.setsContainer}>
                       <ExerciseVideo uri={ex.videoUri} exerciseName={ex.name} />
+                      {/* Set column headers */}
+                      <View style={lv.setHeaderRow}>
+                        <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
+                        <Text style={[lv.setHeaderTxt, { width: 48 }]}>REPS</Text>
+                        <Text style={[lv.setHeaderTxt, { width: 48 }]}>PREV</Text>
+                        <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
+                        <Text style={[lv.setHeaderTxt, { width: 56 }]}></Text>
+                      </View>
                       {Array.from({ length: ex.sets }, (_, i) => {
                         const setNo = i + 1;
                         const stateKey = `${ex.id}_${setNo}`;
@@ -2039,74 +2142,76 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         return (
                           <View key={setNo}>
                             <View style={[lv.setRow, isDoneSet && lv.setRowDone]}>
-                              <View style={lv.setNumBadge}>
-                                <Text style={lv.setNumTxt}>S{setNo}</Text>
+                              <View style={[lv.setNumBadge, isDoneSet && lv.setNumBadgeDone]}>
+                                <Text style={[lv.setNumTxt, isDoneSet && lv.setNumTxtDone]}>{setNo}</Text>
                               </View>
                               <View style={lv.repsBox}>
-                                <Text style={lv.repsVal}>{ex.reps}</Text>
-                                <Text style={lv.repsLbl}>reps</Text>
+                                <Text style={[lv.repsVal, isDoneSet && { color: C.green }]}>{ex.reps}</Text>
                               </View>
                               <View style={lv.lastBox}>
                                 <Text style={lv.lastVal}>{lastW || '—'}</Text>
-                                <Text style={lv.lastLbl}>last</Text>
                               </View>
-                              <TextInput
-                                style={[lv.weightInput, isDoneSet && { opacity: 0.5 }]}
-                                placeholder={lastW || '0'}
-                                placeholderTextColor={C.mid}
-                                keyboardType="decimal-pad"
-                                value={localSetWeights[stateKey] || ''}
-                                editable={!isDoneSet}
-                                onChangeText={val => {
-                                  const updated = { ...localSetWeights, [stateKey]: val };
-                                  setLocalSetWeights(updated);
-                                  setWorkoutSetWeights(updated);
-                                }}
-                              />
-                              <Text style={lv.kgLbl}>kg</Text>
+                              <View style={lv.weightGroup}>
+                                <TextInput
+                                  style={[lv.weightInput, isDoneSet && lv.weightInputDone]}
+                                  placeholder={lastW || '0'}
+                                  placeholderTextColor={'#C7C7CC'}
+                                  keyboardType="decimal-pad"
+                                  value={localSetWeights[stateKey] || ''}
+                                  editable={!isDoneSet}
+                                  onChangeText={val => {
+                                    const updated = { ...localSetWeights, [stateKey]: val };
+                                    setLocalSetWeights(updated);
+                                    setWorkoutSetWeights(updated);
+                                  }}
+                                />
+                                <Text style={lv.kgLbl}>kg</Text>
+                              </View>
                               {!isDoneSet ? (
                                 <TouchableOpacity
                                   style={lv.doneBtn}
+                                  activeOpacity={0.7}
                                   onPress={() => markSetDone(ex.id, setNo, ex.rest, ex.sets)}>
-                                  <Text style={lv.doneBtnTxt}>✓ Done</Text>
+                                  <Ionicons name="checkmark" size={18} color="#fff" />
                                 </TouchableOpacity>
                               ) : (
-                                <View style={lv.donedTag}><Text style={lv.donedTxt}>✓</Text></View>
+                                <View style={lv.donedTag}>
+                                  <Ionicons name="checkmark-circle" size={28} color={C.green} />
+                                </View>
                               )}
                             </View>
                             {isDoneSet && restLeft !== undefined && restLeft > 0 && (
                               <View style={lv.restRow}>
-                                <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, -10)}>
-                                  <Text style={lv.restAdjTxt}>−10s</Text>
+                                <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, -10)}>
+                                  <Ionicons name="remove" size={14} color={C.dark} />
+                                  <Text style={lv.restAdjTxt}>10s</Text>
                                 </TouchableOpacity>
-                                <View style={[lv.restTimerBox, { borderColor: restColor, backgroundColor: restColor + '15' }]}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                    <Ionicons name="sync-outline" size={14} color={restColor} />
-                                    <Text style={[lv.restTimerTxt, { color: restColor }]}>
-                                      {isPaused ? 'Paused' : `Rest ${formatRest(restLeft)}`}
-                                    </Text>
-                                  </View>
+                                <View style={[lv.restTimerBox, { backgroundColor: restColor + '12' }]}>
+                                  <Ionicons name="hourglass-outline" size={18} color={restColor} />
+                                  <Text style={[lv.restTimerTxt, { color: restColor }]}>
+                                    {isPaused ? 'Paused' : formatRest(restLeft)}
+                                  </Text>
+                                  <Text style={[lv.restLabel, { color: restColor }]}>rest</Text>
                                 </View>
-                                <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(stateKey, 10)}>
-                                  <Text style={lv.restAdjTxt}>+10s</Text>
+                                <TouchableOpacity style={lv.restAdjBtn} activeOpacity={0.7} onPress={() => adjustRest(stateKey, 10)}>
+                                  <Ionicons name="add" size={14} color={C.dark} />
+                                  <Text style={lv.restAdjTxt}>10s</Text>
                                 </TouchableOpacity>
                               </View>
                             )}
                             {isDoneSet && restLeft === 0 && (
                               <View style={lv.restDoneRow}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                                  <Ionicons name="checkmark-circle-outline" size={14} color={C.green} />
-                                  <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
-                                </View>
+                                <Ionicons name="checkmark-circle" size={16} color={C.green} />
+                                <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
                               </View>
                             )}
                           </View>
                         );
                       })}
                       {ex.note ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                          <Ionicons name="chatbubble-outline" size={12} color={C.primary} />
-                          <Text style={lv.trainerNote}>"{ex.note}"</Text>
+                        <View style={lv.trainerNoteRow}>
+                          <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
+                          <Text style={lv.trainerNote}>{ex.note}</Text>
                         </View>
                       ) : null}
                     </View>
@@ -2115,13 +2220,33 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               );
             })}
             {allDone && (
-              <View style={lv.finishCard}>
-                <Ionicons name="trophy-outline" size={36} color={C.green} />
+              <View style={lv.finishOverlay}>
+                <View style={lv.finishGlow} />
+                <View style={lv.finishIconCircle}>
+                  <Ionicons name="trophy" size={44} color="#fff" />
+                </View>
                 <Text style={lv.finishTitle}>Workout Complete!</Text>
-                <Text style={lv.finishSub}>Great job, {memberName}!{'\n'}Total time: {formatElapsed(elapsed)}</Text>
+                <Text style={lv.finishGreeting}>Great job, {memberName}!</Text>
+                <View style={lv.finishTimerRow}>
+                  <Ionicons name="time-outline" size={20} color={C.green} />
+                  <Text style={lv.finishTimerTxt}>{formatElapsed(elapsed)}</Text>
+                </View>
+                <Text style={lv.finishTimerLabel}>Total Duration</Text>
+                <View style={lv.finishDivider} />
+                <View style={lv.finishStatRow}>
+                  <View style={lv.finishStatBox}>
+                    <Text style={lv.finishStatVal}>{logExercises.length}</Text>
+                    <Text style={lv.finishStatLbl}>Exercises</Text>
+                  </View>
+                  <View style={[lv.finishStatBox, { borderLeftWidth: 1, borderLeftColor: '#E8E8ED' }]}>
+                    <Text style={lv.finishStatVal}>{logExercises.reduce((a, e) => a + (e.sets || 0), 0)}</Text>
+                    <Text style={lv.finishStatLbl}>Total Sets</Text>
+                  </View>
+                </View>
                 {onWorkoutFinish && (
                   <TouchableOpacity
-                    style={{ backgroundColor: C.green, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 16, width: '100%', alignItems: 'center' }}
+                    style={lv.finishPrimaryBtn}
+                    activeOpacity={0.8}
                     onPress={() => onWorkoutFinish({
                       planName: activeWorkout?.name || '',
                       dayLabel: activeWorkout?.dayLabel || '',
@@ -2137,14 +2262,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         weight: parseFloat(workoutSetWeights[`${ex.id}_1`] || '0'),
                       })),
                     })}>
-                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>View Summary →</Text>
+                    <Text style={lv.finishPrimaryTxt}>View Summary</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#fff" />
                   </TouchableOpacity>
                 )}
                 {onViewHistory && (
                   <TouchableOpacity
-                    style={{ borderWidth: 1, borderColor: C.green, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 11, marginTop: 10, width: '100%', alignItems: 'center' }}
+                    style={lv.finishSecondaryBtn}
+                    activeOpacity={0.7}
                     onPress={onViewHistory}>
-                    <Text style={{ color: C.green, fontWeight: '600', fontSize: 14 }}>View History</Text>
+                    <Ionicons name="time-outline" size={16} color={C.green} />
+                    <Text style={lv.finishSecondaryTxt}>View History</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2160,53 +2288,76 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
 const wk = StyleSheet.create({
   /* Header */
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 0, paddingBottom: 4, marginBottom: 4 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: C.dark, letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, color: C.mid, marginTop: 5, lineHeight: 18 },
-  timerPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: C.light, elevation: 1 },
-  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.green },
-  timerVal: { fontSize: 15, fontWeight: '800', color: C.green },
-  historyBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1.5, borderColor: C.primary + '30' },
-  historyTxt: { fontSize: 13, fontWeight: '600', color: C.primary },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 10, marginBottom: 4 },
+  headerTitle: { fontSize: 32, fontWeight: '800', color: C.dark, letterSpacing: -0.8 },
+  headerSub: { fontSize: 13, color: C.mid, marginTop: 6, lineHeight: 18, letterSpacing: 0.1 },
+  timerPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 26, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: '#E8E8ED', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
+  timerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.green },
+  timerVal: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: 0.5 },
+  historyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 26, backgroundColor: C.deepBlue + '08', borderWidth: 1.5, borderColor: C.deepBlue + '18' },
+  historyTxt: { fontSize: 13, fontWeight: '700', color: C.deepBlue },
   /* Section */
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: C.mid, letterSpacing: 1.2, marginTop: 28, marginBottom: 14 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', color: C.mid, letterSpacing: 1.5, marginTop: 32, marginBottom: 16 },
   todayLabel: { fontSize: 12, fontWeight: '700', color: C.mid, letterSpacing: 0.5, textTransform: 'uppercase' },
   /* Week */
-  dayCard: { width: 80, paddingVertical: 14, borderRadius: 16, backgroundColor: C.card, marginRight: 10, alignItems: 'center', borderWidth: 1, borderColor: C.light, elevation: 1 },
-  dayCardActive: { backgroundColor: C.primary, borderColor: C.primary },
-  dayCardRest: { opacity: 0.5 },
-  dayName: { fontSize: 11, fontWeight: '600', color: C.mid, letterSpacing: 0.5 },
-  dayDate: { fontSize: 14, fontWeight: '700', color: C.dark, marginTop: 4 },
-  weekTxtW: { color: '#fff' },
-  dayLabel: { fontSize: 10, fontWeight: '600', color: C.mid, marginTop: 6, textAlign: 'center' },
-  todayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#fff', marginTop: 8 },
-  dayExCount: { fontSize: 9, color: C.mid, marginTop: 2 },
+  dayCard: { width: 88, paddingVertical: 16, paddingHorizontal: 6, borderRadius: 20, backgroundColor: C.card, marginRight: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E8E8ED', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+  dayCardActive: { backgroundColor: C.deepBlue, borderColor: C.deepBlue, elevation: 6, shadowColor: C.deepBlue, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12 },
+  dayCardRest: { opacity: 0.45 },
+  dayName: { fontSize: 11, fontWeight: '700', color: C.mid, letterSpacing: 0.8, textTransform: 'uppercase' },
+  dayDate: { fontSize: 17, fontWeight: '800', color: C.dark, marginTop: 5 },
+  weekTxtW: { color: '#FFFFFF' },
+  activeLine: { width: 20, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.45)', marginTop: 8 },
+  dayLabel: { fontSize: 10, fontWeight: '600', color: C.dark, marginTop: 8, textAlign: 'center', lineHeight: 13 },
+  dayExPill: { marginTop: 6, backgroundColor: C.light, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  dayExCount: { fontSize: 10, fontWeight: '700', color: C.mid },
   /* Exercise cards */
-  exCardStatic: { backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 1, borderColor: C.light, elevation: 1 },
-  exCardDone: { borderColor: C.green + '40' },
-  exCardActive: { borderWidth: 1.5, borderColor: C.primary },
-  exIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: C.blue2, alignItems: 'center', justifyContent: 'center' },
-  exIconDone: { backgroundColor: C.green },
-  exName: { fontSize: 16, fontWeight: '600', color: C.dark },
-  exNameDone: { color: C.mid, textDecorationLine: 'line-through' },
-  exMeta: { fontSize: 12, color: C.mid, marginTop: 3 },
-  exDetail: { fontSize: 12, color: C.mid, marginTop: 2 },
-  chevron: { fontSize: 20, color: C.light, fontWeight: '300' },
+  exCardStatic: { backgroundColor: C.card, borderRadius: 18, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E8E8ED', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
+  exCardDone: { borderColor: C.green + '30', backgroundColor: '#FAFFFE' },
+  exCardActive: { borderWidth: 1.5, borderColor: C.deepBlue },
+  exCardTouch: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 16 },
+  exIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.deepBlue + '0A', alignItems: 'center', justifyContent: 'center' },
+  exIconDone: { backgroundColor: C.green, shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
+  exName: { fontSize: 17, fontWeight: '700', color: C.dark, letterSpacing: -0.2 },
+  exNameDone: { color: '#A0A0A8', textDecorationLine: 'line-through', textDecorationColor: '#C8C8CE' },
+  exMeta: { fontSize: 12, color: C.mid, marginTop: 4, letterSpacing: 0.2 },
+  exExpandedContent: { paddingHorizontal: 18, paddingBottom: 16, paddingLeft: 82 },
+  exMusclePill: { backgroundColor: C.deepBlue + '0C', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
+  exMuscleText: { fontSize: 11, fontWeight: '700', color: C.deepBlue },
+  exNoteText: { fontSize: 12, color: C.mid, fontStyle: 'italic', flex: 1 },
   /* Live chip */
   liveChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.primary + '15', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary },
   liveTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
   /* Buttons */
-  startBtn: { backgroundColor: C.primary, borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 8 },
-  startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  postponeBtn: { borderWidth: 1.5, borderColor: C.amber, borderRadius: 14, padding: 14, alignItems: 'center', marginTop: 10 },
-  postponeBtnTxt: { color: C.amber, fontWeight: '600', fontSize: 14 },
+  startBtn: { backgroundColor: C.primary, borderRadius: 16, padding: 18, alignItems: 'center', marginTop: 10, shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
+  startBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 0.3 },
+  postponeBtn: { borderWidth: 1.5, borderColor: C.amber + '50', borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 10, backgroundColor: C.amber + '06' },
+  postponeBtnTxt: { color: C.amber, fontWeight: '700', fontSize: 14 },
   /* Sticky logging header */
-  stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.light },
-  stickyTitle: { fontSize: 12, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
-  stickyTimer: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  stickyTitle: { fontSize: 11, fontWeight: '800', color: C.mid, textTransform: 'uppercase', letterSpacing: 1 },
+  stickyTimer: { fontSize: 22, fontWeight: '900', marginTop: 2, letterSpacing: 0.5 },
   stickyCount: { fontSize: 13, fontWeight: '600', color: C.primary },
   pauseBtn: { padding: 4 },
+  /* Trainer notification */
+  trainerNotif: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.primary + '08', borderRadius: 18, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: C.primary + '18' },
+  trainerNotifIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+  trainerNotifTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
+  trainerNotifSub: { fontSize: 12, color: C.mid, marginTop: 2, letterSpacing: 0.1 },
+  /* Selected day header */
+  selectedDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  selectedDayTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: C.primary + '0A' },
+  backBtnTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
+  exCountHint: { fontSize: 13, fontWeight: '600', color: C.mid, marginBottom: 12, letterSpacing: 0.1 },
+  /* Done chip */
+  doneChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.green + '12', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  doneTxt: { fontSize: 11, fontWeight: '700', color: C.green },
+  /* Empty states */
+  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
+  emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.deepBlue + '08', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
+  emptySub: { fontSize: 14, color: C.mid, marginTop: 8, textAlign: 'center', lineHeight: 22 },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
