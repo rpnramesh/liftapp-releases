@@ -1203,13 +1203,24 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                       </View>
                     );
                   })}
-                  <TouchableOpacity
-                    style={lv.addSetBtn}
-                    activeOpacity={0.7}
-                    onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
-                    <Ionicons name="add-circle-outline" size={16} color={C.primary} />
-                    <Text style={lv.addSetTxt}>Add Set</Text>
-                  </TouchableOpacity>
+                  <View style={lv.setActions}>
+                    <TouchableOpacity
+                      style={lv.addSetBtn}
+                      activeOpacity={0.7}
+                      onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
+                      <Ionicons name="add-circle-outline" size={16} color={C.primary} />
+                      <Text style={lv.addSetTxt}>Add Set</Text>
+                    </TouchableOpacity>
+                    {(extraSets[ex.id] || 0) > 0 && (
+                      <TouchableOpacity
+                        style={lv.removeSetBtn}
+                        activeOpacity={0.7}
+                        onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: Math.max(0, (prev[ex.id] || 0) - 1) }))}>
+                        <Ionicons name="remove-circle-outline" size={16} color={C.red} />
+                        <Text style={lv.removeSetTxt}>Remove Set</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   {ex.note ? (
                     <View style={lv.trainerNoteRow}>
                       <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
@@ -1288,6 +1299,9 @@ const lv = StyleSheet.create({
   repsInput: { fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', width: 44, paddingVertical: 2, paddingHorizontal: 0, borderBottomWidth: 1, borderBottomColor: '#E0E0E5' },
   addSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
   addSetTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
+  removeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
+  removeSetTxt: { fontSize: 13, fontWeight: '700', color: C.red },
+  setActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
   lastBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   lastVal: { fontSize: 13, fontWeight: '600', color: '#B0B0B8' },
   weightGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -1370,6 +1384,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const todayFullDay = fullDayNames[new Date().getDay()];
   // Plan days: Mon=0…Sun=6; JS getDay(): Sun=0,Mon=1… → (getDay()+6)%7
   const todayPlanIdx = (new Date().getDay() + 6) % 7;
+
+  // ── Auto-resume logging when returning to tab with active workout ──────────
+  useEffect(() => {
+    if ((workoutTimer?.running || workoutTimer?.completed) && !isLogging && todayWorkout && !todayWorkout.isRestDay) {
+      setIsLogging(true);
+    }
+  }, [todayWorkout]);
 
   // ── Auto-launch inline logging from dashboard "Start Workout" button ──────────
   useEffect(() => {
@@ -1985,9 +2006,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   );
                 })}
                 {!isLogging && (
-                  <>
+                  <View style={wk.btnRow}>
                     <TouchableOpacity
-                      style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                      style={[wk.startBtn, { flex: 1 }, workoutTimer?.completed && { backgroundColor: C.green }]}
                       onPress={() => {
                         const exs = selectedDay.exercises.map(ex => ({
                           id: ex.id || ex.name, name: ex.name,
@@ -2009,18 +2030,18 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Ionicons name={workoutTimer?.completed ? 'checkmark-circle-outline' : 'play'} size={16} color="#fff" />
-                        <Text style={wk.startBtnTxt}>{workoutTimer?.completed ? 'View Completed' : 'Start Workout'}</Text>
+                        <Text style={wk.startBtnTxt}>{workoutTimer?.completed ? 'Completed' : 'Start'}</Text>
                       </View>
                     </TouchableOpacity>
                     {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
-                      <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(selectedDayIdx)}>
+                      <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(selectedDayIdx)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                          <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
+                          <Text style={wk.postponeBtnTxt}>Postpone</Text>
                         </View>
                       </TouchableOpacity>
                     )}
-                  </>
+                  </View>
                 )}
               </>
             ) : (
@@ -2104,9 +2125,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
                 {/* Start / Postpone — hidden once logging begins */}
                 {!isLogging && (
-                  <>
+                  <View style={wk.btnRow}>
                     <TouchableOpacity
-                      style={[wk.startBtn, workoutTimer?.completed && { backgroundColor: C.green }]}
+                      style={[wk.startBtn, { flex: 1 }, workoutTimer?.completed && { backgroundColor: C.green }]}
                       onPress={() => {
                         if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
                         setIsLogging(true);
@@ -2117,19 +2138,19 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           size={16} color="#fff"
                         />
                         <Text style={wk.startBtnTxt}>
-                          {workoutTimer?.completed ? 'View Completed' : workoutTimer?.running ? 'Continue Workout' : 'Start Workout'}
+                          {workoutTimer?.completed ? 'Completed' : workoutTimer?.running ? 'Continue' : 'Start'}
                         </Text>
                       </View>
                     </TouchableOpacity>
                     {!workoutTimer?.running && !workoutTimer?.completed && (
-                      <TouchableOpacity style={wk.postponeBtn} onPress={() => handlePostpone(todayPlanIdx)}>
+                      <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(todayPlanIdx)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                          <Text style={wk.postponeBtnTxt}>Postpone to Next Day</Text>
+                          <Text style={wk.postponeBtnTxt}>Postpone</Text>
                         </View>
                       </TouchableOpacity>
                     )}
-                  </>
+                  </View>
                 )}
               </>
             ) : todayWorkout?.isRestDay ? (
@@ -2257,13 +2278,24 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           </View>
                         );
                       })}
-                      <TouchableOpacity
-                        style={lv.addSetBtn}
-                        activeOpacity={0.7}
-                        onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
-                        <Ionicons name="add-circle-outline" size={16} color={C.primary} />
-                        <Text style={lv.addSetTxt}>Add Set</Text>
-                      </TouchableOpacity>
+                      <View style={lv.setActions}>
+                        <TouchableOpacity
+                          style={lv.addSetBtn}
+                          activeOpacity={0.7}
+                          onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
+                          <Ionicons name="add-circle-outline" size={16} color={C.primary} />
+                          <Text style={lv.addSetTxt}>Add Set</Text>
+                        </TouchableOpacity>
+                        {(extraSets[ex.id] || 0) > 0 && (
+                          <TouchableOpacity
+                            style={lv.removeSetBtn}
+                            activeOpacity={0.7}
+                            onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: Math.max(0, (prev[ex.id] || 0) - 1) }))}>
+                            <Ionicons name="remove-circle-outline" size={16} color={C.red} />
+                            <Text style={lv.removeSetTxt}>Remove Set</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                       {ex.note ? (
                         <View style={lv.trainerNoteRow}>
                           <Ionicons name="chatbubble-ellipses-outline" size={13} color={C.deepBlue} />
@@ -2407,9 +2439,10 @@ const wk = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary },
   liveTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
   /* Buttons */
-  startBtn: { backgroundColor: C.primary, borderRadius: 16, padding: 18, alignItems: 'center', marginTop: 10, shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
-  startBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 16, letterSpacing: 0.3 },
-  postponeBtn: { borderWidth: 1.5, borderColor: C.amber + '50', borderRadius: 16, padding: 16, alignItems: 'center', marginTop: 10, backgroundColor: C.amber + '06' },
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  startBtn: { backgroundColor: C.primary, borderRadius: 16, padding: 16, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
+  startBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.3 },
+  postponeBtn: { borderWidth: 1.5, borderColor: C.amber + '50', borderRadius: 16, padding: 14, alignItems: 'center', backgroundColor: C.amber + '06' },
   postponeBtnTxt: { color: C.amber, fontWeight: '700', fontSize: 14 },
   /* Sticky logging header */
   stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
