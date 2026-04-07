@@ -1182,18 +1182,6 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                             </View>
                           )}
                         </View>
-                        {isDoneSet && restLeft !== undefined && restLeft > 0 && (
-                          <View style={lv.restDoneRow}>
-                            <Ionicons name="hourglass-outline" size={14} color={C.amber} />
-                            <Text style={[lv.restDoneTxt, { color: C.amber }]}>Resting...</Text>
-                          </View>
-                        )}
-                        {isDoneSet && restLeft === 0 && (
-                          <View style={lv.restDoneRow}>
-                            <Ionicons name="checkmark-circle" size={16} color={C.green} />
-                            <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
-                          </View>
-                        )}
                       </View>
                     );
                   })}
@@ -1264,22 +1252,22 @@ const lv = StyleSheet.create({
   setsContainer: { borderTopWidth: 1, borderTopColor: '#EFEFEF', paddingHorizontal: 18, paddingBottom: 16, paddingTop: 8 },
   setHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, gap: 8 },
   setHeaderTxt: { fontSize: 10, fontWeight: '700', color: '#B0B0B8', letterSpacing: 0.8, textAlign: 'center' },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F0F0F2', gap: 8, paddingHorizontal: 2 },
+  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F0F0F2', gap: 6, paddingHorizontal: 2 },
   setRowDone: { backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 20, borderBottomColor: '#E2F5E9' },
-  setNumBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.deepBlue + '0C', alignItems: 'center', justifyContent: 'center' },
+  setNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.deepBlue + '0C', alignItems: 'center', justifyContent: 'center' },
   setNumBadgeDone: { backgroundColor: C.green + '15' },
-  setNumTxt: { fontSize: 14, fontWeight: '800', color: C.deepBlue },
+  setNumTxt: { fontSize: 12, fontWeight: '800', color: C.deepBlue },
   setNumTxtDone: { color: C.green },
   repsBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   repsVal: { fontSize: 17, fontWeight: '800', color: C.dark },
   lastBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   lastVal: { fontSize: 13, fontWeight: '600', color: '#B0B0B8' },
   weightGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  weightInput: { flex: 1, backgroundColor: '#F5F5F7', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 8, fontSize: 17, fontWeight: '700', color: C.dark, borderWidth: 1.5, borderColor: '#E8E8ED', textAlign: 'center', minHeight: 48 },
+  weightInput: { flex: 1, backgroundColor: '#F5F5F7', borderRadius: 10, paddingVertical: 6, paddingHorizontal: 6, fontSize: 15, fontWeight: '700', color: C.dark, borderWidth: 1, borderColor: '#E8E8ED', textAlign: 'center', minHeight: 36 },
   weightInputDone: { backgroundColor: '#F0FDF4', borderColor: C.green + '30', color: C.green, opacity: 0.7 },
   kgLbl: { fontSize: 13, color: '#B0B0B8', fontWeight: '700' },
-  doneBtn: { width: 48, height: 48, borderRadius: 14, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
-  donedTag: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  doneBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2 },
+  donedTag: { width: 36, alignItems: 'center', justifyContent: 'center' },
   restRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 14, marginHorizontal: -18, paddingHorizontal: 18, backgroundColor: '#FAFBFF' },
   restAdjBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1.5, borderColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   restAdjTxt: { fontSize: 13, color: C.dark, fontWeight: '800' },
@@ -1339,8 +1327,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const floatPan = useRef(new Animated.ValueXY({ x: width - 200, y: 100 })).current;
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5,
       onPanResponderGrant: () => { floatPan.extractOffset(); },
       onPanResponderMove: Animated.event([null, { dx: floatPan.x, dy: floatPan.y }], { useNativeDriver: false }),
       onPanResponderRelease: () => { floatPan.flattenOffset(); },
@@ -1829,7 +1817,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             </Text>
           </View>
           <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
-            {(workoutTimer?.running || workoutTimer?.completed) && !scrolledPastHeader ? (
+            {isLogging && !scrolledPastHeader ? (
               <View style={wk.timerPill}>
                 <View style={[wk.timerDot, workoutTimer?.completed && { backgroundColor: C.green }]} />
                 <Text style={[wk.timerVal, workoutTimer?.completed && { color: C.green }]}>{formatElapsed(elapsed)}</Text>
@@ -2225,18 +2213,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                 </View>
                               )}
                             </View>
-                            {isDoneSet && restLeft !== undefined && restLeft > 0 && (
-                              <View style={lv.restDoneRow}>
-                                <Ionicons name="hourglass-outline" size={14} color={C.amber} />
-                                <Text style={[lv.restDoneTxt, { color: C.amber }]}>Resting...</Text>
-                              </View>
-                            )}
-                            {isDoneSet && restLeft === 0 && (
-                              <View style={lv.restDoneRow}>
-                                <Ionicons name="checkmark-circle" size={16} color={C.green} />
-                                <Text style={lv.restDoneTxt}>Rest complete · Start next set!</Text>
-                              </View>
-                            )}
                           </View>
                         );
                       })}
@@ -2324,18 +2300,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           <View style={[wk.floatRestInner, { backgroundColor: activeRestColor }]}>
             <Ionicons name="hourglass-outline" size={16} color="#fff" />
           </View>
-          <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text style={[wk.floatRestTime, { color: activeRestColor }]}>{formatRest(activeRestLeft)}</Text>
-            <Text style={[wk.floatRestLabel, { color: activeRestColor }]}>rest</Text>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, -10)}>
-              <Ionicons name="remove" size={12} color={C.dark} />
-            </TouchableOpacity>
-            <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, 10)}>
-              <Ionicons name="add" size={12} color={C.dark} />
-            </TouchableOpacity>
-          </View>
+          <Text style={[wk.floatRestTime, { color: activeRestColor }]}>{formatRest(activeRestLeft)}</Text>
+          <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, -10)}>
+            <Ionicons name="remove" size={14} color={C.dark} />
+          </TouchableOpacity>
+          <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, 10)}>
+            <Ionicons name="add" size={14} color={C.dark} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[wk.floatRestAdj, { backgroundColor: activeRestColor }]} activeOpacity={0.7} onPress={() => { setRestEndTimes({}); setRestTimers({}); }}>
+            <Ionicons name="close" size={14} color="#fff" />
+          </TouchableOpacity>
         </Animated.View>
       )}
     </View>
@@ -2415,11 +2389,10 @@ const wk = StyleSheet.create({
   emptyTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
   emptySub: { fontSize: 14, color: C.mid, marginTop: 8, textAlign: 'center', lineHeight: 22 },
   /* Floating rest timer */
-  floatRest: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 28, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1.5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8, minWidth: 180 },
-  floatRestInner: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  floatRestTime: { fontSize: 22, fontWeight: '900', letterSpacing: 0.5 },
-  floatRestLabel: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  floatRestAdj: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E8E8ED' },
+  floatRest: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 28, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1.5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  floatRestInner: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  floatRestTime: { fontSize: 20, fontWeight: '900', letterSpacing: 0.5 },
+  floatRestAdj: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E8E8ED' },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
