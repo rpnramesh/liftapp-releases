@@ -4647,8 +4647,65 @@ export default function App() {
   const [workoutFinishData, setWorkoutFinishData] = useState(null);
   const timerRef = useRef(null);
   const planUnsubRef = useRef(null); // nested plan onSnapshot cleanup
+  const sessionRestoredRef = useRef(false);
 
-  // ── Auth state listener ─────────────────────────────────────────────────────
+  // ── Persist workout session to AsyncStorage ─────────────────────────────────
+  const SESS_KEY = 'lift_active_session';
+
+  const saveSession = async (data) => {
+    try { await AsyncStorage.setItem(SESS_KEY, JSON.stringify(data)); } catch (_) {}
+  };
+  const clearSession = async () => {
+    try { await AsyncStorage.removeItem(SESS_KEY); } catch (_) {}
+  };
+
+  // Save session whenever key workout state changes
+  useEffect(() => {
+    if (!sessionRestoredRef.current) return; // don't save before restore completes
+    if (!workoutTimer.running && !workoutTimer.completed && workoutTimer.elapsed === 0) {
+      // No active workout — clear any stale session
+      clearSession();
+      return;
+    }
+    saveSession({
+      timer: workoutTimer,
+      startedAt: Date.now() - (workoutTimer.elapsed * 1000),
+      doneSets: workoutDoneSets,
+      setWeights: workoutSetWeights,
+    });
+  }, [workoutTimer, workoutDoneSets, workoutSetWeights]);
+
+  // Restore session on app launch
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SESS_KEY);
+        if (raw) {
+          const sess = JSON.parse(raw);
+          if (sess.timer && !sess.timer.completed) {
+            // Compute how much time has passed since the session was saved
+            const realElapsed = Math.floor((Date.now() - sess.startedAt) / 1000);
+            setWorkoutTimer({ running: true, elapsed: realElapsed, completed: false });
+            setWorkoutDoneSets(sess.doneSets || {});
+            setWorkoutSetWeights(sess.setWeights || {});
+            // Resume the ticking interval
+            const resumeAt = Date.now();
+            timerRef.current = setInterval(() => {
+              setWorkoutTimer(prev => prev.running
+                ? { ...prev, elapsed: realElapsed + Math.floor((Date.now() - resumeAt) / 1000) }
+                : prev
+              );
+            }, 1000);
+          } else if (sess.timer?.completed) {
+            setWorkoutTimer(sess.timer);
+            setWorkoutDoneSets(sess.doneSets || {});
+            setWorkoutSetWeights(sess.setWeights || {});
+          }
+        }
+      } catch (_) {}
+      sessionRestoredRef.current = true;
+    })();
+  }, []);
   useEffect(() => {
     // Timeout fallback — if Firebase takes too long, go to welcome
     const timeout = setTimeout(() => {
@@ -4895,6 +4952,7 @@ export default function App() {
   const stopWorkoutTimer = (elapsed) => {
     clearInterval(timerRef.current);
     setWorkoutTimer({ running: false, elapsed, completed: true });
+    clearSession();
   };
 
   const pauseWorkoutTimer = () => {
