@@ -15,6 +15,7 @@ import {
   AppState,
   Dimensions,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -1075,7 +1076,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
     }
   };
 
-  const getTotalSets = (ex) => ex.sets + (extraSets[ex.id] || 0);
+  const getTotalSets = (ex) => Math.max(1, ex.sets + (extraSets[ex.id] || 0));
 
   const allSetsOf = (ex) =>
     Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => doneSets[k]);
@@ -1211,11 +1212,11 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                       <Ionicons name="add-circle-outline" size={16} color={C.primary} />
                       <Text style={lv.addSetTxt}>Add Set</Text>
                     </TouchableOpacity>
-                    {(extraSets[ex.id] || 0) > 0 && (
+                    {totalSets > 1 && !doneSets[`${ex.id}_${totalSets}`] && !setWeights[`${ex.id}_${totalSets}`] && (
                       <TouchableOpacity
                         style={lv.removeSetBtn}
                         activeOpacity={0.7}
-                        onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: Math.max(0, (prev[ex.id] || 0) - 1) }))}>
+                        onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) - 1 }))}>
                         <Ionicons name="remove-circle-outline" size={16} color={C.red} />
                         <Text style={lv.removeSetTxt}>Remove Set</Text>
                       </TouchableOpacity>
@@ -1661,7 +1662,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const memberId = member?.id;
   const memberName = member?.name || 'there';
 
-  const getTotalSets = (ex) => ex.sets + (extraSets[ex.id] || 0);
+  const getTotalSets = (ex) => Math.max(1, ex.sets + (extraSets[ex.id] || 0));
 
   const allSetsOf = (ex) =>
     Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).every(k => workoutDoneSets[k]);
@@ -2105,14 +2106,44 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isDone ? C.green : '#C7C7CC'} />
                       </TouchableOpacity>
                       {isOpen && (
-                        <View style={wk.exExpandedContent}>
+                        <View style={lv.setsContainer}>
                           {ex.muscleGroup ? (
-                            <View style={wk.exMusclePill}>
+                            <View style={[wk.exMusclePill, { marginLeft: 0, marginBottom: 8 }]}>
                               <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
                             </View>
                           ) : null}
+                          <View style={lv.setHeaderRow}>
+                            <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
+                            <Text style={[lv.setHeaderTxt, { width: 48 }]}>REPS</Text>
+                            <Text style={[lv.setHeaderTxt, { width: 48 }]}>PREV</Text>
+                            <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
+                          </View>
+                          {Array.from({ length: ex.sets }, (_, i) => {
+                            const setNo = i + 1;
+                            const stateKey = `${ex.id}_${setNo}`;
+                            const lastW = lastWeights[stateKey];
+                            return (
+                              <View key={setNo} style={lv.setRow}>
+                                <View style={lv.setNumBadge}>
+                                  <Text style={lv.setNumTxt}>{setNo}</Text>
+                                </View>
+                                <View style={lv.repsBox}>
+                                  <Text style={lv.repsVal}>{ex.reps}</Text>
+                                </View>
+                                <View style={lv.lastBox}>
+                                  <Text style={lv.lastVal}>{lastW || '—'}</Text>
+                                </View>
+                                <View style={lv.weightGroup}>
+                                  <View style={[lv.weightInput, { backgroundColor: '#F0F0F2', borderColor: '#E0E0E3' }]}>
+                                    <Text style={{ color: '#C7C7CC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>—</Text>
+                                  </View>
+                                  <Text style={lv.kgLbl}>kg</Text>
+                                </View>
+                              </View>
+                            );
+                          })}
                           {ex.note ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
                               <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.deepBlue} />
                               <Text style={wk.exNoteText}>{ex.note}</Text>
                             </View>
@@ -2286,11 +2317,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           <Ionicons name="add-circle-outline" size={16} color={C.primary} />
                           <Text style={lv.addSetTxt}>Add Set</Text>
                         </TouchableOpacity>
-                        {(extraSets[ex.id] || 0) > 0 && (
+                        {totalSets > 1 && !workoutDoneSets[`${ex.id}_${totalSets}`] && !localSetWeights[`${ex.id}_${totalSets}`] && (
                           <TouchableOpacity
                             style={lv.removeSetBtn}
                             activeOpacity={0.7}
-                            onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: Math.max(0, (prev[ex.id] || 0) - 1) }))}>
+                            onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) - 1 }))}>
                             <Ionicons name="remove-circle-outline" size={16} color={C.red} />
                             <Text style={lv.removeSetTxt}>Remove Set</Text>
                           </TouchableOpacity>
@@ -4590,6 +4621,13 @@ export default function App() {
   const [tab, setTab] = useState('Home');
   const [uid, setUid] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   // Real data from Firestore
   const [member, setMember] = useState(null);
@@ -5000,8 +5038,10 @@ export default function App() {
   };
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={{ flex: 1 }}>{renderTab()}</View>
+      {!keyboardVisible && (
       <View style={mn.tabBar}>
         {tabs.map(t => {
           const active = tab === t.name;
@@ -5013,7 +5053,9 @@ export default function App() {
           );
         })}
       </View>
+      )}
     </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
