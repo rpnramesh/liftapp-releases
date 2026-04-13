@@ -5,7 +5,6 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ResizeMode, Video } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -34,6 +33,7 @@ import { Audio } from 'expo-av';
 // ── Firebase ──────────────────────────────────────────────────────────────────
 import { onAuthStateChanged, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { collection, deleteField, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { WebView } from 'react-native-webview';
 import PhoneAuthWebView from './shared/components/PhoneAuthWebView';
 import { auth, db } from './shared/firebase/config';
 
@@ -700,30 +700,32 @@ const hm = StyleSheet.create({
 });
 
 // ── EXERCISE VIDEO ────────────────────────────────────────────────────────────
-function ExerciseVideo({ uri, exerciseName }) {
-  const [visible, setVisible] = useState(false);
-  if (!uri) return null;
+function ExerciseVideoModal({ visible, exerciseName, onClose }) {
+  const [isMaximized, setIsMaximized] = useState(false);
+  if (!visible || !exerciseName) return null;
+  const searchQuery = encodeURIComponent(exerciseName + ' exercise how to form');
+  const youtubeUrl = `https://m.youtube.com/results?search_query=${searchQuery}`;
   return (
-    <>
-      <TouchableOpacity style={ev.thumb} onPress={() => setVisible(true)}>
-        <View style={ev.playIcon}><Text style={{ fontSize: 22 }}>▶️</Text></View>
-        <Text style={ev.thumbTxt}>Watch {exerciseName}</Text>
-      </TouchableOpacity>
-      <Modal visible={visible} animationType="slide" onRequestClose={() => setVisible(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-          <TouchableOpacity style={ev.closeBtn} onPress={() => setVisible(false)}>
-            <Text style={ev.closeBtnTxt}>✕ Close</Text>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <SafeAreaView style={[ev.modalContainer, isMaximized && { paddingTop: 0 }]}>
+        <View style={ev.toolbar}>
+          <TouchableOpacity style={ev.toolBtn} onPress={onClose} activeOpacity={0.7}>
+            <Ionicons name="close" size={22} color="#fff" />
           </TouchableOpacity>
-          <Video
-            source={{ uri }}
-            style={{ flex: 1 }}
-            useNativeControls
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
-          />
-        </SafeAreaView>
-      </Modal>
-    </>
+          <Text style={ev.toolTitle} numberOfLines={1}>{exerciseName}</Text>
+          <TouchableOpacity style={ev.toolBtn} onPress={() => setIsMaximized(m => !m)} activeOpacity={0.7}>
+            <Ionicons name={isMaximized ? 'contract-outline' : 'expand-outline'} size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <WebView
+          source={{ uri: youtubeUrl }}
+          style={{ flex: 1 }}
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          javaScriptEnabled
+        />
+      </SafeAreaView>
+    </Modal>
   );
 }
 const ot = StyleSheet.create({
@@ -743,11 +745,13 @@ const ot = StyleSheet.create({
   resendTxt: { color: C.primary, fontSize: 14, fontWeight: '600' },
 });
 const ev = StyleSheet.create({
+  modalContainer: { flex: 1, backgroundColor: '#000' },
+  toolbar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 8, paddingVertical: 6, gap: 8 },
+  toolBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  toolTitle: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '700', textAlign: 'center' },
   thumb: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.blue2, borderRadius: 10, padding: 10, marginBottom: 10, gap: 10 },
   playIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
   thumbTxt: { fontSize: 13, fontWeight: '600', color: C.primary },
-  closeBtn: { padding: 16 },
-  closeBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
 
 // ── WORKOUT LOGGING VIEW ──────────────────────────────────────────────────────
@@ -763,6 +767,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   const [extraSets, setExtraSets] = useState({});
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completeMinutes, setCompleteMinutes] = useState('');
+  const [videoExName, setVideoExName] = useState(null);
   const tickRef = useRef(null);
   const vibratedRef = useRef({});
   const notifIdRef = useRef(null);
@@ -1123,9 +1128,9 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
           return (
             <View key={ex.id} style={[lv.exWrap, isDone && !skipped && lv.exWrapDone, skipped && { opacity: 0.5 }, isInProgress && lv.exWrapActive]}>
               <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)} activeOpacity={0.7}>
-                <View style={[lv.exCheck, isDone && !skipped && lv.exCheckDone, skipped && { backgroundColor: C.mid }, isInProgress && lv.exCheckActive]}>
-                  {skipped ? <Ionicons name="close" size={20} color="#fff" /> : isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="barbell-outline" size={18} color={C.mid} />}
-                </View>
+                <TouchableOpacity style={[lv.exCheck, isDone && !skipped && lv.exCheckDone, skipped && { backgroundColor: C.mid }, isInProgress && lv.exCheckActive]} onPress={() => setVideoExName(ex.name)} activeOpacity={0.6}>
+                  {skipped ? <Ionicons name="close" size={20} color="#fff" /> : isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="play-circle" size={18} color={C.mid} />}
+                </TouchableOpacity>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Ionicons name="fitness-outline" size={13} color={skipped ? C.mid : isDone ? C.green : isInProgress ? C.amber : C.mid} />
@@ -1160,7 +1165,6 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                     </View>
                   ) : (
                   <>
-                  <ExerciseVideo uri={ex.videoUri} exerciseName={ex.name} />
                   {/* Set column headers */}
                   <View style={lv.setHeaderRow}>
                     <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
@@ -1403,6 +1407,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
+      <ExerciseVideoModal visible={!!videoExName} exerciseName={videoExName} onClose={() => setVideoExName(null)} />
     </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -1508,6 +1513,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [pastCompleteDay, setPastCompleteDay] = useState(null);
   const [showEditDurationModal, setShowEditDurationModal] = useState(false);
   const [editDurationMinutes, setEditDurationMinutes] = useState('');
+  const [videoExName, setVideoExName] = useState(null);
 
   // ── Refs ────────────────────────────────────────────────────────────────────
   const tickRef = useRef(null);
@@ -2122,9 +2128,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         onPress={() => setExpandedOverview(isOpen ? null : exKey)}
                         activeOpacity={0.7}
                       >
-                        <View style={wk.exIcon}>
-                          <Ionicons name="barbell-outline" size={22} color={C.deepBlue} />
-                        </View>
+                        <TouchableOpacity style={wk.exIcon} onPress={() => setVideoExName(ex.name)} activeOpacity={0.6}>
+                          <Ionicons name="play-circle" size={22} color={C.deepBlue} />
+                        </TouchableOpacity>
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Ionicons name="fitness-outline" size={13} color={C.mid} />
@@ -2242,12 +2248,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         onPress={() => setExpandedOverview(isOpen ? null : ex.id)}
                         activeOpacity={0.7}
                       >
-                        <View style={[wk.exIcon, isDone && wk.exIconDone]}>
+                        <TouchableOpacity style={[wk.exIcon, isDone && wk.exIconDone]} onPress={() => setVideoExName(ex.name)} activeOpacity={0.6}>
                           {isDone
                             ? <Ionicons name="checkmark" size={22} color="#fff" />
-                            : <Ionicons name="barbell-outline" size={22} color={C.deepBlue} />
+                            : <Ionicons name="play-circle" size={22} color={C.deepBlue} />
                           }
-                        </View>
+                        </TouchableOpacity>
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : C.mid} />
@@ -2364,9 +2370,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               return (
                 <View key={ex.id} style={[lv.exWrap, isDone && !skipped && lv.exWrapDone, skipped && { opacity: 0.5 }, isInProgress && lv.exWrapActive]}>
                   <TouchableOpacity style={lv.exHeader} onPress={() => setExpanded(isOpen ? null : ex.id)} activeOpacity={0.7}>
-                    <View style={[lv.exCheck, isDone && !skipped && lv.exCheckDone, skipped && { backgroundColor: C.mid }, isInProgress && lv.exCheckActive]}>
-                      {skipped ? <Ionicons name="close" size={20} color="#fff" /> : isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="barbell-outline" size={18} color={C.mid} />}
-                    </View>
+                    <TouchableOpacity style={[lv.exCheck, isDone && !skipped && lv.exCheckDone, skipped && { backgroundColor: C.mid }, isInProgress && lv.exCheckActive]} onPress={() => setVideoExName(ex.name)} activeOpacity={0.6}>
+                      {skipped ? <Ionicons name="close" size={20} color="#fff" /> : isDone ? <Ionicons name="checkmark" size={20} color="#fff" /> : isInProgress ? <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{doneSetsCount}</Text> : <Ionicons name="play-circle" size={18} color={C.mid} />}
+                    </TouchableOpacity>
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Ionicons name="fitness-outline" size={13} color={skipped ? C.mid : isDone ? C.green : isInProgress ? C.amber : C.mid} />
@@ -2401,7 +2407,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         </View>
                       ) : (
                       <>
-                      <ExerciseVideo uri={ex.videoUri} exerciseName={ex.name} />
                       {/* Set column headers */}
                       <View style={lv.setHeaderRow}>
                         <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
@@ -2847,6 +2852,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </TouchableOpacity>
         </Animated.View>
       )}
+      <ExerciseVideoModal visible={!!videoExName} exerciseName={videoExName} onClose={() => setVideoExName(null)} />
     </View>
   );
 }
