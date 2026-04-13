@@ -71,6 +71,39 @@ const formatElapsed = (s) => {
 const formatDate = (ts) =>
   new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 
+const MEMBER_SESSION_KEY = 'lift_member_session';
+
+const normalizePhone = (value = '') => value.replace(/\D/g, '').slice(-10);
+
+async function findMemberByPhone(phone) {
+  const digits = normalizePhone(phone);
+  if (digits.length !== 10) return null;
+  for (const candidate of [`+91${digits}`, digits]) {
+    const snap = await getDocs(query(collection(db, 'members'), where('phone', '==', candidate)));
+    if (!snap.empty) {
+      const memberDoc = snap.docs[0];
+      return { id: memberDoc.id, ...memberDoc.data() };
+    }
+  }
+  return null;
+}
+
+async function saveMemberSession(memberId, phone = '') {
+  try {
+    await AsyncStorage.setItem(MEMBER_SESSION_KEY, JSON.stringify({
+      memberId,
+      phone: normalizePhone(phone),
+      savedAt: Date.now(),
+    }));
+  } catch (_) {}
+}
+
+async function clearMemberSession() {
+  try {
+    await AsyncStorage.removeItem(MEMBER_SESSION_KEY);
+  } catch (_) {}
+}
+
 // ── Rest complete sound player ────────────────────────────────────────────────
 const playRestCompleteSound = async () => {
   try {
@@ -335,6 +368,66 @@ function OtpLoginScreen({ onSuccess }) {
           </TouchableOpacity>
         </>
       )}
+    </SafeAreaView>
+  );
+}
+
+function PhoneAccessScreen({ onContinue }) {
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleContinue = async () => {
+    const digits = normalizePhone(phone);
+    if (digits.length !== 10) {
+      setError('Enter a valid 10-digit mobile number');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const memberRecord = await findMemberByPhone(digits);
+      if (!memberRecord?.id) {
+        setError('This phone number is not registered yet. Ask your gym or trainer to add it first.');
+        return;
+      }
+      await saveMemberSession(memberRecord.id, digits);
+      onContinue(memberRecord.id);
+    } catch (e) {
+      console.log('Phone access error:', e?.message);
+      setError('Could not continue right now. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={ot.container}>
+      <Text style={ot.heading}>Welcome to Lift</Text>
+      <Text style={ot.sub}>Enter your registered mobile number once. After that, the app opens directly.</Text>
+
+      <View style={ot.phoneRow}>
+        <View style={ot.countryCode}><Text style={ot.countryCodeTxt}>🇮🇳 +91</Text></View>
+        <TextInput
+          style={ot.phoneInput}
+          placeholder="Registered mobile number"
+          placeholderTextColor={C.mid}
+          keyboardType="phone-pad"
+          maxLength={10}
+          value={phone}
+          onChangeText={t => { setPhone(t); setError(''); }}
+        />
+      </View>
+
+      {!!error && <Text style={ot.error}>{error}</Text>}
+
+      <TouchableOpacity
+        style={[ot.btn, (normalizePhone(phone).length < 10 || loading) && ot.btnDisabled]}
+        disabled={normalizePhone(phone).length < 10 || loading}
+        onPress={handleContinue}
+      >
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Continue</Text>}
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -5144,25 +5237,48 @@ export default function App() {
     })();
   }, []);
   useEffect(() => {
-    // Timeout fallback — if Firebase takes too long, go to welcome
-    const timeout = setTimeout(() => {
-      setAuthLoading(false);
-      setScreen('welcome');
-    }, 5000);
+    let active = true;
+    let unsub = () => {};
+    let timeout;
 
-    const unsub = onAuthStateChanged(auth, (user) => {
-      clearTimeout(timeout);
-      if (user) {
-        setUid(user.uid);
-        setScreen('main');
-      } else {
-        setUid(null);
-        setScreen('welcome');
-      }
-      setAuthLoading(false);
-    });
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
+        if (!active) return;
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved?.memberId) {
+            setUid(saved.memberId);
+            setScreen('main');
+            setAuthLoading(false);
+            return;
+          }
+        }
+      } catch (_) {}
+
+      timeout = setTimeout(() => {
+        if (!active) return;
+        setAuthLoading(false);
+        setScreen('phoneEntry');
+      }, 5000);
+
+      unsub = onAuthStateChanged(auth, async (user) => {
+        clearTimeout(timeout);
+        if (!active) return;
+        if (user) {
+          setUid(user.uid);
+          await saveMemberSession(user.uid);
+          setScreen('main');
+        } else {
+          setUid(null);
+          setScreen('phoneEntry');
+        }
+        setAuthLoading(false);
+      });
+    })();
 
     return () => {
+      active = false;
       clearTimeout(timeout);
       unsub();
     };
@@ -5171,7 +5287,18 @@ export default function App() {
   // ── Member profile listener ─────────────────────────────────────────────────
   useEffect(() => {
     if (!uid) return;
-    const unsub = subscribeToMember(uid, (m) => setMember(m));
+    const unsub = subscribeToMember(uid, (m) => {
+      setMember(m);
+      if (!m) {
+        clearMemberSession();
+        setAssignment(null);
+        setTodayWorkout(null);
+        setPlanWeek(null);
+        setFullPlan(null);
+        setUid(null);
+        setScreen('phoneEntry');
+      }
+    });
     return () => unsub();
   }, [uid]);
 
@@ -5411,12 +5538,13 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await auth.signOut();
+    await clearMemberSession();
+    await auth.signOut().catch(() => {});
     setMember(null);
     setAssignment(null);
     setTodayWorkout(null);
     setUid(null);
-    setScreen('welcome');
+    setScreen('phoneEntry');
   };
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -5433,8 +5561,9 @@ export default function App() {
     );
   }
 
-  if (screen === 'welcome') return <WelcomeScreen onLogin={() => setScreen('login')} />;
-  if (screen === 'login') return <OtpLoginScreen onSuccess={(id) => { setUid(id); setScreen('main'); }} />;
+  if (screen === 'welcome' || screen === 'login' || screen === 'phoneEntry') {
+    return <PhoneAccessScreen onContinue={(id) => { setUid(id); setScreen('main'); }} />;
+  }
   if (screen === 'notifications') return (
     <NotificationsScreen onBack={() => setScreen('main')} memberId={uid} />
   );
