@@ -382,6 +382,7 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
   const [verificationId, setVerificationId] = useState(null);
   const [webviewReady, setWebviewReady] = useState(false);
   const [existingMember, setExistingMember] = useState(null);
+  const [precheckUnavailable, setPrecheckUnavailable] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -393,6 +394,7 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
       setVerificationId(null);
       setExistingMember(null);
       setWebviewReady(false);
+      setPrecheckUnavailable(false);
     }
   }, [visible]);
 
@@ -402,7 +404,20 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
     setError('');
     setLoading(true);
     try {
-      const existing = await findMemberByPhone(digits);
+      let existing = null;
+      try {
+        existing = await findMemberByPhone(digits);
+        setPrecheckUnavailable(false);
+      } catch (lookupErr) {
+        if (lookupErr?.code === 'permission-denied' || /missing or insufficient permissions/i.test(String(lookupErr?.message || ''))) {
+          // User is not yet authenticated, so member pre-check may be blocked by rules.
+          // Continue with OTP and resolve/link membership after verification.
+          existing = null;
+          setPrecheckUnavailable(true);
+        } else {
+          throw lookupErr;
+        }
+      }
       if (existing && !confirmedExisting) {
         setExistingMember(existing);
         setLoading(false);
@@ -507,6 +522,12 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
               <ActivityIndicator size="small" color={C.primary} />
               <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
             </View>
+          )}
+
+          {precheckUnavailable && step === 'phone' && (
+            <Text style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>
+              Existing-number pre-check is unavailable before verification. Continue with OTP and we will sync after verify.
+            </Text>
           )}
 
           {step === 'phone' ? (
