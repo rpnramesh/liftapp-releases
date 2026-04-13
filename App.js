@@ -1191,6 +1191,31 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
 
   const formatRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+  const buildWorkoutFinishData = ({
+    dayLabel,
+    planName,
+    durationSeconds,
+    exercises,
+    actualResolver,
+  }) => ({
+    planName: planName || '',
+    dayLabel: dayLabel || '',
+    durationSeconds: Math.max(0, durationSeconds || 0),
+    exerciseCount: exercises?.length || 0,
+    exercises: (exercises || []).map((ex, index) => {
+      const actual = actualResolver ? actualResolver(ex, index) : null;
+      return {
+        exerciseName: ex.exerciseName || ex.name,
+        muscleGroup: ex.muscleGroup || '',
+        targetSets: ex.targetSets || ex.sets || ex.mainSets || 0,
+        targetReps: ex.targetReps || ex.reps || ex.mainReps || 0,
+        actualSets: actual?.actualSets ?? ex.actualSets ?? ex.targetSets ?? ex.sets ?? ex.mainSets ?? 0,
+        actualReps: actual?.actualReps ?? ex.actualReps ?? ex.targetReps ?? ex.reps ?? ex.mainReps ?? 0,
+        weight: actual?.weight ?? ex.weight ?? 0,
+      };
+    }),
+  });
+
   // Only one timer ever active — replaces any existing timer
   const startRestTimer = (stateKey, secs) => {
     const endTime = Date.now() + secs * 1000;
@@ -2428,6 +2453,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   <TouchableOpacity
                     style={[wk.startBtn, { flex: 1 }, selectedDay.completedAt && { backgroundColor: C.green }]}
                     onPress={() => {
+                      if (selectedDay.completedAt) {
+                        onWorkoutFinish?.(buildWorkoutFinishData({
+                          dayLabel: selectedDay.dayLabel || todayFullDay,
+                          planName: fullPlan?.name || selectedDay.dayLabel || "Workout",
+                          durationSeconds: selectedDay.durationSeconds || 0,
+                          exercises: selectedDay.exercises || [],
+                        }));
+                        return;
+                      }
                       const exs = selectedDay.exercises.map(ex => ({
                         id: ex.id || ex.name, name: ex.name,
                         sets: ex.mainSets || 3, reps: ex.mainReps || 10,
@@ -2968,8 +3002,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
                           await sdoc(logRef, { id: logRef.id, ...completionData });
                           await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: targetTimestamp }).catch(() => {});
-                          Alert.alert('Done', `${day.dayLabel || 'Workout'} marked as completed.`);
-                          setSelectedDayIdx(null);
+                          onWorkoutFinish?.(buildWorkoutFinishData({
+                            dayLabel: day.dayLabel || '',
+                            planName: fullPlan?.name || day.dayLabel || 'Workout',
+                            durationSeconds: overrideSeconds,
+                            exercises: exs,
+                            actualResolver: (ex) => ({
+                              actualSets: ex.mainSets || 3,
+                              actualReps: ex.mainReps || 10,
+                              weight: 0,
+                            }),
+                          }));
                         } catch (e) { console.log('Past day complete error:', e); Alert.alert('Error', 'Could not save completion.'); }
                       }
                     }}>
