@@ -2165,13 +2165,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         muscleGroup: ex.muscleGroup || '',
                       }));
                       const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-                      // Reset any in-progress workout state before starting this day
-                      if (workoutTimer?.running || workoutTimer?.completed) {
-                        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-                        setWorkoutDoneSets({});
-                        setWorkoutSetWeights({});
-                        setRestEndTimes({});
-                      }
+                      setWorkoutDoneSets({});
+                      setWorkoutSetWeights({});
+                      setRestEndTimes({});
                       setLoggingWorkout({
                         id: fullPlan?.id || selectedDay.dayLabel,
                         name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
@@ -2198,14 +2194,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Ionicons name="checkmark-done" size={16} color="#fff" />
                         <Text style={wk.startBtnTxt}>Complete</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
-                    <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(selectedDayIdx)}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                        <Text style={wk.postponeBtnTxt}>Postpone</Text>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -2320,7 +2308,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   );
                 })}
 
-                {/* Start / Postpone — hidden once logging begins */}
+                {/* Start / Complete — hidden once logging begins */}
                 {!isLogging && (
                   <View style={wk.btnRow}>
                     <TouchableOpacity
@@ -2339,14 +2327,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         </Text>
                       </View>
                     </TouchableOpacity>
-                    {!workoutTimer?.running && !workoutTimer?.completed && (
-                      <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(todayPlanIdx)}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                          <Text style={wk.postponeBtnTxt}>Postpone</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 )}
               </>
