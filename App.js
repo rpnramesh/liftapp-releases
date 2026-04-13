@@ -146,7 +146,7 @@ const sp = StyleSheet.create({
 });
 
 // ── WELCOME ───────────────────────────────────────────────────────────────────
-function WelcomeScreen({ onLogin }) {
+function WelcomeScreen({ onRegister, onExistingUser }) {
   return (
     <View style={wl.container}>
       <View style={wl.top}>
@@ -154,11 +154,11 @@ function WelcomeScreen({ onLogin }) {
         <Text style={wl.tagline}>Your fitness. Your gym.{'\n'}All in one place.</Text>
       </View>
       <View style={wl.bottom}>
-        <TouchableOpacity style={wl.btnPrimary} onPress={onLogin}>
-          <Text style={wl.btnPrimaryTxt}>Get Started</Text>
+        <TouchableOpacity style={wl.btnPrimary} onPress={onRegister}>
+          <Text style={wl.btnPrimaryTxt}>Register With Phone & OTP</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={wl.btnSecondary} onPress={onLogin}>
-          <Text style={wl.btnSecondaryTxt}>Log In</Text>
+        <TouchableOpacity style={wl.btnSecondary} onPress={onExistingUser}>
+          <Text style={wl.btnSecondaryTxt}>Existing User</Text>
         </TouchableOpacity>
         <Text style={wl.hint}>Available in English | മലയാളം</Text>
       </View>
@@ -368,66 +368,6 @@ function OtpLoginScreen({ onSuccess }) {
           </TouchableOpacity>
         </>
       )}
-    </SafeAreaView>
-  );
-}
-
-function PhoneAccessScreen({ onContinue }) {
-  const [phone, setPhone] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleContinue = async () => {
-    const digits = normalizePhone(phone);
-    if (digits.length !== 10) {
-      setError('Enter a valid 10-digit mobile number');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const memberRecord = await findMemberByPhone(digits);
-      if (!memberRecord?.id) {
-        setError('This phone number is not registered yet. Ask your gym or trainer to add it first.');
-        return;
-      }
-      await saveMemberSession(memberRecord.id, digits);
-      onContinue(memberRecord.id);
-    } catch (e) {
-      console.log('Phone access error:', e?.message);
-      setError('Could not continue right now. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <SafeAreaView style={ot.container}>
-      <Text style={ot.heading}>Welcome to Lift</Text>
-      <Text style={ot.sub}>Enter your registered mobile number once. After that, the app opens directly.</Text>
-
-      <View style={ot.phoneRow}>
-        <View style={ot.countryCode}><Text style={ot.countryCodeTxt}>🇮🇳 +91</Text></View>
-        <TextInput
-          style={ot.phoneInput}
-          placeholder="Registered mobile number"
-          placeholderTextColor={C.mid}
-          keyboardType="phone-pad"
-          maxLength={10}
-          value={phone}
-          onChangeText={t => { setPhone(t); setError(''); }}
-        />
-      </View>
-
-      {!!error && <Text style={ot.error}>{error}</Text>}
-
-      <TouchableOpacity
-        style={[ot.btn, (normalizePhone(phone).length < 10 || loading) && ot.btnDisabled]}
-        disabled={normalizePhone(phone).length < 10 || loading}
-        onPress={handleContinue}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Continue</Text>}
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -5145,6 +5085,7 @@ export default function App() {
   const [screen, setScreen] = useState('splash');
   const [tab, setTab] = useState('Home');
   const [uid, setUid] = useState(null);
+  const [savedMemberId, setSavedMemberId] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -5248,10 +5189,7 @@ export default function App() {
         if (raw) {
           const saved = JSON.parse(raw);
           if (saved?.memberId) {
-            setUid(saved.memberId);
-            setScreen('main');
-            setAuthLoading(false);
-            return;
+            setSavedMemberId(saved.memberId);
           }
         }
       } catch (_) {}
@@ -5259,20 +5197,20 @@ export default function App() {
       timeout = setTimeout(() => {
         if (!active) return;
         setAuthLoading(false);
-        setScreen('phoneEntry');
+        setScreen('welcome');
       }, 5000);
 
       unsub = onAuthStateChanged(auth, async (user) => {
         clearTimeout(timeout);
         if (!active) return;
         if (user) {
-          setUid(user.uid);
           await saveMemberSession(user.uid);
-          setScreen('main');
+          setSavedMemberId(user.uid);
         } else {
-          setUid(null);
-          setScreen('phoneEntry');
+          setSavedMemberId(null);
         }
+        setUid(null);
+        setScreen('welcome');
         setAuthLoading(false);
       });
     })();
@@ -5291,12 +5229,13 @@ export default function App() {
       setMember(m);
       if (!m) {
         clearMemberSession();
+        setSavedMemberId(null);
         setAssignment(null);
         setTodayWorkout(null);
         setPlanWeek(null);
         setFullPlan(null);
         setUid(null);
-        setScreen('phoneEntry');
+        setScreen('welcome');
       }
     });
     return () => unsub();
@@ -5540,11 +5479,31 @@ export default function App() {
   const handleLogout = async () => {
     await clearMemberSession();
     await auth.signOut().catch(() => {});
+    setSavedMemberId(null);
     setMember(null);
     setAssignment(null);
     setTodayWorkout(null);
     setUid(null);
-    setScreen('phoneEntry');
+    setScreen('welcome');
+  };
+
+  const handleExistingUser = async () => {
+    if (savedMemberId) {
+      setUid(savedMemberId);
+      setScreen('main');
+      return;
+    }
+    try {
+      const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
+      const saved = raw ? JSON.parse(raw) : null;
+      if (saved?.memberId) {
+        setSavedMemberId(saved.memberId);
+        setUid(saved.memberId);
+        setScreen('main');
+        return;
+      }
+    } catch (_) {}
+    Alert.alert('Existing User', 'No saved member session was found on this device. Please register with phone number and OTP once.');
   };
 
   // ── Loading ─────────────────────────────────────────────────────────────────
@@ -5561,9 +5520,8 @@ export default function App() {
     );
   }
 
-  if (screen === 'welcome' || screen === 'login' || screen === 'phoneEntry') {
-    return <PhoneAccessScreen onContinue={(id) => { setUid(id); setScreen('main'); }} />;
-  }
+  if (screen === 'welcome') return <WelcomeScreen onRegister={() => setScreen('login')} onExistingUser={handleExistingUser} />;
+  if (screen === 'login') return <OtpLoginScreen onSuccess={async (id) => { await saveMemberSession(id); setSavedMemberId(id); setUid(id); setScreen('main'); }} />;
   if (screen === 'notifications') return (
     <NotificationsScreen onBack={() => setScreen('main')} memberId={uid} />
   );
