@@ -1532,7 +1532,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
             </View>
           );
         })}
-        {!allDone && exercises.length > 0 && workoutTimer?.running && (
+        {exercises.length > 0 && isLogging && (
           <TouchableOpacity
             style={{ backgroundColor: C.green, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 16, marginBottom: 8, flexDirection: 'row', justifyContent: 'center', gap: 8 }}
             activeOpacity={0.8}
@@ -1545,11 +1545,11 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
             <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
               <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Mark Workout Complete</Text>
-              <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take?</Text>
+              <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take? (Optional)</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
                 keyboardType="number-pad"
-                placeholder="e.g. 45"
+                placeholder="e.g. 45 (leave empty to use elapsed)"
                 value={completeMinutes}
                 onChangeText={setCompleteMinutes}
                 autoFocus
@@ -1560,9 +1560,10 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                 </TouchableOpacity>
                 <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: C.green, alignItems: 'center' }} onPress={async () => {
                   const mins = parseInt(completeMinutes, 10);
-                  if (!mins || mins <= 0) { Alert.alert('Invalid', 'Please enter a valid number of minutes.'); return; }
+                  const overrideSeconds = (Number.isFinite(mins) && mins > 0)
+                    ? mins * 60
+                    : Math.max(0, workoutTimer?.elapsed || 0);
                   setShowCompleteModal(false);
-                  const overrideSeconds = mins * 60;
                   stopWorkoutTimer(overrideSeconds);
                   setAllDone(true);
                   const gymOrTrainer = gymId || member?.trainerId;
@@ -2775,7 +2776,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 </View>
               );
             })}
-            {!allDone && logExercises.length > 0 && workoutTimer?.running && (
+            {logExercises.length > 0 && isLogging && (
               <TouchableOpacity
                 style={{ backgroundColor: C.green, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 16, marginBottom: 8, flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                 activeOpacity={0.8}
@@ -2788,11 +2789,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
                 <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
                   <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Mark Workout Complete</Text>
-                  <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take?</Text>
+                  <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take? (Optional)</Text>
                   <TextInput
                     style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
                     keyboardType="number-pad"
-                    placeholder="e.g. 45"
+                    placeholder="e.g. 45 (leave empty to use elapsed)"
                     value={completeMinutes}
                     onChangeText={setCompleteMinutes}
                     autoFocus
@@ -2803,9 +2804,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </TouchableOpacity>
                     <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: C.green, alignItems: 'center' }} onPress={async () => {
                       const mins = parseInt(completeMinutes, 10);
-                      if (!mins || mins <= 0) { Alert.alert('Invalid', 'Please enter a valid number of minutes.'); return; }
+                      const overrideSeconds = (Number.isFinite(mins) && mins > 0)
+                        ? mins * 60
+                        : Math.max(0, workoutTimer?.elapsed || 0);
                       setShowCompleteModal(false);
-                      const overrideSeconds = mins * 60;
                       stopWorkoutTimer(overrideSeconds);
                       if (gymOrTrainer && memberId) {
                         try {
@@ -2887,11 +2889,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
                 <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
                   <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Complete Past Workout</Text>
-                  <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did {pastCompleteDay?.dayLabel || 'this workout'} take?</Text>
+                  <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did {pastCompleteDay?.dayLabel || 'this workout'} take? (Optional)</Text>
                   <TextInput
                     style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
                     keyboardType="number-pad"
-                    placeholder="e.g. 45"
+                    placeholder="e.g. 45 (leave empty to use elapsed)"
                     value={pastCompleteMinutes}
                     onChangeText={setPastCompleteMinutes}
                     autoFocus
@@ -2902,9 +2904,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </TouchableOpacity>
                     <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: C.green, alignItems: 'center' }} onPress={async () => {
                       const mins = parseInt(pastCompleteMinutes, 10);
-                      if (!mins || mins <= 0) { Alert.alert('Invalid', 'Please enter a valid number of minutes.'); return; }
+                      const overrideSeconds = (Number.isFinite(mins) && mins > 0)
+                        ? mins * 60
+                        : Math.max(0, workoutTimer?.elapsed || 0);
                       setShowPastCompleteModal(false);
-                      const overrideSeconds = mins * 60;
                       const dayIdx = pastCompleteDayIdx;
                       const day = pastCompleteDay;
                       if (!day || dayIdx === null) return;
