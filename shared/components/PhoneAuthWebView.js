@@ -26,7 +26,7 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
 
   const fireSendOtp = useCallback((phone) => {
     const safe = phone.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    webViewRef.current?.injectJavaScript(`sendOtpNow('${safe}'); true;`);
+    webViewRef.current?.injectJavaScript(`otpSent=false; sendOtpNow('${safe}'); true;`);
   }, []);
 
   const onMessage = useCallback((event) => {
@@ -48,6 +48,8 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
         pendingRef.current?.resolve(data.verificationId);
         pendingRef.current = null;
         phoneRef.current = null;
+        // Reinitialize verifier so it's ready for the next OTP request
+        webViewRef.current?.injectJavaScript('otpSent=false; setTimeout(initVerifier, 500); true;');
         break;
 
       case 'error':
@@ -96,7 +98,7 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
         pendingRef.current.reject(new Error('OTP request timed out. Please try again.'));
         pendingRef.current = null;
         phoneRef.current = null;
-      }, 90000);
+      }, 30000);
     }),
   }));
 
