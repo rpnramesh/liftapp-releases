@@ -5503,7 +5503,16 @@ export default function App() {
         return;
       }
     } catch (_) {}
-    Alert.alert('Existing User', 'No saved member session was found on this device. Please register with phone number and OTP once.');
+
+    // Allow app entry even without a saved registration on this device.
+    // In that case, dashboard opens with no member-linked data.
+    setUid(null);
+    setMember(null);
+    setAssignment(null);
+    setTodayWorkout(null);
+    setPlanWeek(null);
+    setFullPlan(null);
+    setScreen('main');
   };
 
   // ── Loading ─────────────────────────────────────────────────────────────────
