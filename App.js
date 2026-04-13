@@ -2154,57 +2154,62 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </View>
                   );
                 })}
-                {!isLogging && (
-                  <View style={wk.btnRow}>
-                    <TouchableOpacity
-                      style={[wk.startBtn, { flex: 1 }, selectedDay.completedAt && { backgroundColor: C.green }]}
-                      onPress={() => {
-                        const exs = selectedDay.exercises.map(ex => ({
-                          id: ex.id || ex.name, name: ex.name,
-                          sets: ex.mainSets || 3, reps: ex.mainReps || 10,
-                          rest: ex.mainRestSeconds || 60, note: ex.notes || '',
-                          muscleGroup: ex.muscleGroup || '',
-                        }));
-                        const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-                        setLoggingWorkout({
-                          id: fullPlan?.id || selectedDay.dayLabel,
-                          name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
-                          estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
-                          exercises: exs,
-                          dayLabel: selectedDay.dayLabel || todayFullDay,
-                        });
-                        setSelectedDayIdx(null);
-                        startWorkoutTimer();
-                        setIsLogging(true);
-                      }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Ionicons name={selectedDay.completedAt ? 'checkmark-circle-outline' : 'play'} size={16} color="#fff" />
-                        <Text style={wk.startBtnTxt}>{selectedDay.completedAt ? 'Completed' : 'Start'}</Text>
+                <View style={wk.btnRow}>
+                  <TouchableOpacity
+                    style={[wk.startBtn, { flex: 1 }, selectedDay.completedAt && { backgroundColor: C.green }]}
+                    onPress={() => {
+                      const exs = selectedDay.exercises.map(ex => ({
+                        id: ex.id || ex.name, name: ex.name,
+                        sets: ex.mainSets || 3, reps: ex.mainReps || 10,
+                        rest: ex.mainRestSeconds || 60, note: ex.notes || '',
+                        muscleGroup: ex.muscleGroup || '',
+                      }));
+                      const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+                      // Reset any in-progress workout state before starting this day
+                      if (workoutTimer?.running || workoutTimer?.completed) {
+                        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+                        setWorkoutDoneSets({});
+                        setWorkoutSetWeights({});
+                        setRestEndTimes({});
+                      }
+                      setLoggingWorkout({
+                        id: fullPlan?.id || selectedDay.dayLabel,
+                        name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
+                        estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
+                        exercises: exs,
+                        dayLabel: selectedDay.dayLabel || todayFullDay,
+                      });
+                      setSelectedDayIdx(null);
+                      startWorkoutTimer();
+                      setIsLogging(true);
+                    }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name={selectedDay.completedAt ? 'checkmark-circle-outline' : 'play'} size={16} color="#fff" />
+                      <Text style={wk.startBtnTxt}>{selectedDay.completedAt ? 'Completed' : 'Start'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {!selectedDay.completedAt && (
+                    <TouchableOpacity style={[wk.startBtn, { flex: 1, backgroundColor: C.green }]} onPress={() => {
+                      setPastCompleteDayIdx(selectedDayIdx);
+                      setPastCompleteDay(selectedDay);
+                      setPastCompleteMinutes('');
+                      setShowPastCompleteModal(true);
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="checkmark-done" size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>Complete</Text>
                       </View>
                     </TouchableOpacity>
-                    {!selectedDay.completedAt && (
-                      <TouchableOpacity style={[wk.startBtn, { flex: 1, backgroundColor: C.green }]} onPress={() => {
-                        setPastCompleteDayIdx(selectedDayIdx);
-                        setPastCompleteDay(selectedDay);
-                        setPastCompleteMinutes('');
-                        setShowPastCompleteModal(true);
-                      }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Ionicons name="checkmark-done" size={16} color="#fff" />
-                          <Text style={wk.startBtnTxt}>Complete</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
-                      <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(selectedDayIdx)}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Ionicons name="calendar-outline" size={15} color={C.amber} />
-                          <Text style={wk.postponeBtnTxt}>Postpone</Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
+                  )}
+                  {selectedDayIdx > todayPlanIdx && !selectedDay.completedAt && (
+                    <TouchableOpacity style={[wk.postponeBtn, { flex: 1 }]} onPress={() => handlePostpone(selectedDayIdx)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="calendar-outline" size={15} color={C.amber} />
+                        <Text style={wk.postponeBtnTxt}>Postpone</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </>
             ) : (
               <View style={wk.emptyState}>
