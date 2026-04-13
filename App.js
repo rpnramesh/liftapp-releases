@@ -372,6 +372,214 @@ function OtpLoginScreen({ onSuccess }) {
   );
 }
 
+function ProfileRegisterModal({ visible, onClose, onRegistered }) {
+  const phoneAuthRef = useRef(null);
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState('phone');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [verificationId, setVerificationId] = useState(null);
+  const [webviewReady, setWebviewReady] = useState(false);
+  const [existingMember, setExistingMember] = useState(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setPhone('');
+      setOtp('');
+      setStep('phone');
+      setLoading(false);
+      setError('');
+      setVerificationId(null);
+      setExistingMember(null);
+      setWebviewReady(false);
+    }
+  }, [visible]);
+
+  const sendOtp = async (confirmedExisting = false) => {
+    const digits = normalizePhone(phone);
+    if (digits.length !== 10) { setError('Enter a valid 10-digit mobile number'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const existing = await findMemberByPhone(digits);
+      if (existing && !confirmedExisting) {
+        setExistingMember(existing);
+        setLoading(false);
+        Alert.alert(
+          'Number already registered',
+          'This number already exists in member records. Do you want to continue and receive OTP?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Receive OTP', onPress: () => sendOtp(true) },
+          ]
+        );
+        return;
+      }
+
+      setExistingMember(existing || null);
+      const formatted = `+91${digits}`;
+      const vId = await phoneAuthRef.current?.sendOtp(formatted);
+      if (!vId) throw new Error('Failed to send OTP');
+      setVerificationId(vId);
+      setStep('otp');
+    } catch (e) {
+      console.log('Profile OTP send error:', e?.message);
+      setError(e?.message || 'Could not send OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    const digits = normalizePhone(phone);
+    if (otp.length !== 6) { setError('Enter the 6-digit OTP'); return; }
+    if (!verificationId) { setError('Please request OTP first'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const credential = PhoneAuthProvider.credential(verificationId, otp);
+      const result = await signInWithCredential(auth, credential);
+      const authUid = result.user.uid;
+
+      // Re-check by phone after OTP so we always attach to the latest existing member record.
+      const matchedMember = (await findMemberByPhone(digits)) || existingMember;
+      if (matchedMember?.id) {
+        await saveMemberSession(matchedMember.id, digits);
+        onRegistered(matchedMember.id);
+        onClose();
+        return;
+      }
+
+      const memberRef = doc(db, 'members', authUid);
+      const memberSnap = await getDoc(memberRef);
+      if (!memberSnap.exists()) {
+        await setDoc(memberRef, {
+          id: authUid,
+          phone: `+91${digits}`,
+          name: '',
+          gymId: '',
+          trainerId: null,
+          height: 0,
+          weight: 0,
+          goalWeight: 0,
+          plan: '',
+          planStartDate: Date.now(),
+          planEndDate: Date.now(),
+          active: true,
+          createdAt: Date.now(),
+        });
+      }
+
+      await saveMemberSession(authUid, digits);
+      onRegistered(authUid);
+      onClose();
+    } catch (e) {
+      console.log('Profile OTP verify error:', e?.code, e?.message);
+      if (e?.code === 'auth/invalid-verification-code') setError('Invalid OTP. Please check and try again.');
+      else if (e?.code === 'auth/code-expired') setError('OTP expired. Please request a new one.');
+      else setError('Verification failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={prg.backdrop}>
+        <SafeAreaView style={prg.sheet}>
+          <PhoneAuthWebView ref={phoneAuthRef} onReady={setWebviewReady} />
+          <View style={prg.header}>
+            <Text style={prg.title}>{step === 'phone' ? 'Register With Phone & OTP' : 'Enter OTP'}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={prg.closeTxt}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={prg.sub}>
+            {step === 'phone'
+              ? 'Enter your phone number. If already registered, we will confirm before sending OTP.'
+              : `OTP sent to +91 ${normalizePhone(phone)}`}
+          </Text>
+
+          {!webviewReady && step === 'phone' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <ActivityIndicator size="small" color={C.primary} />
+              <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
+            </View>
+          )}
+
+          {step === 'phone' ? (
+            <>
+              <View style={ot.phoneRow}>
+                <View style={ot.countryCode}><Text style={ot.countryCodeTxt}>🇮🇳 +91</Text></View>
+                <TextInput
+                  style={ot.phoneInput}
+                  placeholder="Mobile number"
+                  placeholderTextColor={C.mid}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                  value={phone}
+                  onChangeText={t => { setPhone(t); setError(''); }}
+                />
+              </View>
+              {!!error && <Text style={ot.error}>{error}</Text>}
+              <TouchableOpacity
+                style={[ot.btn, (normalizePhone(phone).length < 10 || loading) && ot.btnDisabled]}
+                disabled={normalizePhone(phone).length < 10 || loading}
+                onPress={() => sendOtp(false)}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Receive OTP</Text>}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <TextInput
+                style={ot.otpInput}
+                placeholder="Enter 6-digit OTP"
+                placeholderTextColor={C.mid}
+                keyboardType="number-pad"
+                maxLength={6}
+                value={otp}
+                onChangeText={t => { setOtp(t); setError(''); }}
+                autoFocus
+              />
+              {!!error && <Text style={ot.error}>{error}</Text>}
+              <TouchableOpacity
+                style={[ot.btn, (otp.length !== 6 || loading) && ot.btnDisabled]}
+                disabled={otp.length !== 6 || loading}
+                onPress={verifyOtp}
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Verify & Sync</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={ot.resend} onPress={() => { setStep('phone'); setOtp(''); setError(''); }}>
+                <Text style={ot.resendTxt}>← Change number</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+const prg = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
+    minHeight: '62%',
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  title: { fontSize: 18, fontWeight: '800', color: C.dark },
+  closeTxt: { fontSize: 14, color: C.primary, fontWeight: '700' },
+  sub: { fontSize: 13, color: C.mid, marginBottom: 14 },
+});
+
 // ── MEMBERSHIP DETAIL MODAL ──────────────────────────────────────────────────
 const formatFullDate = (ts) => {
   if (!ts) return '—';
@@ -4483,8 +4691,9 @@ const ti = StyleSheet.create({
 //   3. Paste this entire block in its place
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
+function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember, onRegisterSuccess }) {
   const [showMembership, setShowMembership] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [draft, setDraft] = useState({
     name: member?.name || '',
@@ -4627,6 +4836,18 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
           </View>
         );
       })}
+
+      <Text style={g.sec}>Account</Text>
+      <View style={pf.memberCard}>
+        <Text style={pf.planName}>📱 Register / Sync Member Data</Text>
+        <Text style={pf.planSub}>Link your phone with OTP to sync profile, workout history, and all member data.</Text>
+        <TouchableOpacity
+          style={[pf.logoutBtn, { marginTop: 10, marginBottom: 0, backgroundColor: C.primary }]}
+          onPress={() => setShowRegisterModal(true)}
+        >
+          <Text style={[pf.logoutTxt, { color: '#fff' }]}>Open Registration</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── Trainer Section ─────────────────────────────────────────────── */}
       <Text style={g.sec}>Trainer</Text>
@@ -4791,6 +5012,15 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember }) {
         </SafeAreaView>
       </Modal>
       <MembershipDetailModal visible={showMembership} onClose={() => setShowMembership(false)} member={member} />
+
+      <ProfileRegisterModal
+        visible={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onRegistered={(memberId) => {
+          setShowRegisterModal(false);
+          onRegisterSuccess?.(memberId);
+        }}
+      />
     </ScrollView>
   );
 }
@@ -5085,7 +5315,6 @@ export default function App() {
   const [screen, setScreen] = useState('splash');
   const [tab, setTab] = useState('Home');
   const [uid, setUid] = useState(null);
-  const [savedMemberId, setSavedMemberId] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -5179,47 +5408,18 @@ export default function App() {
   }, []);
   useEffect(() => {
     let active = true;
-    let unsub = () => {};
-    let timeout;
-
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
         if (!active) return;
-        if (raw) {
-          const saved = JSON.parse(raw);
-          if (saved?.memberId) {
-            setSavedMemberId(saved.memberId);
-          }
-        }
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved?.memberId) setUid(saved.memberId);
       } catch (_) {}
-
-      timeout = setTimeout(() => {
-        if (!active) return;
-        setAuthLoading(false);
-        setScreen('welcome');
-      }, 5000);
-
-      unsub = onAuthStateChanged(auth, async (user) => {
-        clearTimeout(timeout);
-        if (!active) return;
-        if (user) {
-          await saveMemberSession(user.uid);
-          setSavedMemberId(user.uid);
-        } else {
-          setSavedMemberId(null);
-        }
-        setUid(null);
-        setScreen('welcome');
-        setAuthLoading(false);
-      });
+      if (!active) return;
+      setScreen('main');
+      setAuthLoading(false);
     })();
-
-    return () => {
-      active = false;
-      clearTimeout(timeout);
-      unsub();
-    };
+    return () => { active = false; };
   }, []);
 
   // ── Member profile listener ─────────────────────────────────────────────────
@@ -5229,13 +5429,12 @@ export default function App() {
       setMember(m);
       if (!m) {
         clearMemberSession();
-        setSavedMemberId(null);
         setAssignment(null);
         setTodayWorkout(null);
         setPlanWeek(null);
         setFullPlan(null);
         setUid(null);
-        setScreen('welcome');
+        setScreen('main');
       }
     });
     return () => unsub();
@@ -5479,39 +5678,12 @@ export default function App() {
   const handleLogout = async () => {
     await clearMemberSession();
     await auth.signOut().catch(() => {});
-    setSavedMemberId(null);
-    setMember(null);
-    setAssignment(null);
-    setTodayWorkout(null);
-    setUid(null);
-    setScreen('welcome');
-  };
-
-  const handleExistingUser = async () => {
-    if (savedMemberId) {
-      setUid(savedMemberId);
-      setScreen('main');
-      return;
-    }
-    try {
-      const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
-      const saved = raw ? JSON.parse(raw) : null;
-      if (saved?.memberId) {
-        setSavedMemberId(saved.memberId);
-        setUid(saved.memberId);
-        setScreen('main');
-        return;
-      }
-    } catch (_) {}
-
-    // Allow app entry even without a saved registration on this device.
-    // In that case, dashboard opens with no member-linked data.
-    setUid(null);
     setMember(null);
     setAssignment(null);
     setTodayWorkout(null);
     setPlanWeek(null);
     setFullPlan(null);
+    setUid(null);
     setScreen('main');
   };
 
@@ -5529,8 +5701,6 @@ export default function App() {
     );
   }
 
-  if (screen === 'welcome') return <WelcomeScreen onRegister={() => setScreen('login')} onExistingUser={handleExistingUser} />;
-  if (screen === 'login') return <OtpLoginScreen onSuccess={async (id) => { await saveMemberSession(id); setSavedMemberId(id); setUid(id); setScreen('main'); }} />;
   if (screen === 'notifications') return (
     <NotificationsScreen onBack={() => setScreen('main')} memberId={uid} />
   );
@@ -5624,6 +5794,16 @@ export default function App() {
             onLogout={handleLogout}
             onTrainerChat={() => setScreen('trainerChat')}
             onUpdateMember={(changes) => setMember(prev => ({ ...prev, ...changes }))}
+            onRegisterSuccess={(memberId) => {
+              setUid(memberId);
+              setMember(null);
+              setAssignment(null);
+              setTodayWorkout(null);
+              setPlanWeek(null);
+              setFullPlan(null);
+              setTab('Home');
+              setScreen('main');
+            }}
           />
         );
     }
