@@ -1729,8 +1729,10 @@ const lv = StyleSheet.create({
   setRowDone: { backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 20, borderBottomColor: '#E2F5E9' },
   setNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.deepBlue + '0C', alignItems: 'center', justifyContent: 'center' },
   setNumBadgeDone: { backgroundColor: C.green + '15' },
+  setNumBadgeWarmup: { backgroundColor: C.amber + '20' },
   setNumTxt: { fontSize: 12, fontWeight: '800', color: C.deepBlue },
   setNumTxtDone: { color: C.green },
+  setNumTxtWarmup: { color: C.amber },
   repsBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
   repsVal: { fontSize: 17, fontWeight: '800', color: C.dark },
   repsInput: { fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', width: 44, paddingVertical: 2, paddingHorizontal: 0, borderBottomWidth: 1, borderBottomColor: '#E0E0E5' },
@@ -2316,7 +2318,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* ═══ HEADER ═══ */}
         <View style={wk.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={wk.headerTitle}>{fullPlan?.name || 'Workouts'}</Text>
+            <Text style={wk.headerTitle}>
+              {selectedDayIdx !== null && selectedDay
+                ? (selectedDay.dayLabel || fullPlan?.name || 'Workouts')
+                : (todayWorkout?.dayLabel || todayWorkout?.name || fullPlan?.name || 'Workouts')}
+            </Text>
           </View>
           <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
             {isLogging && !scrolledPastHeader && (workoutTimer?.running || workoutTimer?.completed) ? (
@@ -2351,7 +2357,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     activeOpacity={0.7}
                   >
                     <Text style={[wk.dayName, isActive && wk.weekTxtW]}>{d.day}</Text>
-                    <Text style={[wk.dayDate, isActive && wk.weekTxtW]}>{(d.date || '').split(' ')[0]}</Text>
                     {isActive && <View style={wk.activeLine} />}
                     {!isActive && !d.rest && d.exerciseCount > 0 && (
                       <View style={[wk.dayExPill]}>
@@ -2385,7 +2390,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {selectedDayIdx !== null && selectedDay ? (
           <>
             <View style={wk.selectedDayHeader}>
-              <Text style={wk.selectedDayTitle}>{selectedDay.dayLabel || 'Day ' + (selectedDayIdx + 1)}</Text>
               <TouchableOpacity onPress={() => setSelectedDayIdx(null)} style={wk.backBtn} activeOpacity={0.7}>
                 <Ionicons name="arrow-back" size={14} color={C.primary} />
                 <Text style={wk.backBtnTxt}>Today</Text>
@@ -2466,6 +2470,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         id: ex.id || ex.name, name: ex.name,
                         sets: ex.mainSets || 3, reps: ex.mainReps || 10,
                         rest: ex.mainRestSeconds || 60, note: ex.notes || '',
+                        warmupSets: ex.warmupSets || 0,
                         muscleGroup: ex.muscleGroup || '',
                         videoUrl: ex.videoUrl || '',
                       }));
@@ -2518,9 +2523,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           <>
             {todayWorkout && !todayWorkout.isRestDay ? (
               <>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={wk.todayLabel}>TODAY — {(todayWorkout.dayLabel || todayWorkout.name || '').toUpperCase()}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {(workoutTimer?.running && !isLogging) || workoutTimer?.completed ? (
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     {workoutTimer?.running && !isLogging && (
                       <View style={wk.liveChip}>
                         <View style={wk.liveDot} />
@@ -2534,7 +2538,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       </View>
                     )}
                   </View>
-                </View>
+                ) : null}
 
                 {/* Expandable exercise list — shown when not logging */}
                 {!isLogging && todayWorkout.exercises?.map(ex => {
@@ -2577,6 +2581,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             <Text style={[lv.setHeaderTxt, { width: 48 }]}>PREV</Text>
                             <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
                           </View>
+                          {(ex.warmupSets > 0) && Array.from({ length: ex.warmupSets }, (_, i) => {
+                            const stateKey = `${ex.id}_w_${i + 1}`;
+                            const lastW = lastWeights[stateKey];
+                            return (
+                              <View key={stateKey} style={lv.setRow}>
+                                <View style={[lv.setNumBadge, lv.setNumBadgeWarmup]}>
+                                  <Text style={[lv.setNumTxt, lv.setNumTxtWarmup]}>W</Text>
+                                </View>
+                                <View style={lv.repsBox}>
+                                  <Text style={lv.repsVal}>{ex.reps}</Text>
+                                </View>
+                                <View style={lv.lastBox}>
+                                  <Text style={lv.lastVal}>{lastW || '—'}</Text>
+                                </View>
+                                <View style={lv.weightGroup}>
+                                  <View style={[lv.weightInput, { backgroundColor: '#F0F0F2', borderColor: '#E0E0E3' }]}>
+                                    <Text style={{ color: '#C7C7CC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>—</Text>
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })}
                           {Array.from({ length: ex.sets }, (_, i) => {
                             const setNo = i + 1;
                             const stateKey = `${ex.id}_${setNo}`;
@@ -2714,6 +2740,61 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
                         <Text style={[lv.setHeaderTxt, { width: 56 }]}></Text>
                       </View>
+                      {/* Warmup rows */}
+                      {(ex.warmupSets > 0) && Array.from({ length: ex.warmupSets }, (_, i) => {
+                        const stateKey = `${ex.id}_w_${i + 1}`;
+                        const isDoneSet = workoutDoneSets[stateKey];
+                        const lastW = lastWeights[stateKey];
+                        return (
+                          <View key={stateKey}>
+                            <View style={[lv.setRow, isDoneSet && lv.setRowDone]}>
+                              <View style={[lv.setNumBadge, lv.setNumBadgeWarmup, isDoneSet && lv.setNumBadgeDone]}>
+                                <Text style={[lv.setNumTxt, lv.setNumTxtWarmup, isDoneSet && lv.setNumTxtDone]}>W</Text>
+                              </View>
+                              <View style={lv.repsBox}>
+                                <TextInput
+                                  style={[lv.repsInput, isDoneSet && { color: C.green }]}
+                                  keyboardType="number-pad"
+                                  maxLength={3}
+                                  value={String(customReps[stateKey] ?? ex.reps)}
+                                  editable={!isDoneSet}
+                                  onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
+                                />
+                              </View>
+                              <View style={lv.lastBox}>
+                                <Text style={lv.lastVal}>{lastW || '—'}</Text>
+                              </View>
+                              <View style={lv.weightGroup}>
+                                <TextInput
+                                  style={[lv.weightInput, isDoneSet && lv.weightInputDone]}
+                                  placeholder={lastW || '0'}
+                                  placeholderTextColor={'#C7C7CC'}
+                                  keyboardType="decimal-pad"
+                                  value={localSetWeights[stateKey] || ''}
+                                  editable={!isDoneSet}
+                                  onChangeText={val => {
+                                    const updated = { ...localSetWeights, [stateKey]: val };
+                                    setLocalSetWeights(updated);
+                                    setWorkoutSetWeights(updated);
+                                  }}
+                                />
+                                <Text style={lv.kgLbl}>kg</Text>
+                              </View>
+                              {!isDoneSet ? (
+                                <TouchableOpacity style={lv.doneBtn} activeOpacity={0.7}
+                                  onPress={() => markSetDone(ex.id, stateKey, 0, ex.warmupSets)}>
+                                  <Ionicons name="checkmark" size={18} color="#fff" />
+                                </TouchableOpacity>
+                              ) : (
+                                <View style={lv.donedTag}>
+                                  <Ionicons name="checkmark-circle" size={28} color={C.green} />
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+                      {/* Working sets */}
                       {Array.from({ length: totalSets }, (_, i) => {
                         const setNo = i + 1;
                         const stateKey = `${ex.id}_${setNo}`;
@@ -3181,7 +3262,7 @@ const wk = StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '800', color: C.mid, letterSpacing: 1.5, marginTop: 32, marginBottom: 16 },
   todayLabel: { fontSize: 12, fontWeight: '700', color: C.mid, letterSpacing: 0.5, textTransform: 'uppercase' },
   /* Week */
-  dayCard: { width: 62, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 16, backgroundColor: C.card, marginRight: 8, alignItems: 'center', borderWidth: 1, borderColor: '#EBEBF0', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
+  dayCard: { width: 46, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14, backgroundColor: C.card, marginRight: 7, alignItems: 'center', borderWidth: 1, borderColor: '#EBEBF0', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
   dayCardActive: { backgroundColor: C.deepBlue, borderColor: C.deepBlue, elevation: 4, shadowColor: C.deepBlue, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8 },
   dayCardRest: { opacity: 0.4 },
   dayName: { fontSize: 10, fontWeight: '700', color: C.mid, letterSpacing: 0.6, textTransform: 'uppercase' },
@@ -5576,6 +5657,7 @@ export default function App() {
           sets: ex.mainSets || 3,
           reps: ex.mainReps || 10,
           rest: ex.mainRestSeconds || 60,
+          warmupSets: ex.warmupSets || 0,
           note: ex.notes || '',
           muscleGroup: ex.muscleGroup || '',
           videoUrl: ex.videoUrl || '',
