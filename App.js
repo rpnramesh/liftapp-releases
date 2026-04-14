@@ -2318,11 +2318,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* ═══ HEADER ═══ */}
         <View style={wk.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={wk.headerTitle}>
-              {selectedDayIdx !== null && selectedDay
-                ? (selectedDay.dayLabel || fullPlan?.name || 'Workouts')
-                : (todayWorkout?.dayLabel || todayWorkout?.name || fullPlan?.name || 'Workouts')}
-            </Text>
+            <Text style={wk.headerTitle}>Workouts</Text>
           </View>
           <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
             {isLogging && !scrolledPastHeader && (workoutTimer?.running || workoutTimer?.completed) ? (
@@ -2368,9 +2364,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 );
               })}
             </ScrollView>
-            <View style={{ marginBottom: 16 }} />
+            <View style={{ marginBottom: 8 }} />
           </>
         )}
+
+        {/* Workout day title below day cards */}
+        {(() => {
+          const isRest = selectedDayIdx !== null ? selectedDay?.restDay : todayWorkout?.isRestDay;
+          if (isRest) return null;
+          const title = selectedDayIdx !== null && selectedDay
+            ? (selectedDay.dayLabel || '')
+            : (todayWorkout?.dayLabel || todayWorkout?.name || '');
+          if (!title) return null;
+          return (
+            <Text style={wk.dayWorkoutTitle} numberOfLines={2}>{title}</Text>
+          );
+        })()}
 
         {/* Trainer-started workout notification */}
         {activeWorkoutLog?.startedBy === 'trainer' && activeWorkoutLog.status === 'incomplete' && (
@@ -3251,7 +3260,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 const wk = StyleSheet.create({
   /* Header */
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 10, marginBottom: 4 },
-  headerTitle: { fontSize: 32, fontWeight: '800', color: C.dark, letterSpacing: -0.8 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
+  dayWorkoutTitle: { fontSize: 26, fontWeight: '800', color: C.dark, letterSpacing: -0.5, marginBottom: 14, lineHeight: 32 },
   headerSub: { fontSize: 13, color: C.mid, marginTop: 6, lineHeight: 18, letterSpacing: 0.1 },
   timerPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 26, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: '#E8E8ED', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
   timerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.green },
@@ -3911,10 +3921,12 @@ function ProgressScreen({ member, gymId, memberId }) {
         <ProgressPhotosTab gymId={gymId} memberId={memberId} />
       )}
       {activeTab === 'Workouts' && (() => {
-        const recent = workoutLogs.slice(0, 10);
-        const totalMins = Math.round(workoutLogs.reduce((s, w) => s + (w.durationSeconds || 0), 0) / 60);
-        const avgMins = workoutLogs.length
-          ? Math.round(workoutLogs.reduce((s, w) => s + (w.durationSeconds || 0), 0) / workoutLogs.length / 60)
+        const now = Date.now();
+        const completedWorkouts = workoutLogs.filter(w => w.completedAt && w.completedAt > 0 && w.completedAt <= now);
+        const recent = completedWorkouts.slice(0, 10);
+        const totalMins = Math.round(completedWorkouts.reduce((s, w) => s + (w.durationSeconds || 0), 0) / 60);
+        const avgMins = completedWorkouts.length
+          ? Math.round(completedWorkouts.reduce((s, w) => s + (w.durationSeconds || 0), 0) / completedWorkouts.length / 60)
           : 0;
         const maxSecs = Math.max(...recent.map(w => w.durationSeconds || 0), 1);
         return (
@@ -3935,11 +3947,10 @@ function ProgressScreen({ member, gymId, memberId }) {
             </View>
             {/* 4-week consistency bars */}
             {(() => {
-              const now = Date.now();
               const weeks = [3, 2, 1, 0].map(ago => {
                 const end   = now - ago * 7 * 24 * 3600 * 1000;
                 const start = end - 7 * 24 * 3600 * 1000;
-                const count = workoutLogs.filter(w => (w.completedAt ?? 0) >= start && (w.completedAt ?? 0) < end).length;
+                const count = completedWorkouts.filter(w => (w.completedAt ?? 0) >= start && (w.completedAt ?? 0) < end).length;
                 return { label: ago === 0 ? 'This\nweek' : `${ago}w\nago`, count };
               });
               const maxC = Math.max(...weeks.map(w => w.count), 1);
