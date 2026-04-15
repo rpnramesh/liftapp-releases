@@ -1812,6 +1812,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const notifIdRef = useRef(null);
   const activeLogRef = useRef(null);
   const pausedAtRef = useRef(null);
+  const loggingDayIdxRef = useRef(null); // planIdx of the day being actively logged (null=today)
   const pausedEndTimesRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -2189,7 +2190,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
           const planSnap = await gdoc(planRef).catch(() => null);
           if (planSnap?.exists()) {
-            const todayIdx = (new Date().getDay() + 6) % 7;
+            const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
             const days = (planSnap.data().days ?? []).map((d, i) =>
               i === todayIdx ? { ...d, startedAt: Date.now() } : d
             );
@@ -2212,13 +2213,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
             const planSnap = await gdoc(planRef).catch(() => null);
             if (planSnap?.exists()) {
-              const todayIdx = (new Date().getDay() + 6) % 7;
+              const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
               const days = (planSnap.data().days ?? []).map((d, i) =>
                 i === todayIdx
                   ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: curElapsed }
                   : d
               );
               await upDoc(planRef, { days }).catch(() => {});
+              loggingDayIdxRef.current = null; // Clear after workout completion
             }
           }
           const completionData = {
@@ -2494,6 +2496,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         exercises: exs,
                         dayLabel: selectedDay.dayLabel || todayFullDay,
                       });
+                      loggingDayIdxRef.current = selectedDayIdx; // Capture the plan day being started (null=today)
                       setSelectedDayIdx(null);
                       startWorkoutTimer();
                       setIsLogging(true);
@@ -2943,13 +2946,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
                             const planSnap = await gdoc(planRef).catch(() => null);
                             if (planSnap?.exists()) {
-                              const todayIdx = (new Date().getDay() + 6) % 7;
+                              const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
                               const days = (planSnap.data().days ?? []).map((d, i) =>
                                 i === todayIdx
                                   ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: overrideSeconds }
                                   : d
                               );
                               await upDoc(planRef, { days }).catch(() => {});
+                              loggingDayIdxRef.current = null; // Clear after workout completion
                             }
                           }
                           const completionData = {
@@ -3036,7 +3040,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       const day = pastCompleteDay;
                       if (!day || dayIdx === null) return;
                       // Compute the actual calendar date for this past day
-                      const dayOffset = dayIdx - todayPlanIdx; // negative for past days
+                      let dayOffset = dayIdx - todayPlanIdx;
+                      if (dayOffset > 0) dayOffset -= 7; // wrap around to get the most recent past occurrence
                       const targetDate = new Date();
                       targetDate.setDate(targetDate.getDate() + dayOffset);
                       const targetTimestamp = targetDate.getTime();
