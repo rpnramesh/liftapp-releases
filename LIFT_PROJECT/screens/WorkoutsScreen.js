@@ -5,7 +5,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, SafeAreaView, Platform,
+  StyleSheet, SafeAreaView, Platform, Alert,
 } from 'react-native';
 import C from '../constants/colors';
 import { formatElapsed } from '../utils/formatters';
@@ -21,11 +21,106 @@ export default function WorkoutsScreen({
   setWorkoutDoneSets,
   workoutSetWeights,
   setWorkoutSetWeights,
+  restDays,
+  setRestDays,
 }) {
   const todayIndex = useMemo(() => new Date().getDay(), []);
   const [activeDay, setActiveDay] = useState(todayIndex);
   const [exercises]               = useState(TODAY_WORKOUT.exercises);
   const [logging, setLogging]     = useState(false);
+
+  const toggleRestDay = (dayIndex) => {
+    const newRestDays = { ...restDays };
+    if (newRestDays[dayIndex]) {
+      delete newRestDays[dayIndex];
+    } else {
+      newRestDays[dayIndex] = true;
+    }
+    setRestDays(newRestDays);
+  };
+
+  const postponeWorkout = (fromDayIndex) => {
+    const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    const checkNextDay = (currentDayIndex) => {
+      const nextDayIndex = (currentDayIndex + 1) % 7;
+      const FULL_DAY_NAMES_LOCAL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const nextDayName = FULL_DAY_NAMES_LOCAL[nextDayIndex];
+
+      const isRestDay = restDays?.[nextDayIndex] || WEEK[nextDayIndex]?.rest;
+
+      if (isRestDay) {
+        // Show option to assign to rest day or skip
+        Alert.alert(
+          'Rest Day Found',
+          `${nextDayName} is a rest day. Assign your workout here or skip to next available day?`,
+          [
+            {
+              text: `Assign to ${nextDayName}`,
+              onPress: () => {
+                // Mark current day as rest, remove rest marker from next day
+                const newRestDays = { ...restDays };
+                newRestDays[fromDayIndex] = true;
+                if (newRestDays[nextDayIndex]) {
+                  delete newRestDays[nextDayIndex];
+                }
+                setRestDays(newRestDays);
+                Alert.alert(
+                  'Workout Postponed ✓',
+                  `Your workout has been assigned to ${nextDayName}.`
+                );
+              },
+            },
+            {
+              text: 'Skip to Next Day',
+              onPress: () => checkNextDay(nextDayIndex),
+              style: 'default',
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
+        );
+      } else {
+        // Found a non-rest day, assign here
+        const newRestDays = { ...restDays };
+        newRestDays[fromDayIndex] = true;
+        setRestDays(newRestDays);
+        Alert.alert(
+          'Workout Postponed ✓',
+          `Your workout has been moved to ${nextDayName}.`
+        );
+      }
+    };
+
+    checkNextDay(fromDayIndex);
+  };
+
+  const handleDayLongPress = (dayIndex) => {
+    const isRest = restDays?.[dayIndex] || WEEK[dayIndex]?.rest;
+    const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = FULL_DAY_NAMES[dayIndex];
+
+    Alert.alert(
+      `${dayName} Options`,
+      isRest ? 'This is a rest day' : 'Choose an action',
+      [
+        {
+          text: isRest ? 'Mark as Workout Day' : 'Mark as Rest Day',
+          onPress: () => toggleRestDay(dayIndex),
+        },
+        !isRest ? {
+          text: 'Postpone Workout',
+          onPress: () => postponeWorkout(dayIndex),
+        } : null,
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ].filter(Boolean)
+    );
+  };
 
   const weekDates = useMemo(() => {
     const today = new Date();
@@ -48,7 +143,7 @@ export default function WorkoutsScreen({
   const elapsed     = workoutTimer?.elapsed || 0;
   const isRunning   = workoutTimer?.running;
   const isCompleted = workoutTimer?.completed;
-  const isRest      = WEEK[activeDay]?.rest;
+  const isRest      = restDays?.[activeDay] || WEEK[activeDay]?.rest;
 
   const workoutName = activeDay === todayIndex
     ? TODAY_WORKOUT.name
@@ -104,20 +199,22 @@ export default function WorkoutsScreen({
           {WEEK.map((d, i) => {
             const isActive = i === activeDay;
             const wd       = weekDates[i];
+            const isRest   = restDays?.[i] || d.rest;
             return (
               <TouchableOpacity
                 key={i}
-                style={[s.weekCard, isActive && s.weekCardActive]}
+                style={[s.weekCard, isActive && s.weekCardActive, isRest && s.weekCardRest]}
                 onPress={() => setActiveDay(i)}
+                onLongPress={() => handleDayLongPress(i)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.weekDay, isActive && s.weekTxtW]}>{d.day}</Text>
-                <Text style={[s.weekDate, isActive && s.weekTxtW]}>
+                <Text style={[s.weekDay, isActive && s.weekTxtW, isRest && !isActive && s.weekDayRest]}>{d.day}</Text>
+                <Text style={[s.weekDate, isActive && s.weekTxtW, isRest && !isActive && s.weekDayRest]}>
                   {wd.date} {wd.month}
                 </Text>
-                {isActive && !d.rest && <View style={s.weekDot} />}
-                <Text style={[s.weekLabel, isActive && { color: 'rgba(255,255,255,0.8)' }]}>
-                  {d.rest ? 'Rest' : d.label}
+                {isActive && !isRest && <View style={s.weekDot} />}
+                <Text style={[s.weekLabel, isActive && { color: 'rgba(255,255,255,0.8)' }, isRest && !isActive && s.weekLabelRest]}>
+                  {isRest ? 'Rest' : d.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -214,11 +311,14 @@ const s = StyleSheet.create({
   weekRow:        { paddingBottom: 4 },
   weekCard:       { width: 80, paddingVertical: 14, borderRadius: 16, backgroundColor: C.card, marginRight: 10, alignItems: 'center', borderWidth: 1, borderColor: C.light, ...shadow },
   weekCardActive: { backgroundColor: C.primary, borderColor: C.primary },
+  weekCardRest:   { backgroundColor: C.card + 'E8', borderColor: C.amber + '60' },
   weekDay:        { fontSize: 11, fontWeight: '600', color: C.mid, letterSpacing: 0.5 },
+  weekDayRest:    { color: C.amber },
   weekDate:       { fontSize: 14, fontWeight: '700', color: C.dark, marginTop: 4 },
   weekTxtW:       { color: '#fff' },
   weekDot:        { width: 5, height: 5, borderRadius: 3, backgroundColor: '#fff', marginTop: 8 },
   weekLabel:      { fontSize: 10, fontWeight: '600', color: C.mid, marginTop: 6 },
+  weekLabelRest:  { color: C.amber, fontWeight: '700' },
 
   /* Today */
   todayRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 30, marginBottom: 16 },

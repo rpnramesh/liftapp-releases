@@ -48,6 +48,7 @@ import {
   subscribeToMeasurements,
   subscribeToWeightLog
 } from './shared/services/progress.service';
+import STORAGE_KEYS from './LIFT_PROJECT/constants/storageKeys';
 
 const { width } = Dimensions.get('window');
 
@@ -1779,7 +1780,7 @@ const lv = StyleSheet.create({
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
-function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging, onWorkoutFinish, onViewHistory }) {
+function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging, onWorkoutFinish, onViewHistory, restDays, setRestDays }) {
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
@@ -2027,6 +2028,46 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     }
   };
 
+  const handleToggleRestDay = (displayIdx) => {
+    const item = planWeek?.[displayIdx];
+    if (!item) return;
+    const dayIdx = item.planIdx ?? displayIdx;
+    const newRestDays = { ...restDays };
+    if (newRestDays[dayIdx]) {
+      delete newRestDays[dayIdx];
+    } else {
+      newRestDays[dayIdx] = true;
+    }
+    setRestDays(newRestDays);
+  };
+
+  const handleDayLongPress = (displayIdx) => {
+    const item = planWeek?.[displayIdx];
+    if (!item) return;
+    const dayIdx = item.planIdx ?? displayIdx;
+    const FULL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const dayName = FULL_DAY_NAMES[(dayIdx + 1) % 7];
+
+    Alert.alert(
+      `${dayName} Options`,
+      item.rest || restDays?.[dayIdx] ? 'This is a rest day' : 'Choose an action',
+      [
+        {
+          text: item.rest || restDays?.[dayIdx] ? 'Mark as Workout Day' : 'Mark as Rest Day',
+          onPress: () => handleToggleRestDay(displayIdx),
+        },
+        !item.rest && !restDays?.[dayIdx] && item.exerciseCount > 0 ? {
+          text: 'Postpone Workout',
+          onPress: () => handlePostpone(dayIdx),
+        } : null,
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ].filter(Boolean)
+    );
+  };
+
   // ── Postpone handler ─────────────────────────────────────────────────────────
   const handlePostpone = (dayPlanIdx) => {
     if (!fullPlan?.days || !assignment?.planId) return;
@@ -2051,7 +2092,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     const FULL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const planIdxToName = (idx) => FULL_DAY_NAMES[(idx + 1) % 7];
 
-    const workoutSlotIndices = days.map((_, i) => i).filter(i => !days[i].restDay);
+    const isLocalRestDay = (idx) => restDays?.[idx];
+    const workoutSlotIndices = days.map((_, i) => i).filter(i => !days[i].restDay && !isLocalRestDay(i));
     const N = workoutSlotIndices.length;
     if (N === 0) return;
     const postponedWorkoutPos = workoutSlotIndices.indexOf(dayPlanIdx);
@@ -2087,7 +2129,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       if (depth >= 7) { performRotation(); return; }
       const nextIdx = (fromIdx + 1) % 7;
       const nextDay = days[nextIdx];
-      if (!nextDay?.restDay) { performRotation(); return; }
+      const isNextDayRest = nextDay?.restDay || isLocalRestDay(nextIdx);
+      if (!isNextDayRest) { performRotation(); return; }
       const restDate = getDateForPlanIdx(nextIdx);
       const restDayName = planIdxToName(nextIdx);
       Alert.alert(
@@ -2347,21 +2390,24 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 const planIdxForDay = d.planIdx ?? i;
                 const isSelected = selectedDayIdx === planIdxForDay;
                 const isActive = isSelected || (selectedDayIdx === null && isToday);
+                const isRestOverride = restDays?.[planIdxForDay];
+                const isRest = d.rest || isRestOverride;
                 return (
                   <TouchableOpacity
                     key={i}
-                    style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && d.rest && wk.dayCardRest]}
+                    style={[wk.dayCard, isActive && wk.dayCardActive, !isActive && isRest && wk.dayCardRest]}
                     onPress={() => handleDayPress(i)}
+                    onLongPress={() => handleDayLongPress(i)}
                     activeOpacity={0.7}
                   >
                     <Text style={[wk.dayName, isActive && wk.weekTxtW]}>{d.day}</Text>
                     {isActive && <View style={wk.activeLine} />}
-                    {!isActive && !d.rest && d.exerciseCount > 0 && (
+                    {!isActive && !isRest && d.exerciseCount > 0 && (
                       <View style={[wk.dayExPill]}>
                         <Text style={[wk.dayExCount]}>{d.exerciseCount}</Text>
                       </View>
                     )}
-                    {d.rest && !isActive && <Text style={[wk.dayLabel, { color: C.mid }]}>Rest</Text>}
+                    {isRest && !isActive && <Text style={[wk.dayLabel, { color: C.mid }]}>Rest</Text>}
                   </TouchableOpacity>
                 );
               })}
@@ -2372,7 +2418,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
         {/* Workout day title below day cards */}
         {(() => {
-          const isRest = selectedDayIdx !== null ? selectedDay?.restDay : todayWorkout?.isRestDay;
+          const selectedDayRest = selectedDayIdx !== null ? (selectedDay?.restDay || restDays?.[selectedDayIdx]) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]);
+          const isRest = selectedDayRest;
           if (isRest) return null;
           const title = selectedDayIdx !== null && selectedDay
             ? (selectedDay.dayLabel || '')
@@ -2406,7 +2453,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 <Text style={wk.backBtnTxt}>Today</Text>
               </TouchableOpacity>
             </View>
-            {selectedDay.restDay ? (
+            {(selectedDay.restDay || restDays?.[selectedDayIdx]) ? (
               <View style={wk.emptyState}>
                 <View style={wk.emptyIconCircle}>
                   <Ionicons name="moon" size={32} color={C.deepBlue} />
@@ -2673,7 +2720,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   </View>
                 )}
               </>
-            ) : todayWorkout?.isRestDay ? (
+            ) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]) ? (
               <View style={wk.emptyState}>
                 <View style={wk.emptyIconCircle}>
                   <Ionicons name="moon" size={32} color={C.deepBlue} />
@@ -5504,6 +5551,7 @@ export default function App() {
   const [workoutRestEndTimes, setWorkoutRestEndTimes] = useState({});
   const [autoStartWorkout, setAutoStartWorkout] = useState(false);
   const [workoutFinishData, setWorkoutFinishData] = useState(null);
+  const [restDays, setRestDaysState] = useState({});
   const timerRef = useRef(null);
   const planUnsubRef = useRef(null); // nested plan onSnapshot cleanup
   const sessionRestoredRef = useRef(false);
@@ -5585,6 +5633,28 @@ export default function App() {
     })();
     return () => { active = false; };
   }, []);
+
+  // ── Load rest days from storage on app startup ──────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEYS.restDays);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          setRestDaysState(saved);
+        }
+      } catch (_) {}
+    })();
+  }, []);
+
+  // ── Save rest days to storage whenever they change ──────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem(STORAGE_KEYS.restDays, JSON.stringify(restDays));
+      } catch (_) {}
+    })();
+  }, [restDays]);
 
   // ── Member profile listener ─────────────────────────────────────────────────
   useEffect(() => {
@@ -5942,6 +6012,8 @@ export default function App() {
             setAutoStartLogging={setAutoStartWorkout}
             onWorkoutFinish={(data) => { setWorkoutFinishData(data); setScreen('workoutFinish'); }}
             onViewHistory={() => setScreen('workoutHistory')}
+            restDays={restDays}
+            setRestDays={setRestDaysState}
           />
         );
       case 'Progress':
