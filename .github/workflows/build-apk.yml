@@ -34,16 +34,16 @@ jobs:
       run: cd android && ./gradlew assembleRelease --no-daemon
 
     - name: Upload APK
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: apk
         path: android/app/build/outputs/apk/release/*.apk
 
     - name: Create Release
       if: success()
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: ncipollo/release-action@v1
       with:
-        tag_name: v1.8.6-${{ github.run_number }}
-        release_name: Build ${{ github.run_number }}
+        tag: v1.8.6-${{ github.run_number }}
+        name: Build ${{ github.run_number }}
+        artifacts: android/app/build/outputs/apk/release/*.apk
+        token: ${{ secrets.GITHUB_TOKEN }}
