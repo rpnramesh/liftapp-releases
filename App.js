@@ -2717,6 +2717,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         </Text>
                       </View>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[wk.startBtn, { flex: 1, backgroundColor: C.green, marginLeft: 8 }]}
+                      onPress={() => {
+                        setCompleteMinutes('');
+                        setShowCompleteModal(true);
+                      }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="checkmark-done" size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>Complete</Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
                 )}
               </>
@@ -2816,7 +2827,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   keyboardType="number-pad"
                                   maxLength={3}
                                   value={String(customReps[stateKey] ?? ex.reps)}
-                                  editable={!isDoneSet}
+                                  editable={false}
                                   onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                 />
                               </View>
@@ -2830,7 +2841,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   placeholderTextColor={'#C7C7CC'}
                                   keyboardType="decimal-pad"
                                   value={localSetWeights[stateKey] || ''}
-                                  editable={!isDoneSet}
+                                  editable={false}
                                   onChangeText={val => {
                                     const updated = { ...localSetWeights, [stateKey]: val };
                                     setLocalSetWeights(updated);
