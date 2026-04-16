@@ -2,6 +2,7 @@
 // Lift Member App — App.js
 // Firebase OTP Auth · Real-time Firestore · Live Chat · No dummy data
 // v1.8.6 — Complete button, warm-up lock, time entry on complete
+// GitHub Actions build with Android SDK
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Ionicons } from '@expo/vector-icons';
