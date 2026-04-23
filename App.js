@@ -460,12 +460,25 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
       let matchedMember = null;
       try {
         matchedMember = await findMemberByPhone(digits);
-        console.log('verifyOtp: findMemberByPhone result:', matchedMember?.id);
+        console.log('verifyOtp: findMemberByPhone result:', matchedMember?.id, 'phone:', matchedMember?.phone);
       } catch (lookupErr) {
         console.log('verifyOtp: findMemberByPhone error:', lookupErr?.message);
         if (!(/permission|insufficient/i.test(String(lookupErr?.message || '')))) throw lookupErr;
         console.log('verifyOtp: falling back to existingMember:', existingMember?.id);
         matchedMember = existingMember;
+      }
+
+      // If still no member found, try querying by authUid (in case member was created with this UID earlier)
+      if (!matchedMember?.id) {
+        try {
+          const snap = await getDoc(doc(db, 'members', authUid));
+          if (snap.exists()) {
+            console.log('verifyOtp: found existing member by authUid:', authUid, 'phone:', snap.data().phone);
+            matchedMember = { id: snap.id, ...snap.data() };
+          }
+        } catch (err) {
+          console.log('verifyOtp: failed to query by authUid:', err?.message);
+        }
       }
 
       if (matchedMember?.id) {
@@ -480,7 +493,7 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
       const memberRef = doc(db, 'members', authUid);
       const memberSnap = await getDoc(memberRef);
       if (!memberSnap.exists()) {
-        console.log('verifyOtp: member document does not exist, creating new one');
+        console.log('verifyOtp: member document does not exist, creating new one with phone:', `+91${digits}`);
         await setDoc(memberRef, {
           id: authUid,
           phone: `+91${digits}`,
@@ -497,7 +510,14 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
           createdAt: Date.now(),
         });
       } else {
-        console.log('verifyOtp: member document already exists');
+        // Member exists but had no phone set; update it
+        const existingData = memberSnap.data();
+        if (!existingData.phone) {
+          console.log('verifyOtp: member document exists but phone was missing, updating it');
+          await updateDoc(memberRef, { phone: `+91${digits}` });
+        } else {
+          console.log('verifyOtp: member document already exists with phone:', existingData.phone);
+        }
       }
 
       console.log('verifyOtp: saving session and calling onRegistered with UID:', authUid);
