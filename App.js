@@ -80,14 +80,23 @@ const normalizePhone = (value = '') => value.replace(/\D/g, '').slice(-10);
 
 async function findMemberByPhone(phone) {
   const digits = normalizePhone(phone);
-  if (digits.length !== 10) return null;
+  if (digits.length !== 10) {
+    console.log('findMemberByPhone: invalid phone length', phone, '→', digits);
+    return null;
+  }
+  console.log('findMemberByPhone: searching for', phone, '→', digits);
   for (const candidate of [`+91${digits}`, digits]) {
+    console.log('findMemberByPhone: querying with candidate:', candidate);
     const snap = await getDocs(query(collection(db, 'members'), where('phone', '==', candidate)));
+    console.log('findMemberByPhone: query result for', candidate, '→', snap.size, 'docs found');
     if (!snap.empty) {
       const memberDoc = snap.docs[0];
-      return { id: memberDoc.id, ...memberDoc.data() };
+      const result = { id: memberDoc.id, ...memberDoc.data() };
+      console.log('findMemberByPhone: member found:', result.id, 'phone:', result.phone);
+      return result;
     }
   }
+  console.log('findMemberByPhone: no member found for', phone);
   return null;
 }
 
@@ -199,13 +208,6 @@ function OtpLoginScreen({ onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verificationId, setVerificationId] = useState(null);
-  const [webviewReady, setWebviewReady] = useState(false);
-
-  useEffect(() => {
-    if (webviewReady) return;
-    const t = setTimeout(() => setWebviewReady(true), 10000);
-    return () => clearTimeout(t);
-  }, [webviewReady]);
 
   const sendOtp = async () => {
     if (phone.length < 10) { setError('Enter a valid 10-digit mobile number'); return; }
@@ -307,19 +309,13 @@ function OtpLoginScreen({ onSuccess }) {
 
   return (
     <SafeAreaView style={ot.container}>
-      <PhoneAuthWebView ref={phoneAuthRef} onReady={setWebviewReady} />
+      <PhoneAuthWebView ref={phoneAuthRef} />
       <Text style={ot.heading}>{step === 'phone' ? 'Welcome to Lift' : 'Verify OTP'}</Text>
       <Text style={ot.sub}>
         {step === 'phone'
           ? 'Enter your mobile number to continue'
           : `OTP sent to +91 ${phone}`}
       </Text>
-      {!webviewReady && step === 'phone' && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <ActivityIndicator size="small" color={C.primary} />
-          <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
-        </View>
-      )}
 
       {step === 'phone' ? (
         <>
@@ -383,7 +379,6 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [verificationId, setVerificationId] = useState(null);
-  const [webviewReady, setWebviewReady] = useState(false);
   const [existingMember, setExistingMember] = useState(null);
   const [precheckUnavailable, setPrecheckUnavailable] = useState(false);
 
@@ -396,7 +391,6 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
       setError('');
       setVerificationId(null);
       setExistingMember(null);
-      setWebviewReady(false);
       setPrecheckUnavailable(false);
     }
   }, [visible]);
@@ -455,23 +449,38 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
     if (!verificationId) { setError('Please request OTP first'); return; }
     setError('');
     setLoading(true);
+    console.log('verifyOtp: starting verification for phone', digits);
     try {
       const credential = PhoneAuthProvider.credential(verificationId, otp);
       const result = await signInWithCredential(auth, credential);
       const authUid = result.user.uid;
+      console.log('verifyOtp: authenticated with UID:', authUid);
 
       // Re-check by phone after OTP so we always attach to the latest existing member record.
-      const matchedMember = (await findMemberByPhone(digits)) || existingMember;
+      let matchedMember = null;
+      try {
+        matchedMember = await findMemberByPhone(digits);
+        console.log('verifyOtp: findMemberByPhone result:', matchedMember?.id);
+      } catch (lookupErr) {
+        console.log('verifyOtp: findMemberByPhone error:', lookupErr?.message);
+        if (!(/permission|insufficient/i.test(String(lookupErr?.message || '')))) throw lookupErr;
+        console.log('verifyOtp: falling back to existingMember:', existingMember?.id);
+        matchedMember = existingMember;
+      }
+
       if (matchedMember?.id) {
+        console.log('verifyOtp: using existing member:', matchedMember.id);
         await saveMemberSession(matchedMember.id, digits);
         onRegistered(matchedMember.id);
         onClose();
         return;
       }
 
+      console.log('verifyOtp: no existing member found, creating new member with UID:', authUid);
       const memberRef = doc(db, 'members', authUid);
       const memberSnap = await getDoc(memberRef);
       if (!memberSnap.exists()) {
+        console.log('verifyOtp: member document does not exist, creating new one');
         await setDoc(memberRef, {
           id: authUid,
           phone: `+91${digits}`,
@@ -487,8 +496,11 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
           active: true,
           createdAt: Date.now(),
         });
+      } else {
+        console.log('verifyOtp: member document already exists');
       }
 
+      console.log('verifyOtp: saving session and calling onRegistered with UID:', authUid);
       await saveMemberSession(authUid, digits);
       onRegistered(authUid);
       onClose();
@@ -506,7 +518,7 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={prg.backdrop}>
         <SafeAreaView style={prg.sheet}>
-          <PhoneAuthWebView ref={phoneAuthRef} onReady={setWebviewReady} />
+          <PhoneAuthWebView ref={phoneAuthRef} />
           <View style={prg.header}>
             <Text style={prg.title}>{step === 'phone' ? 'Register With Phone & OTP' : 'Enter OTP'}</Text>
             <TouchableOpacity onPress={onClose}>
@@ -519,13 +531,6 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
               ? 'Enter your phone number. If already registered, we will confirm before sending OTP.'
               : `OTP sent to +91 ${normalizePhone(phone)}`}
           </Text>
-
-          {!webviewReady && step === 'phone' && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <ActivityIndicator size="small" color={C.primary} />
-              <Text style={{ fontSize: 12, color: C.mid }}>Preparing secure verification…</Text>
-            </View>
-          )}
 
           {precheckUnavailable && step === 'phone' && (
             <Text style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>
@@ -2700,25 +2705,25 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   );
                 })}
 
-                {/* Start / Complete — hidden once logging begins */}
-                {!isLogging && (
-                  <View style={wk.btnRow}>
-                    <TouchableOpacity
-                      style={[wk.startBtn, { flex: 1 }, workoutTimer?.completed && { backgroundColor: C.green }]}
-                      onPress={() => {
-                        if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
-                        setIsLogging(true);
-                      }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Ionicons
-                          name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
-                          size={16} color="#fff"
-                        />
-                        <Text style={wk.startBtnTxt}>
-                          {workoutTimer?.completed ? 'Completed' : workoutTimer?.running ? 'Continue' : 'Start'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
+                {/* Start / Complete — always visible for today */}
+                <View style={wk.btnRow}>
+                  <TouchableOpacity
+                    style={[wk.startBtn, { flex: 1 }, workoutTimer?.completed && { backgroundColor: C.green }]}
+                    onPress={() => {
+                      if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                      setIsLogging(true);
+                    }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons
+                        name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
+                        size={16} color="#fff"
+                      />
+                      <Text style={wk.startBtnTxt}>
+                        {workoutTimer?.completed ? 'Completed' : workoutTimer?.running ? 'Continue' : 'Start'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {!workoutTimer?.completed && (
                     <TouchableOpacity
                       style={[wk.startBtn, { flex: 1, backgroundColor: C.green, marginLeft: 8 }]}
                       onPress={() => {
@@ -2730,8 +2735,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Text style={wk.startBtnTxt}>Complete</Text>
                       </View>
                     </TouchableOpacity>
-                  </View>
-                )}
+                  )}
+                </View>
               </>
             ) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]) ? (
               <View style={wk.emptyState}>
@@ -2829,7 +2834,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   keyboardType="number-pad"
                                   maxLength={3}
                                   value={String(customReps[stateKey] ?? ex.reps)}
-                                  editable={false}
+                                  editable={!isDoneSet}
                                   onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                 />
                               </View>
@@ -2843,7 +2848,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   placeholderTextColor={'#C7C7CC'}
                                   keyboardType="decimal-pad"
                                   value={localSetWeights[stateKey] || ''}
-                                  editable={false}
+                                  editable={!isDoneSet}
                                   onChangeText={val => {
                                     const updated = { ...localSetWeights, [stateKey]: val };
                                     setLocalSetWeights(updated);
@@ -2972,7 +2977,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700' }}>Mark Workout Complete</Text>
               </TouchableOpacity>
             )}
-            <Modal visible={showCompleteModal} transparent animationType="fade" onRequestClose={() => setShowCompleteModal(false)}>
+            <Modal visible={false} transparent animationType="fade" onRequestClose={() => setShowCompleteModal(false)}>
               <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
                 <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
                   <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Mark Workout Complete</Text>
@@ -3317,6 +3322,107 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </TouchableOpacity>
         </Animated.View>
       )}
+      <Modal visible={showCompleteModal} transparent animationType="fade" onRequestClose={() => setShowCompleteModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Mark Workout Complete</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take? (Optional)</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
+              keyboardType="number-pad"
+              placeholder="e.g. 45 (leave empty to use elapsed)"
+              value={completeMinutes}
+              onChangeText={setCompleteMinutes}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#F0F0F0', alignItems: 'center' }} onPress={() => setShowCompleteModal(false)}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: C.mid }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: C.green, alignItems: 'center' }} onPress={async () => {
+                const mins = parseInt(completeMinutes, 10);
+                const overrideSeconds = (Number.isFinite(mins) && mins > 0)
+                  ? mins * 60
+                  : Math.max(0, workoutTimer?.elapsed || 0);
+                setShowCompleteModal(false);
+                stopWorkoutTimer(overrideSeconds);
+                if (gymOrTrainer && memberId) {
+                  try {
+                    const { doc: docFn, updateDoc: upDoc, getDoc: gdoc, collection: col, setDoc: sdoc } = require('firebase/firestore');
+                    const { db: fdb } = require('./shared/firebase/config');
+                    const assignRef = docFn(fdb, 'gyms', gymOrTrainer, 'assignments', memberId);
+                    const assignSnap = await gdoc(assignRef).catch(() => null);
+                    if (assignSnap?.exists() && assignSnap.data()?.planId) {
+                      const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
+                      const planSnap = await gdoc(planRef).catch(() => null);
+                      if (planSnap?.exists()) {
+                        const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
+                        const days = (planSnap.data().days ?? []).map((d, i) =>
+                          i === todayIdx
+                            ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: overrideSeconds }
+                            : d
+                        );
+                        await upDoc(planRef, { days }).catch(() => {});
+                        loggingDayIdxRef.current = null;
+                      }
+                    }
+                    const completionData = {
+                      memberId, memberName,
+                      gymId: member?.gymId || null,
+                      planId: activeWorkout?.id || '',
+                      planName: activeWorkout?.name || '',
+                      dayLabel: activeWorkout?.dayLabel || '',
+                      status: 'completed',
+                      completedExercises: logExercises.map(ex => ({
+                        exerciseId: ex.id, exerciseName: ex.name,
+                        muscleGroup: ex.muscleGroup || 'Other',
+                        targetSets: ex.sets, targetReps: ex.reps,
+                        actualSets: getTotalSets(ex), actualReps: String(customReps[`${ex.id}_1`] || ex.reps),
+                        weight: parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
+                        restSeconds: ex.rest || 60,
+                        completed: !isSkipped(ex), skipped: isSkipped(ex),
+                        notes: ex.note || '',
+                        setDetails: isSkipped(ex) ? [] : Array.from({ length: getTotalSets(ex) }, (_, i) => ({
+                          setNo: i + 1,
+                          reps: parseInt(customReps[`${ex.id}_${i + 1}`] || ex.reps, 10),
+                          weight: parseFloat(localSetWeights[`${ex.id}_${i + 1}`] || lastWeights[`${ex.id}_${i + 1}`] || '0'),
+                        })),
+                      })),
+                      exerciseLogs: logExercises.map(ex => ({
+                        exerciseId: ex.id, exerciseName: ex.name,
+                        skipped: isSkipped(ex),
+                        sets: isSkipped(ex) ? [] : Array.from({ length: getTotalSets(ex) }, (_, i) => ({
+                          setNo: i + 1, reps: parseInt(customReps[`${ex.id}_${i + 1}`] || ex.reps, 10),
+                          weight: parseFloat(localSetWeights[`${ex.id}_${i + 1}`] || lastWeights[`${ex.id}_${i + 1}`] || '0'),
+                          done: !!workoutDoneSets[`${ex.id}_${i + 1}`],
+                        })),
+                      })),
+                      durationSeconds: overrideSeconds,
+                      startedAt: Date.now() - (overrideSeconds * 1000),
+                      completedAt: Date.now(),
+                      loggedAt: new Date().toISOString(),
+                      updatedAt: Date.now(),
+                      manualComplete: true,
+                    };
+                    if (activeLogRef.current) {
+                      await upDoc(activeLogRef.current, completionData).catch(async () => {
+                        const fb = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+                        await sdoc(fb, { id: fb.id, ...completionData });
+                      });
+                    } else {
+                      const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+                      await sdoc(logRef, { id: logRef.id, ...completionData });
+                    }
+                    await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: Date.now() }).catch(() => {});
+                  } catch (e) { console.log('Manual complete write error:', e); }
+                }
+              }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Complete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <ExerciseVideoModal visible={!!videoExName} exerciseName={videoExName?.name || videoExName} videoUrl={videoExName?.videoUrl} onClose={() => setVideoExName(null)} />
     </View>
   );
