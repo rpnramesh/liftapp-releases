@@ -21,6 +21,7 @@ import {
   Modal,
   PanResponder,
   Platform,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -52,14 +53,31 @@ import {
 } from './shared/services/progress.service';
 import STORAGE_KEYS from './LIFT_PROJECT/constants/storageKeys';
 
+// ── Design system (matches web admin dashboard — Indigo-Blue) ─────────────────
+import theme from './LIFT_PROJECT/constants/theme';
+import sharedC from './LIFT_PROJECT/constants/colors';
+import { Pill as UiPill } from './LIFT_PROJECT/components/ui';
+import { useTheme, makeStyles } from './LIFT_PROJECT/theme/ThemeProvider';
+
 const { width } = Dimensions.get('window');
 
 // ── Colors ────────────────────────────────────────────────────────────────────
+// Aliased to the shared design tokens so the 450+ existing C.* references now
+// render in the indigo-blue brand palette used by the web dashboard. Keys are
+// preserved for backwards compatibility.
 const C = {
-  primary: '#2563EB', bg: '#F8F9FA', card: '#FFFFFF',
-  dark: '#1A1A2E', mid: '#8E8E93', light: '#F0F0F0',
-  green: '#22C55E', amber: '#F59E0B', red: '#EF4444',
-  blue2: '#EBF2FF', accent: '#2563EB', deepBlue: '#1E40AF',
+  primary:  theme.brand[600],    // #4f46e5 (was #2563EB)
+  accent:   theme.brand[600],
+  deepBlue: theme.brand[700],    // #4338ca — pressed/hover tone
+  bg:       theme.surface.raised,// #fafafa (was #F8F9FA)
+  card:     theme.surface.default,
+  dark:     theme.text.primary,  // #111111 (was #1A1A2E)
+  mid:      theme.text.secondary,// #525252 (was #8E8E93) — better contrast
+  light:    theme.neutral[100],  // #f5f5f5
+  green:    theme.success[600],  // #16a34a (deeper than old #22C55E)
+  amber:    theme.warning[600],  // #ca8a04
+  red:      theme.danger[600],   // #e11d48 (rose-red, matches web)
+  blue2:    theme.brand[50],     // #eef2ff (was #EBF2FF)
 };
 
 const formatElapsed = (s) => {
@@ -757,236 +775,725 @@ function MembershipDetailModal({ visible, onClose, member }) {
 }
 
 // ── HOME DASHBOARD ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// HomeScreen — redesigned to match the web admin Gym Management dashboard.
+//
+//   Design parity notes (vs. /Users/admin/lift-gym-app/src/index.css):
+//   • Cards use web `.card` / `.card-raised` / `.info-card-brand` geometry:
+//     radius 14–16 px, 1 px neutral-200 border, layered shadow-card.
+//   • Hero workout card = gradient-like indigo surface with inset highlight
+//     (mirrors web .btn-primary: linear-gradient 500 → 600 + inset white).
+//   • Quick Stats = 3 equal-width surface cards with a tinted icon chip
+//     (mirrors web .num-badge-brand / success / warning) + tabular-num metric
+//     typography for thumb-readable glanceability.
+//   • Typography: all labels use the `text-label` uppercase/tracked style;
+//     stat numbers use `text-metric-sm` (tabular, tight).
+//   • Spacing rhythm: 24 px between sections (theme.spacing.section).
+//   • Micro-delight: greeting fades+slides in on mount, play-icon gently
+//     pulses on the primary CTA. Animations are subtle (≤250 ms, ≤1.06×
+//     scale) so mid-age users read it as polish, not noise.
+//   • Touch targets: all interactive rows are ≥56 px tall, button height
+//     ≥48 px (finger-friendly; exceeds Apple's 44 pt minimum).
+// ═══════════════════════════════════════════════════════════════════════════════
 function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount, onStartWorkout }) {
   const [showMembership, setShowMembership] = useState(false);
+
+  // ── Derived values ───────────────────────────────────────────────────────
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : hour < 21 ? 'Good evening' : 'Good night';
+  const firstName = member?.name?.split(' ')[0] || 'there';
   const daysLeft = member ? daysUntilExpiry(member) : 0;
-  const daysColor = daysLeft <= 7 ? C.red : daysLeft <= 30 ? C.amber : C.green;
+
+  // Membership chip tone uses the same semantic tokens as web status pills
+  // (status-pill-danger / -warning / -success).
+  const membershipTone = daysLeft <= 7 ? 'danger' : daysLeft <= 30 ? 'warning' : 'success';
+  const membershipColor = daysLeft <= 7 ? theme.danger[600] : daysLeft <= 30 ? theme.warning[600] : theme.success[600];
+
   const bmi = member && member.height > 0
     ? (member.weight / ((member.height / 100) ** 2)).toFixed(1)
     : '—';
+  // BMI band — tiny color dot under the metric, matches web health banding.
+  const bmiVal = parseFloat(bmi);
+  const bmiBand = isNaN(bmiVal) ? null
+    : bmiVal < 18.5 ? { color: theme.info[500],    label: 'Under'  }
+    : bmiVal < 25   ? { color: theme.success[600], label: 'Normal' }
+    : bmiVal < 30   ? { color: theme.warning[600], label: 'Over'   }
+    :                 { color: theme.danger[600],  label: 'High'   };
 
-  // Plan name: prefer fullPlan.name, fallback to assignment.planName or member.currentPlanName
+  const exercisesCount = todayWorkout?.exercises?.length || 0;
   const planName = fullPlan?.name || assignment?.planName || member?.currentPlanName || '';
   const hasPlan = !!(fullPlan || assignment?.planId || member?.currentPlanId);
 
+  // ── Subtle entrance animation for the greeting block ─────────────────────
+  const greetOpacity = useRef(new Animated.Value(0)).current;
+  const greetTranslate = useRef(new Animated.Value(8)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(greetOpacity,   { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(greetTranslate, { toValue: 0, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, [greetOpacity, greetTranslate]);
+
+  // ── Gentle infinite pulse on the play-icon inside the primary CTA ────────
+  // Loops 1.0 → 1.08 → 1.0 every 1.6 s. Only runs while a workout is
+  // available & not completed, so it cues "tap to start" without being noisy.
+  const pulse = useRef(new Animated.Value(1)).current;
+  const shouldPulse = !!todayWorkout && !todayWorkout.isRestDay && !workoutTimer?.completed && !workoutTimer?.running;
+  useEffect(() => {
+    if (!shouldPulse) { pulse.setValue(1); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.08, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 800, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [shouldPulse, pulse]);
+
   return (
     <>
-    <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
-      <View style={hm.header}>
-        <View>
-          <Text style={hm.greet}>{greet}, {member?.name?.split(' ')[0] || 'there'}! 👋</Text>
-          <Text style={hm.date}>{new Date().toDateString()}</Text>
+    <ScrollView style={g.screenNoPad} contentContainerStyle={hm.scrollContent} showsVerticalScrollIndicator={false}>
+
+      {/* ─── Header: greeting + date + bell ────────────────────────────────
+          Uses web text-h2 for greeting and text-caption for date. The
+          notification bell has a 44×44 tap area and a danger-toned badge
+          matching web `.status-pill-danger`. */}
+      <Animated.View
+        style={[hm.header, { opacity: greetOpacity, transform: [{ translateY: greetTranslate }] }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={hm.greet} numberOfLines={1}>
+            {greet}, <Text style={hm.greetName}>{firstName}</Text>
+            <Text style={hm.greetWave}> 👋</Text>
+          </Text>
+          <Text style={hm.greetDate}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
         </View>
-        <TouchableOpacity style={hm.notifBtn} onPress={() => onNavigate('Notifications')}>
-          <Ionicons name="notifications-outline" size={22} color={C.dark} />
+        <TouchableOpacity
+          style={hm.bellBtn}
+          onPress={() => onNavigate('Notifications')}
+          activeOpacity={0.7}
+          hitSlop={8}
+        >
+          <Ionicons name="notifications-outline" size={22} color={theme.text.primary} />
           {unreadNotifCount > 0 && (
-            <View style={hm.badge}><Text style={hm.badgeTxt}>{unreadNotifCount}</Text></View>
+            <View style={hm.bellBadge}>
+              <Text style={hm.bellBadgeTxt}>{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</Text>
+            </View>
           )}
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
-      {/* Today's Workout Card */}
+      {/* ─── Hero: Today's Workout ─────────────────────────────────────────
+          Four visual states — rest day, active session, plan-but-no-day,
+          empty. All share:
+            • 20 px padding (cardPad token)
+            • radius 20 px ('2xl' — larger than other cards so the hero reads
+              as the focal point, matches web modal feel)
+            • brand indigo gradient simulated with solid brand[600] + white
+              diagonal overlay
+            • shadow.brand for the floating, branded elevation
+      */}
       {todayWorkout?.isRestDay ? (
-        <TouchableOpacity style={[hm.workoutCard, { backgroundColor: '#374151' }]} onPress={() => onNavigate('Workouts')} activeOpacity={0.85}>
-          {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
-          <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Ionicons name="moon-outline" size={22} color="#fff" />
-            <Text style={hm.workoutName}>Rest Day</Text>
+        <TouchableOpacity
+          style={[hm.hero, hm.heroRest]}
+          onPress={() => onNavigate('Workouts')}
+          activeOpacity={0.92}
+        >
+          <HeroHighlight />
+          {planName ? <Text style={hm.heroPlanTag}>{planName}</Text> : null}
+          <Text style={hm.heroLabel}>TODAY'S WORKOUT</Text>
+          <View style={hm.heroTitleRow}>
+            <Ionicons name="moon" size={22} color="#fff" />
+            <Text style={hm.heroTitle}>Rest Day</Text>
           </View>
-          <Text style={hm.workoutSub}>Recovery is part of progress. Take it easy today.</Text>
-          <View style={hm.startBtn}>
-            <Text style={hm.startBtnTxt}>View Weekly Plan →</Text>
+          <Text style={hm.heroSub}>Recovery is part of progress. Take it easy today.</Text>
+          <View style={hm.heroCta}>
+            <Text style={hm.heroCtaTxt}>View Weekly Plan</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
           </View>
         </TouchableOpacity>
       ) : todayWorkout ? (
-        <TouchableOpacity style={hm.workoutCard} onPress={() => { if (onStartWorkout && !workoutTimer?.completed) onStartWorkout(); else onNavigate('Workouts'); }} activeOpacity={0.9}>
-          <View style={hm.workoutTop}>
-            <View>
-              {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
-              <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
+        <TouchableOpacity
+          style={hm.hero}
+          onPress={() => { if (onStartWorkout && !workoutTimer?.completed) onStartWorkout(); else onNavigate('Workouts'); }}
+          activeOpacity={0.92}
+        >
+          <HeroHighlight />
+
+          {/* Top row: plan tag + estimate pill */}
+          <View style={hm.heroTop}>
+            <View style={{ flex: 1 }}>
+              {planName ? <Text style={hm.heroPlanTag}>{planName}</Text> : null}
+              <Text style={hm.heroLabel}>TODAY'S WORKOUT</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.8)" />
-              <Text style={hm.workoutTime}>{todayWorkout.estimatedMinutes || '—'} min est.</Text>
-            </View>
-          </View>
-          <Text style={hm.workoutName}>{todayWorkout.dayLabel || todayWorkout.name}</Text>
-          {workoutTimer?.running && (
-            <View style={hm.timerPill}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="time-outline" size={12} color="#fff" />
-                <Text style={hm.timerPillTxt}>{formatElapsed(workoutTimer.elapsed)} · In progress</Text>
+            {todayWorkout.estimatedMinutes ? (
+              <View style={hm.heroTimePill}>
+                <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.9)" />
+                <Text style={hm.heroTimeTxt}>{todayWorkout.estimatedMinutes} min</Text>
               </View>
+            ) : null}
+          </View>
+
+          <Text style={hm.heroTitle}>{todayWorkout.dayLabel || todayWorkout.name}</Text>
+
+          {/* Status pill — mirrors web inline status-pill inside colored hero */}
+          {workoutTimer?.running && (
+            <View style={hm.statusPill}>
+              <Ionicons name="time-outline" size={12} color="#fff" />
+              <Text style={hm.statusPillTxt}>{formatElapsed(workoutTimer.elapsed)} · In progress</Text>
             </View>
           )}
           {workoutTimer?.completed && (
-            <View style={[hm.timerPill, { backgroundColor: 'rgba(16,185,129,0.25)' }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name="checkmark-circle-outline" size={12} color="#fff" />
-                <Text style={hm.timerPillTxt}>Done in {formatElapsed(workoutTimer.elapsed)}</Text>
-              </View>
+            <View style={[hm.statusPill, hm.statusPillDone]}>
+              <Ionicons name="checkmark-circle" size={12} color="#fff" />
+              <Text style={hm.statusPillTxt}>Done in {formatElapsed(workoutTimer.elapsed)}</Text>
             </View>
           )}
-          <Text style={hm.workoutSub}>
-            {todayWorkout.exercises?.length || 0} exercises · {todayWorkout.exercises?.map(e => e.muscleGroup).filter((v, i, a) => v && a.indexOf(v) === i).join(', ') || 'Assigned by ' + (member?.trainerName || member?.trainer || 'your trainer')}
+
+          <Text style={hm.heroSub}>
+            {exercisesCount || 0} exercises · {todayWorkout.exercises?.map(e => e.muscleGroup).filter((v, i, a) => v && a.indexOf(v) === i).join(', ') || 'Assigned by ' + (member?.trainerName || member?.trainer || 'your trainer')}
           </Text>
-          {/* Direct Start Workout button — opens logging view immediately */}
+
+          {/* Primary CTA — matches web `.btn` anatomy (semibold, 12 px radius,
+              inset white highlight, pressed translateY). The play icon
+              wrapper pulses when the session hasn't started. */}
           <TouchableOpacity
-            style={[hm.startBtn, workoutTimer?.completed && { backgroundColor: 'rgba(16,185,129,0.35)' }]}
+            style={[hm.heroCta, workoutTimer?.completed && hm.heroCtaDone]}
             onPress={() => {
               if (onStartWorkout && !workoutTimer?.completed) onStartWorkout();
               else onNavigate('Workouts');
             }}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Animated.View style={{ transform: [{ scale: pulse }] }}>
               <Ionicons
-                name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play-circle-outline'}
-                size={16} color="#fff"
+                name={workoutTimer?.completed ? 'checkmark-circle' : workoutTimer?.running ? 'time' : 'play-circle'}
+                size={18} color="#fff"
               />
-              <Text style={hm.startBtnTxt}>
-                {workoutTimer?.running ? 'Continue Workout →' : workoutTimer?.completed ? 'View Completed →' : 'Start Workout →'}
-              </Text>
-            </View>
+            </Animated.View>
+            <Text style={hm.heroCtaTxt}>
+              {workoutTimer?.running ? 'Continue Workout' : workoutTimer?.completed ? 'View Completed' : 'Start Workout'}
+            </Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
           </TouchableOpacity>
         </TouchableOpacity>
       ) : hasPlan ? (
-        <TouchableOpacity style={[hm.workoutCard, { backgroundColor: '#1E40AF' }]} onPress={() => onNavigate('Workouts')} activeOpacity={0.85}>
-          {planName ? <Text style={hm.planNameTag}>{planName}</Text> : null}
-          <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <TouchableOpacity
+          style={[hm.hero, hm.heroMuted]}
+          onPress={() => onNavigate('Workouts')}
+          activeOpacity={0.92}
+        >
+          <HeroHighlight />
+          {planName ? <Text style={hm.heroPlanTag}>{planName}</Text> : null}
+          <Text style={hm.heroLabel}>TODAY'S WORKOUT</Text>
+          <View style={hm.heroTitleRow}>
             <Ionicons name="calendar-outline" size={20} color="#fff" />
-            <Text style={hm.workoutName}>No session today</Text>
+            <Text style={hm.heroTitle}>No session today</Text>
           </View>
-          <Text style={hm.workoutSub}>Tap to view your full weekly workout plan</Text>
-          <View style={hm.startBtn}>
-            <Text style={hm.startBtnTxt}>View Weekly Plan →</Text>
+          <Text style={hm.heroSub}>Tap to view your full weekly workout plan</Text>
+          <View style={hm.heroCta}>
+            <Text style={hm.heroCtaTxt}>View Weekly Plan</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
           </View>
         </TouchableOpacity>
       ) : (
-        <View style={[hm.workoutCard, { opacity: 0.7 }]}>
-          <Text style={hm.workoutLabel}>TODAY'S WORKOUT</Text>
-          <Text style={hm.workoutName}>
-            {member?.trainerId || member?.gymId ? 'No plan assigned yet' : 'No trainer assigned'}
-          </Text>
-          <Text style={hm.workoutSub}>
-            {member?.trainerId
-              ? 'Your trainer will assign a workout plan soon'
-              : member?.gymId
-                ? 'Your gym will assign a workout plan soon'
-                : 'Accept a trainer invite in Profile'}
-          </Text>
+        <View style={hm.emptyHero}>
+          <View style={hm.emptyHeroIcon}>
+            <Ionicons name="barbell-outline" size={22} color={theme.brand[600]} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={hm.emptyHeroTitle}>
+              {member?.trainerId || member?.gymId ? 'No plan assigned yet' : 'No trainer assigned'}
+            </Text>
+            <Text style={hm.emptyHeroSub}>
+              {member?.trainerId
+                ? 'Your trainer will assign a workout plan soon'
+                : member?.gymId
+                  ? 'Your gym will assign a workout plan soon'
+                  : 'Accept a trainer invite in Profile'}
+            </Text>
+          </View>
         </View>
       )}
 
-      <Text style={g.sec}>Quick Stats</Text>
+      {/* ─── Quick Stats ───────────────────────────────────────────────────
+          Three equal-width cards. Each card has:
+            • tinted square icon chip (brand / success / warning)
+            • big tabular-num value + small unit
+            • uppercase tracked label
+            • tiny micro-visual under the value (BMI → band dot, Exercises →
+              mini segmented bar, Weight → delta indicator).
+      */}
+      <View style={hm.sectionHeader}>
+        <Text style={hm.sectionLabel}>QUICK STATS</Text>
+        <TouchableOpacity onPress={() => onNavigate('Progress')} hitSlop={8}>
+          <Text style={hm.sectionAction}>See all →</Text>
+        </TouchableOpacity>
+      </View>
       <View style={hm.statsRow}>
-        <View style={hm.statChip}>
-          <Text style={hm.statVal}>{member?.weight ? `${member.weight} kg` : '—'}</Text>
-          <Text style={hm.statLbl}>Weight</Text>
-        </View>
-        <View style={hm.statChip}>
-          <Text style={hm.statVal}>{bmi}</Text>
-          <Text style={hm.statLbl}>BMI</Text>
-        </View>
-        <View style={hm.statChip}>
-          <Text style={hm.statVal}>{todayWorkout ? `${todayWorkout.exercises?.length || 0}` : '—'}</Text>
-          <Text style={hm.statLbl}>Exercises</Text>
-        </View>
+        <QuickStat
+          icon="scale-outline"
+          tone="brand"
+          value={member?.weight ?? '—'}
+          unit="kg"
+          label="Weight"
+          onPress={() => onNavigate('Progress')}
+        />
+        <QuickStat
+          icon="pulse-outline"
+          tone="success"
+          value={bmi}
+          unit=""
+          label="BMI"
+          footer={bmiBand ? (
+            <View style={hm.bmiBand}>
+              <View style={[hm.bmiDot, { backgroundColor: bmiBand.color }]} />
+              <Text style={[hm.bmiBandTxt, { color: bmiBand.color }]}>{bmiBand.label}</Text>
+            </View>
+          ) : null}
+          onPress={() => onNavigate('Progress')}
+        />
+        <QuickStat
+          icon="flame-outline"
+          tone="warning"
+          value={exercisesCount || '—'}
+          unit={exercisesCount === 1 ? 'exercise' : 'exercises'}
+          label="Today"
+          footer={exercisesCount > 0 ? (
+            <View style={hm.segRow}>
+              {[...Array(Math.min(exercisesCount, 6))].map((_, i) => (
+                <View key={i} style={hm.seg} />
+              ))}
+            </View>
+          ) : null}
+          onPress={() => onNavigate('Workouts')}
+        />
       </View>
 
-      {(member?.trainerId || member?.gymId) && member?.planEndDate > 0 && (
-        <View>
+      {/* ─── Membership ────────────────────────────────────────────────────
+          Surface card with a left accent bar (web list-card feel). The
+          days-left number uses text-metric-sm with the semantic tone color. */}
+      {(member?.trainerId || member?.gymId) && member?.planEndDate > 0 ? (
+        <>
+          <Text style={hm.sectionLabel}>MEMBERSHIP</Text>
           {member?.trainerId && (
-            <TouchableOpacity style={[hm.memberStrip, { borderLeftColor: daysColor }]} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
-              <View>
-                <Text style={hm.memberPlan}>
+            <TouchableOpacity
+              style={hm.memberCard}
+              onPress={() => setShowMembership(true)}
+              activeOpacity={0.85}
+            >
+              <View style={[hm.memberAccent, { backgroundColor: membershipColor }]} />
+              <View style={hm.memberIconWrap}>
+                <Ionicons name="fitness-outline" size={20} color={theme.brand[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={hm.memberTitle}>
                   {member?.gymId ? 'Personal Training' : 'Training Plan'}
                 </Text>
                 <Text style={hm.memberSub}>Valid until {formatDate(member.planEndDate)}</Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[hm.daysLeft, { color: daysColor }]}>{daysLeft}d</Text>
-                <Text style={{ color: C.mid, fontSize: 16 }}>›</Text>
+              <View style={hm.memberRight}>
+                <UiPill
+                  label={`${daysLeft}d left`}
+                  tone={membershipTone}
+                  size="sm"
+                />
+                <Ionicons name="chevron-forward" size={18} color={theme.text.tertiary} style={{ marginLeft: 6 }} />
               </View>
             </TouchableOpacity>
           )}
           {member?.gymId && !member?.trainerId && (
-            <TouchableOpacity style={[hm.memberStrip, { borderLeftColor: C.primary }]} onPress={() => setShowMembership(true)} activeOpacity={0.7}>
-              <View>
-                <Text style={hm.memberPlan}>Gym Membership</Text>
+            <TouchableOpacity
+              style={hm.memberCard}
+              onPress={() => setShowMembership(true)}
+              activeOpacity={0.85}
+            >
+              <View style={[hm.memberAccent, { backgroundColor: theme.brand[600] }]} />
+              <View style={hm.memberIconWrap}>
+                <Ionicons name="business-outline" size={20} color={theme.brand[600]} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={hm.memberTitle}>Gym Membership</Text>
                 <Text style={hm.memberSub}>Valid until {formatDate(member.planEndDate)}</Text>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[hm.daysLeft, { color: C.primary }]}>{daysLeft}d</Text>
-                <Text style={{ color: C.mid, fontSize: 16 }}>›</Text>
+              <View style={hm.memberRight}>
+                <UiPill label={`${daysLeft}d left`} tone="brand" size="sm" />
+                <Ionicons name="chevron-forward" size={18} color={theme.text.tertiary} style={{ marginLeft: 6 }} />
               </View>
             </TouchableOpacity>
           )}
-        </View>
-      )}
+        </>
+      ) : null}
 
-      <Text style={g.sec}>Your Trainer</Text>
+      {/* ─── Trainer ───────────────────────────────────────────────────────
+          Pressable surface card with brand-tinted icon chip + Online pill.
+          56 px tall icon zone ensures an easy tap target. */}
+      <Text style={hm.sectionLabel}>YOUR TRAINER</Text>
       {member?.trainerId ? (
-        <TouchableOpacity style={hm.trainerCard} onPress={() => onNavigate('TrainerChat')}>
-          <Ionicons name="barbell-outline" size={28} color={C.primary} />
-          <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={hm.trainerCardTitle}>Chat with {member?.trainerName || 'your trainer'}</Text>
-            <Text style={hm.trainerCardSub}>Messages, voice notes & images</Text>
+        <TouchableOpacity
+          style={hm.trainerCard}
+          onPress={() => onNavigate('TrainerChat')}
+          activeOpacity={0.85}
+        >
+          <View style={hm.trainerIconWrap}>
+            <Ionicons name="barbell" size={22} color={theme.brand[600]} />
           </View>
-          <View style={hm.onlineChip}><Text style={hm.onlineChipTxt}>● Online</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={hm.trainerTitle}>
+              Chat with {member?.trainerName || 'your trainer'}
+            </Text>
+            <Text style={hm.trainerSub}>Messages, voice notes & images</Text>
+          </View>
+          <UiPill label="● Online" tone="success" size="sm" />
         </TouchableOpacity>
       ) : (
-        <View style={[hm.trainerCard, { opacity: 0.45 }]}>
-          <Ionicons name="barbell-outline" size={28} color={C.primary} />
-          <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={hm.trainerCardTitle}>No trainer assigned yet</Text>
-            <Text style={hm.trainerCardSub}>Accept a trainer invite in Profile</Text>
+        <View style={[hm.trainerCard, { opacity: 0.55 }]}>
+          <View style={hm.trainerIconWrap}>
+            <Ionicons name="barbell-outline" size={22} color={theme.brand[600]} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={hm.trainerTitle}>No trainer assigned yet</Text>
+            <Text style={hm.trainerSub}>Accept a trainer invite in Profile</Text>
           </View>
         </View>
       )}
 
-      <View style={{ height: 30 }} />
+      <View style={{ height: 40 }} />
     </ScrollView>
     <MembershipDetailModal visible={showMembership} onClose={() => setShowMembership(false)} member={member} />
     </>
   );
 }
 
+// ── HeroHighlight ──────────────────────────────────────────────────────────
+// Simulates the web gradient-primary's inset white highlight without pulling
+// in expo-linear-gradient. Two absolute layers:
+//   • a soft white diagonal wash in the top-left (like .stat-card::before)
+//   • a thin 1px white inset edge at the top (like btn-primary inset shadow)
+function HeroHighlight() {
+  return (
+    <>
+      <View pointerEvents="none" style={hm.heroGlowTL} />
+      <View pointerEvents="none" style={hm.heroGlowBR} />
+      <View pointerEvents="none" style={hm.heroTopEdge} />
+    </>
+  );
+}
+
+// ── QuickStat ──────────────────────────────────────────────────────────────
+// One of the 3 home stat cards. Uses the surface-card look from
+// `/src/index.css > .stat-card`.
+function QuickStat({ icon, tone = 'brand', value, unit, label, footer, onPress }) {
+  const tones = {
+    brand:   { icon: theme.brand[600],   chip: 'rgba(79,70,229,0.10)'  },
+    success: { icon: theme.success[600], chip: 'rgba(22,163,74,0.10)'  },
+    warning: { icon: theme.warning[600], chip: 'rgba(217,119,6,0.12)'  },
+  }[tone];
+  const Wrapper = onPress ? TouchableOpacity : View;
+
+  return (
+    <Wrapper style={hm.statCard} onPress={onPress} activeOpacity={0.85}>
+      <View style={[hm.statIconChip, { backgroundColor: tones.chip }]}>
+        <Ionicons name={icon} size={16} color={tones.icon} />
+      </View>
+      <View style={hm.statValueRow}>
+        <Text style={hm.statValue} numberOfLines={1}>{value}</Text>
+        {unit ? <Text style={hm.statUnit} numberOfLines={1}>{unit}</Text> : null}
+      </View>
+      <Text style={hm.statLabel}>{label}</Text>
+      {footer ? <View style={hm.statFooter}>{footer}</View> : null}
+    </Wrapper>
+  );
+}
+
 const hm = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, paddingBottom: 20 },
-  greet: { fontSize: 22, fontWeight: '800', color: C.dark },
-  date: { fontSize: 13, color: C.mid, marginTop: 2 },
-  notifBtn: { position: 'relative', padding: 4 },
-  badge: { position: 'absolute', top: 0, right: 0, backgroundColor: C.red, borderRadius: 8, width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  badgeTxt: { color: '#fff', fontSize: 9, fontWeight: '700' },
-  workoutCard: { backgroundColor: C.primary, borderRadius: 18, padding: 20, marginBottom: 20 },
-  workoutTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
-  planNameTag: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '700', marginBottom: 4 },
-  workoutLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  workoutTime: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
-  workoutName: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 6 },
-  timerPill: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start', marginBottom: 6 },
-  timerPillTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  workoutSub: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginBottom: 14 },
-  startBtn: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, padding: 12, alignItems: 'center' },
-  startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
-  statChip: { flex: 1, backgroundColor: C.card, borderRadius: 14, padding: 14, alignItems: 'center', elevation: 1 },
-  statVal: { fontSize: 18, fontWeight: '800', color: C.dark },
-  statLbl: { fontSize: 11, color: C.mid, marginTop: 4 },
-  memberStrip: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderLeftWidth: 4, marginTop: 10 },
-  memberPlan: { fontSize: 14, fontWeight: '700', color: C.dark },
-  memberSub: { fontSize: 12, color: C.mid, marginTop: 2 },
-  daysLeft: { fontSize: 22, fontWeight: '800' },
-  trainerCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: C.light },
-  trainerCardTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  trainerCardSub: { fontSize: 12, color: C.mid, marginTop: 3 },
-  onlineChip: { backgroundColor: '#D1FAE5', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  onlineChipTxt: { color: C.green, fontSize: 12, fontWeight: '700' },
+  // ── Scroll wrap ────────────────────────────────────────────────────────
+  scrollContent: {
+    paddingHorizontal: theme.spacing.pageX,
+    paddingTop: theme.spacing[3],
+    paddingBottom: theme.spacing[6],
+  },
+
+  // ── Header ─────────────────────────────────────────────────────────────
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing[5],
+  },
+  // Greeting: h1 weight, tight tracking — the one big moment of typography
+  greet:     { fontSize: theme.fontSize['3xl'], fontWeight: '700', color: theme.text.primary, letterSpacing: -0.4 },
+  greetName: { color: theme.brand[700] },
+  greetWave: { fontSize: theme.fontSize['2xl'] },
+  greetDate: { ...theme.typography.caption, marginTop: 2, color: theme.text.secondary },
+
+  // Bell — 44×44 tap zone, subtle neutral pill bg on press
+  bellBtn: {
+    width: 44, height: 44,
+    borderRadius: theme.radius.full,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.xs,
+  },
+  bellBadge: {
+    position: 'absolute', top: 8, right: 8,
+    minWidth: 16, height: 16, borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: theme.danger[500],
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: theme.surface.default,
+  },
+  bellBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  // ── Hero workout card ──────────────────────────────────────────────────
+  hero: {
+    backgroundColor: theme.brand[600],          // indigo-600, matches web
+    borderRadius: theme.radius['2xl'],          // 20 — larger than generic cards
+    padding: 20,
+    marginBottom: theme.spacing.section,
+    overflow: 'hidden',
+    position: 'relative',
+    ...theme.shadow.brand,                      // branded glow (brand[600] @ 0.3)
+  },
+  heroMuted: { backgroundColor: theme.brand[700] }, // "no session today"
+  heroRest:  { backgroundColor: theme.neutral[700] }, // "rest day" — neutral, not brand
+
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: theme.spacing[2],
+  },
+
+  heroPlanTag: {
+    color: 'rgba(255,255,255,0.95)',
+    fontSize: theme.fontSize.sm,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  heroLabel: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: theme.fontSize['2xs'],
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  heroTimePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  heroTimeTxt: { color: 'rgba(255,255,255,0.95)', fontSize: 12, fontWeight: '600' },
+
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  heroTitle: {
+    fontSize: theme.fontSize['3xl'],
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.6,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignSelf: 'flex-start',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+    marginBottom: 8,
+  },
+  statusPillDone: { backgroundColor: 'rgba(34,197,94,0.35)' },
+  statusPillTxt: { color: '#fff', fontSize: 12, fontWeight: '600' },
+
+  heroSub: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+
+  // Primary CTA inside hero — 48 px tall, semibold, white-translucent fill
+  heroCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.20)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    borderRadius: theme.radius.md,
+    paddingVertical: 14, paddingHorizontal: 16,
+    minHeight: 48,
+  },
+  heroCtaDone: { backgroundColor: 'rgba(34,197,94,0.28)', borderColor: 'rgba(34,197,94,0.4)' },
+  heroCtaTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: -0.1 },
+
+  // Diagonal highlight wash — top-left (simulates .stat-card::before)
+  heroGlowTL: {
+    position: 'absolute', top: -40, left: -40,
+    width: 220, height: 220, borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  // Secondary glow — bottom-right, tighter
+  heroGlowBR: {
+    position: 'absolute', bottom: -60, right: -60,
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  // 1 px top edge highlight (matches web btn-primary inset 0 1px white)
+  heroTopEdge: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+
+  // ── Empty hero (no plan/trainer) ───────────────────────────────────────
+  emptyHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: theme.brand[50],
+    borderWidth: 1, borderColor: theme.brand[100],
+    borderRadius: theme.radius.xl,
+    padding: 16,
+    marginBottom: theme.spacing.section,
+  },
+  emptyHeroIcon: {
+    width: 44, height: 44,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.surface.default,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.brand[100],
+  },
+  emptyHeroTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary },
+  emptyHeroSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+
+  // ── Section label + right action ───────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing[3],
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.text.tertiary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing[3],
+    marginTop: theme.spacing[5],
+  },
+  sectionAction: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.brand[600],
+    marginTop: theme.spacing[5],
+    marginBottom: theme.spacing[3],
+  },
+
+  // ── Quick Stats ────────────────────────────────────────────────────────
+  statsRow: { flexDirection: 'row', gap: 10 },
+  statCard: {
+    flex: 1,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.border.default,
+    borderRadius: theme.radius.xl,
+    padding: 12,
+    minHeight: 112,            // finger-friendly tap target
+    ...theme.shadow.card,
+  },
+  statIconChip: {
+    width: 28, height: 28,
+    borderRadius: theme.radius.sm,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  statValue: {
+    fontSize: theme.fontSize['2xl'],      // 20 — mirrors web text-metric-sm
+    fontWeight: '800',
+    color: theme.text.primary,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  statUnit: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.text.tertiary,
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.text.tertiary,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 4,
+  },
+  statFooter: { marginTop: 8 },
+
+  // Micro-visual: BMI band dot + label
+  bmiBand: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  bmiDot:   { width: 6, height: 6, borderRadius: 3 },
+  bmiBandTxt: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
+
+  // Micro-visual: segmented bar for exercise count
+  segRow: { flexDirection: 'row', gap: 2 },
+  seg: { flex: 1, height: 3, borderRadius: 2, backgroundColor: theme.warning[400] },
+
+  // ── Membership card ────────────────────────────────────────────────────
+  memberCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.border.default,
+    borderRadius: theme.radius.lg,
+    padding: 14,
+    paddingLeft: 18,            // leaves room for accent bar
+    marginBottom: theme.spacing[3],
+    overflow: 'hidden',
+    minHeight: 68,              // finger-friendly
+    ...theme.shadow.card,
+  },
+  memberAccent: {
+    position: 'absolute', left: 0, top: 0, bottom: 0,
+    width: 4,
+  },
+  memberIconWrap: {
+    width: 40, height: 40,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.brand[50],
+    alignItems: 'center', justifyContent: 'center',
+  },
+  memberTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
+  memberSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  memberRight: { flexDirection: 'row', alignItems: 'center' },
+
+  // ── Trainer card ───────────────────────────────────────────────────────
+  trainerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.border.default,
+    borderRadius: theme.radius.lg,
+    padding: 14,
+    minHeight: 68,
+    ...theme.shadow.card,
+  },
+  trainerIconWrap: {
+    width: 44, height: 44,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.brand[50],
+    alignItems: 'center', justifyContent: 'center',
+  },
+  trainerTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
+  trainerSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
 });
 
 // ── EXERCISE VIDEO ────────────────────────────────────────────────────────────
@@ -1730,80 +2237,265 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// LoggingView styles (lv) — restyled to match web admin design system.
+//   Every key name is preserved so the 760-line JSX in LoggingView() continues
+//   to render unchanged. What's different:
+//     • Cards use theme.surface.default + border.default + shadow.card
+//       (web `.card`), not ad-hoc #E8E8ED greys.
+//     • "Done" tick = web `.btn-success` — solid emerald fill + shadow-success.
+//     • Set rows get more breathing room: 10 → 12 pt vertical, tabular-num
+//       value typography, 1 px border-subtle divider.
+//     • Active exercise uses brand-50 tint (not amber-yellow) — matches web
+//       "currently editing" section feel.
+//     • Finish overlay uses success-500 fill + shadow-success (web `.btn-success`).
+// ═══════════════════════════════════════════════════════════════════════════════
 const lv = StyleSheet.create({
-  logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light, backgroundColor: C.card },
-  logTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  globalTimer: { fontSize: 16, fontWeight: '800', marginTop: 2 },
-  logCount: { fontSize: 14, fontWeight: '600', color: C.primary },
-  exercisesLabel: { fontSize: 11, fontWeight: '800', color: C.mid, letterSpacing: 1.5, marginTop: 24, marginBottom: 14 },
-  exWrap: { backgroundColor: C.card, borderRadius: 18, marginBottom: 14, overflow: 'hidden', elevation: 2, borderWidth: 1, borderColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
-  exWrapDone: { borderColor: C.green + '35', backgroundColor: '#FAFFFE' },
-  exWrapActive: { borderColor: C.amber + '60', backgroundColor: '#FFFCF5' },
-  exCheckActive: { backgroundColor: C.amber, borderColor: C.amber },
-  exHeader: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 14 },
-  exCheck: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: '#E0E0E5', alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
-  exCheckDone: { backgroundColor: C.green, borderColor: C.green, shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
-  exName: { fontSize: 16, fontWeight: '700', color: C.dark, letterSpacing: -0.2 },
-  exNameDone: { color: '#A0A0A8', textDecorationLine: 'line-through', textDecorationColor: '#C8C8CE' },
-  exMeta: { fontSize: 12, color: C.mid, marginTop: 3, letterSpacing: 0.2 },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  progressBarBg: { flex: 1, height: 4, borderRadius: 2, backgroundColor: C.amber + '25', maxWidth: 80 },
-  progressBarFill: { height: 4, borderRadius: 2, backgroundColor: C.amber },
-  progressText: { fontSize: 11, fontWeight: '700', color: C.amber },
-  setsContainer: { borderTopWidth: 1, borderTopColor: '#EFEFEF', paddingHorizontal: 18, paddingBottom: 16, paddingTop: 8 },
-  setHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2, gap: 8 },
-  setHeaderTxt: { fontSize: 10, fontWeight: '700', color: '#B0B0B8', letterSpacing: 0.8, textAlign: 'center' },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F0F0F2', gap: 6, paddingHorizontal: 2 },
-  setRowDone: { backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 20, borderBottomColor: '#E2F5E9' },
-  setNumBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: C.deepBlue + '0C', alignItems: 'center', justifyContent: 'center' },
-  setNumBadgeDone: { backgroundColor: C.green + '15' },
-  setNumBadgeWarmup: { backgroundColor: C.amber + '20' },
-  setNumTxt: { fontSize: 12, fontWeight: '800', color: C.deepBlue },
-  setNumTxtDone: { color: C.green },
-  setNumTxtWarmup: { color: C.amber },
-  repsBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
-  repsVal: { fontSize: 17, fontWeight: '800', color: C.dark },
-  repsInput: { fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', width: 44, paddingVertical: 2, paddingHorizontal: 0 },
-  addSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
-  addSetTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
-  removeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, marginTop: 4 },
-  removeSetTxt: { fontSize: 13, fontWeight: '700', color: C.red },
-  setActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
-  lastBox: { alignItems: 'center', justifyContent: 'center', width: 48 },
-  lastVal: { fontSize: 13, fontWeight: '600', color: '#B0B0B8' },
-  weightGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  weightInput: { flex: 1, fontSize: 17, fontWeight: '800', color: C.dark, textAlign: 'center', paddingVertical: 2, paddingHorizontal: 0 },
-  weightInputDone: { color: C.green, opacity: 0.7 },
-  kgLbl: { fontSize: 13, color: '#B0B0B8', fontWeight: '700' },
-  doneBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 2 },
-  donedTag: { width: 36, alignItems: 'center', justifyContent: 'center' },
-  restRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 14, marginHorizontal: -18, paddingHorizontal: 18, backgroundColor: '#FAFBFF' },
-  restAdjBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFFFFF', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1.5, borderColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
-  restAdjTxt: { fontSize: 13, color: C.dark, fontWeight: '800' },
-  restTimerBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 24, paddingHorizontal: 24, paddingVertical: 12, minWidth: 140, justifyContent: 'center' },
-  restTimerTxt: { fontSize: 24, fontWeight: '800', letterSpacing: 0.5 },
-  restLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  restDoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: '#F0FDF4', marginHorizontal: -18, paddingHorizontal: 18, borderRadius: 0 },
-  restDoneTxt: { fontSize: 14, color: C.green, fontWeight: '700' },
-  trainerNoteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F0F0F2' },
-  trainerNote: { fontSize: 13, color: C.mid, fontStyle: 'italic', flex: 1, lineHeight: 18 },
-  finishOverlay: { alignItems: 'center', marginTop: 24, marginHorizontal: -18, paddingHorizontal: 24, paddingTop: 48, paddingBottom: 36, backgroundColor: '#FAFFFE', borderTopWidth: 1, borderTopColor: C.green + '20', overflow: 'hidden' },
-  finishGlow: { position: 'absolute', top: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: C.green + '08' },
-  finishIconCircle: { width: 88, height: 88, borderRadius: 44, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 8, marginBottom: 20 },
-  finishTitle: { fontSize: 28, fontWeight: '900', color: C.dark, letterSpacing: -0.5 },
-  finishGreeting: { fontSize: 17, fontWeight: '600', color: C.mid, marginTop: 6 },
-  finishTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24, backgroundColor: C.green + '0A', borderRadius: 20, paddingHorizontal: 28, paddingVertical: 14, borderWidth: 1, borderColor: C.green + '18' },
-  finishTimerTxt: { fontSize: 32, fontWeight: '900', color: C.dark, letterSpacing: 1 },
-  finishTimerLabel: { fontSize: 12, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 1, marginTop: 8 },
-  finishDivider: { width: 60, height: 2, borderRadius: 1, backgroundColor: '#E8E8ED', marginVertical: 24 },
-  finishStatRow: { flexDirection: 'row', alignItems: 'center' },
-  finishStatBox: { flex: 1, alignItems: 'center', paddingVertical: 8 },
-  finishStatVal: { fontSize: 28, fontWeight: '900', color: C.dark },
-  finishStatLbl: { fontSize: 12, fontWeight: '600', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
-  finishPrimaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: C.green, borderRadius: 16, paddingVertical: 18, marginTop: 28, width: '100%', shadowColor: C.green, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 5 },
-  finishPrimaryTxt: { fontSize: 17, fontWeight: '800', color: '#fff', letterSpacing: 0.3 },
-  finishSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: C.green + '40', borderRadius: 16, paddingVertical: 16, marginTop: 12, width: '100%', backgroundColor: '#fff' },
-  finishSecondaryTxt: { fontSize: 15, fontWeight: '700', color: C.green },
+  /* ── Header bar ──────────────────────────────────────────────── */
+  logHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
+    backgroundColor: theme.surface.default,
+  },
+  logTitle:    { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
+  globalTimer: { fontSize: theme.fontSize.lg, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'], letterSpacing: 0.3 },
+  logCount:    { fontSize: theme.fontSize.base, fontWeight: '700', color: theme.brand[600] },
+
+  exercisesLabel: {
+    fontSize: 11, fontWeight: '700', color: theme.text.tertiary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    marginTop: theme.spacing[6], marginBottom: theme.spacing[3],
+  },
+
+  /* ── Exercise card (web .card) ───────────────────────────────── */
+  exWrap: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,          // 16 — web card radius-xl
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.card,                   // layered (iOS) / elevation (Android)
+  },
+  // Completed: faint emerald tint + success border
+  exWrapDone:   { borderColor: 'rgba(22,163,74,0.30)', backgroundColor: 'rgba(22,163,74,0.04)' },
+  // Actively editing: brand-tinted (replaces old amber)
+  exWrapActive: { borderColor: theme.brand[300], backgroundColor: theme.brand[50], ...theme.shadow.raised },
+  exCheckActive: { backgroundColor: theme.brand[600], borderColor: theme.brand[700] },
+
+  /* ── Exercise header row ─────────────────────────────────────── */
+  exHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 18, gap: 14,
+    minHeight: 76,                          // finger-friendly tap target
+  },
+  // Empty-state check (not yet done): neutral ring, 44 pt tap
+  exCheck: {
+    width: 44, height: 44, borderRadius: 22,
+    borderWidth: 2, borderColor: theme.border.strong,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.surface.default,
+  },
+  // Done check = solid web .btn-success
+  exCheckDone: {
+    backgroundColor: theme.success[600],
+    borderColor: theme.success[700],
+    ...theme.shadow.success,
+  },
+
+  exName:     { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
+  exNameDone: { color: theme.neutral[400], textDecorationLine: 'line-through', textDecorationColor: theme.neutral[300] },
+  exMeta:     { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 4, letterSpacing: 0.1 },
+
+  /* ── Per-exercise progress bar (brand-tinted) ────────────────── */
+  progressRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  progressBarBg:   { flex: 1, height: 5, borderRadius: 3, backgroundColor: theme.brand[100], maxWidth: 100 },
+  progressBarFill: { height: 5, borderRadius: 3, backgroundColor: theme.brand[600] },
+  progressText:    { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
+
+  /* ── Sets table ──────────────────────────────────────────────── */
+  setsContainer: {
+    borderTopWidth: 1, borderTopColor: theme.border.subtle,
+    paddingHorizontal: 18, paddingBottom: 18, paddingTop: 10,
+  },
+  setHeaderRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 2, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
+    marginBottom: 4,
+  },
+  setHeaderTxt: {
+    fontSize: 10, fontWeight: '700',
+    color: theme.text.tertiary, letterSpacing: 1,
+    textTransform: 'uppercase', textAlign: 'center',
+  },
+
+  setRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10,                    // was 6 — more breathing room
+    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
+    gap: 8, paddingHorizontal: 2,
+  },
+  setRowDone: {
+    backgroundColor: theme.success[50],
+    marginHorizontal: -18, paddingHorizontal: 20,
+    borderBottomColor: 'rgba(22,163,74,0.15)',
+  },
+
+  /* Set-number badge (web `.num-badge-brand`) */
+  setNumBadge: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(79,70,229,0.10)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  setNumBadgeDone:   { backgroundColor: 'rgba(22,163,74,0.15)' },
+  setNumBadgeWarmup: { backgroundColor: 'rgba(217,119,6,0.15)' },
+  setNumTxt:         { fontSize: 12, fontWeight: '800', color: theme.brand[700] },
+  setNumTxtDone:     { color: theme.success[700] },
+  setNumTxtWarmup:   { color: theme.warning[700] },
+
+  /* Reps + weight input boxes — tabular-num for glanceable columns */
+  repsBox:   { alignItems: 'center', justifyContent: 'center', width: 50 },
+  repsVal:   { fontSize: 18, fontWeight: '800', color: theme.text.primary, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
+  repsInput: { fontSize: 18, fontWeight: '800', color: theme.text.primary, textAlign: 'center', width: 46, paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'] },
+
+  /* Add / remove set — web `.btn-link` (tertiary) */
+  addSetBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 6 },
+  addSetTxt:    { fontSize: 13, fontWeight: '700', color: theme.brand[600] },
+  removeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 6 },
+  removeSetTxt: { fontSize: 13, fontWeight: '700', color: theme.danger[600] },
+  setActions:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+
+  /* "Last time" column */
+  lastBox: { alignItems: 'center', justifyContent: 'center', width: 50 },
+  lastVal: { fontSize: 13, fontWeight: '600', color: theme.text.tertiary, fontVariant: ['tabular-nums'] },
+
+  /* Weight input column */
+  weightGroup:      { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  weightInput:      { flex: 1, fontSize: 18, fontWeight: '800', color: theme.text.primary, textAlign: 'center', paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
+  weightInputDone:  { color: theme.success[700], opacity: 0.85 },
+  kgLbl:            { fontSize: 12, color: theme.text.tertiary, fontWeight: '700' },
+
+  /* ── "Mark set done" button — web .btn-success mini ──────────── */
+  doneBtn: {
+    width: 38, height: 38, borderRadius: theme.radius.md,
+    backgroundColor: theme.success[600],
+    borderWidth: 1, borderColor: theme.success[700],
+    alignItems: 'center', justifyContent: 'center',
+    ...theme.shadow.success,
+  },
+  donedTag: { width: 38, alignItems: 'center', justifyContent: 'center' },
+
+  /* ── Rest timer row ──────────────────────────────────────────── */
+  restRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 18, gap: 14,
+    marginHorizontal: -18, paddingHorizontal: 18,
+    backgroundColor: theme.brand[50],
+    borderTopWidth: 1, borderTopColor: theme.brand[100],
+  },
+  restAdjBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderWidth: 1.5, borderColor: theme.border.default,
+    ...theme.shadow.xs,
+    minWidth: 60, minHeight: 40,
+    justifyContent: 'center',
+  },
+  restAdjTxt: { fontSize: 13, color: theme.text.primary, fontWeight: '800', letterSpacing: -0.1 },
+  restTimerBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 24, paddingVertical: 12,
+    minWidth: 140, justifyContent: 'center',
+  },
+  restTimerTxt: { fontSize: 24, fontWeight: '800', letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
+  restLabel:    { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+  restDoneRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 16,
+    backgroundColor: theme.success[50],
+    marginHorizontal: -18, paddingHorizontal: 18,
+  },
+  restDoneTxt:    { fontSize: 14, color: theme.success[700], fontWeight: '700', letterSpacing: -0.1 },
+
+  /* ── Trainer note row ────────────────────────────────────────── */
+  trainerNoteRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    marginTop: 14, paddingTop: 14,
+    borderTopWidth: 1, borderTopColor: theme.border.subtle,
+  },
+  trainerNote: {
+    fontSize: 13, color: theme.text.secondary,
+    fontStyle: 'italic', flex: 1, lineHeight: 20,
+  },
+
+  /* ── Celebratory finish overlay ──────────────────────────────── */
+  finishOverlay: {
+    alignItems: 'center',
+    marginTop: 24, marginHorizontal: -18,
+    paddingHorizontal: 24, paddingTop: 52, paddingBottom: 40,
+    backgroundColor: theme.success[50],
+    borderTopWidth: 1, borderTopColor: 'rgba(22,163,74,0.15)',
+    overflow: 'hidden',
+  },
+  finishGlow: {
+    position: 'absolute', top: -80,
+    width: 260, height: 260, borderRadius: 130,
+    backgroundColor: 'rgba(22,163,74,0.10)',
+  },
+  finishIconCircle: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: theme.success[600],
+    borderWidth: 1, borderColor: theme.success[700],
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24,
+    ...theme.shadow.success,
+  },
+  finishTitle:    { fontSize: 30, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6 },
+  finishGreeting: { fontSize: theme.fontSize.lg, fontWeight: '500', color: theme.text.secondary, marginTop: 6 },
+  finishTimerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginTop: 28,
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,
+    paddingHorizontal: 28, paddingVertical: 16,
+    borderWidth: 1, borderColor: 'rgba(22,163,74,0.2)',
+    ...theme.shadow.card,
+  },
+  finishTimerTxt:   { fontSize: 34, fontWeight: '800', color: theme.text.primary, letterSpacing: 1, fontVariant: ['tabular-nums'] },
+  finishTimerLabel: { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10 },
+  finishDivider:    { width: 60, height: 2, borderRadius: 1, backgroundColor: theme.border.default, marginVertical: 26 },
+  finishStatRow:    { flexDirection: 'row', alignItems: 'center' },
+  finishStatBox:    { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  finishStatVal:    { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  finishStatLbl:    { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 },
+
+  /* Primary action — web .btn-success (solid emerald, 48 pt, inset shadow) */
+  finishPrimaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: theme.success[600],
+    borderWidth: 1, borderColor: theme.success[700],
+    borderRadius: theme.radius.lg,
+    paddingVertical: 16,
+    marginTop: 32, width: '100%',
+    minHeight: 52,
+    ...theme.shadow.success,
+  },
+  finishPrimaryTxt: { fontSize: theme.fontSize.lg, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+
+  /* Secondary action — web .btn-secondary (success-tinted) */
+  finishSecondaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: 'rgba(22,163,74,0.35)',
+    borderRadius: theme.radius.lg,
+    paddingVertical: 14, marginTop: 12, width: '100%',
+    backgroundColor: theme.surface.default,
+    minHeight: 48,
+  },
+  finishSecondaryTxt: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.success[700] },
 });
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
@@ -3448,85 +4140,245 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// WorkoutsScreen styles (wk) — restyled to match web admin design system.
+//   All key names preserved for JSX compatibility. Changes:
+//     • Exercise cards use web `.card` geometry (radius-xl, border-default, shadow-card).
+//     • "Start Workout" = web .btn-primary (brand-600 + shadow-brand, 52 pt tall).
+//     • "Postpone" = web .btn outline-warning (warning-tinted secondary).
+//     • History chip = web .btn-secondary (brand-50 bg, brand-200 border).
+//     • Week strip active day = brand-600 (matches web selected-state).
+//     • Trainer notif = web .info-card-brand (brand-50 + brand-100 border).
+// ═══════════════════════════════════════════════════════════════════════════════
 const wk = StyleSheet.create({
-  /* Header */
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 10, marginBottom: 4 },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
-  dayWorkoutTitle: { fontSize: 26, fontWeight: '800', color: C.dark, letterSpacing: -0.5, marginBottom: 14, lineHeight: 32 },
-  headerSub: { fontSize: 13, color: C.mid, marginTop: 6, lineHeight: 18, letterSpacing: 0.1 },
-  timerPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 26, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: '#E8E8ED', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8 },
-  timerDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.green },
-  timerVal: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: 0.5 },
-  historyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 26, backgroundColor: C.deepBlue + '08', borderWidth: 1.5, borderColor: C.deepBlue + '18' },
-  historyTxt: { fontSize: 13, fontWeight: '700', color: C.deepBlue },
-  /* Section */
-  sectionLabel: { fontSize: 11, fontWeight: '800', color: C.mid, letterSpacing: 1.5, marginTop: 32, marginBottom: 16 },
-  todayLabel: { fontSize: 12, fontWeight: '700', color: C.mid, letterSpacing: 0.5, textTransform: 'uppercase' },
-  /* Week */
-  dayCard: { width: 46, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 14, backgroundColor: C.card, marginRight: 7, alignItems: 'center', borderWidth: 1, borderColor: '#EBEBF0', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4 },
-  dayCardActive: { backgroundColor: C.deepBlue, borderColor: C.deepBlue, elevation: 4, shadowColor: C.deepBlue, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 8 },
-  dayCardRest: { opacity: 0.4 },
-  dayName: { fontSize: 10, fontWeight: '700', color: C.mid, letterSpacing: 0.6, textTransform: 'uppercase' },
-  dayDate: { fontSize: 18, fontWeight: '800', color: C.dark, marginTop: 2 },
-  weekTxtW: { color: '#FFFFFF' },
-  activeLine: { width: 14, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 5 },
-  dayLabel: { fontSize: 9, fontWeight: '600', color: C.dark, marginTop: 5, textAlign: 'center', lineHeight: 11, opacity: 0.7 },
-  dayExPill: { marginTop: 4, backgroundColor: C.light, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1.5 },
-  dayExCount: { fontSize: 9, fontWeight: '700', color: C.mid },
-  /* Exercise cards */
-  exCardStatic: { backgroundColor: C.card, borderRadius: 18, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E8E8ED', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8 },
-  exCardDone: { borderColor: C.green + '30', backgroundColor: '#FAFFFE' },
-  exCardActive: { borderWidth: 1.5, borderColor: C.deepBlue },
-  exCardTouch: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 16 },
-  exIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.deepBlue + '0A', alignItems: 'center', justifyContent: 'center' },
-  exIconDone: { backgroundColor: C.green, shadowColor: C.green, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 },
-  exName: { fontSize: 17, fontWeight: '700', color: C.dark, letterSpacing: -0.2 },
-  exNameDone: { color: '#A0A0A8', textDecorationLine: 'line-through', textDecorationColor: '#C8C8CE' },
-  exMeta: { fontSize: 12, color: C.mid, marginTop: 4, letterSpacing: 0.2 },
-  exExpandedContent: { paddingHorizontal: 18, paddingBottom: 16, paddingLeft: 82 },
-  exMusclePill: { backgroundColor: C.deepBlue + '0C', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
-  exMuscleText: { fontSize: 11, fontWeight: '700', color: C.deepBlue },
-  exNoteText: { fontSize: 12, color: C.mid, fontStyle: 'italic', flex: 1 },
-  /* Live chip */
-  liveChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.primary + '15', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.primary },
-  liveTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
-  /* Buttons */
-  btnRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  startBtn: { backgroundColor: C.primary, borderRadius: 16, padding: 16, alignItems: 'center', shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 12, elevation: 4 },
-  startBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.3 },
-  postponeBtn: { borderWidth: 1.5, borderColor: C.amber + '50', borderRadius: 16, padding: 14, alignItems: 'center', backgroundColor: C.amber + '06' },
-  postponeBtnTxt: { color: C.amber, fontWeight: '700', fontSize: 14 },
-  /* Sticky logging header */
-  stickyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 12, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: '#E8E8ED', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
-  stickyTitle: { fontSize: 11, fontWeight: '800', color: C.mid, textTransform: 'uppercase', letterSpacing: 1 },
-  stickyTimer: { fontSize: 22, fontWeight: '900', marginTop: 2, letterSpacing: 0.5 },
-  stickyCount: { fontSize: 13, fontWeight: '600', color: C.primary },
-  pauseBtn: { padding: 4 },
-  /* Trainer notification */
-  trainerNotif: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.primary + '08', borderRadius: 18, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: C.primary + '18' },
-  trainerNotifIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
-  trainerNotifTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  trainerNotifSub: { fontSize: 12, color: C.mid, marginTop: 2, letterSpacing: 0.1 },
-  /* Selected day header */
+  /* ── Header ──────────────────────────────────────────────────── */
+  headerRow:         { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 12, marginBottom: 4 },
+  headerTitle:       { fontSize: theme.fontSize['3xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.5 },
+  dayWorkoutTitle:   { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6, marginBottom: 14, lineHeight: 34 },
+  headerSub:         { fontSize: theme.fontSize.sm, color: theme.text.secondary, marginTop: 6, lineHeight: 20, letterSpacing: 0 },
+
+  /* Live timer pill — displays during active session */
+  timerPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 16, paddingVertical: 10,
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.card,
+  },
+  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.success[500] },
+  timerVal: { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+
+  /* History button — web .btn-secondary */
+  historyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.brand[50],
+    borderWidth: 1.5, borderColor: theme.brand[200],
+  },
+  historyTxt: { fontSize: 13, fontWeight: '700', color: theme.brand[700], letterSpacing: -0.1 },
+
+  /* ── Section labels ──────────────────────────────────────────── */
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700', color: theme.text.tertiary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    marginTop: theme.spacing[7], marginBottom: theme.spacing[4],
+  },
+  todayLabel: {
+    fontSize: 12, fontWeight: '700', color: theme.text.tertiary,
+    letterSpacing: 0.6, textTransform: 'uppercase',
+  },
+
+  /* ── Week day strip ──────────────────────────────────────────── */
+  dayCard: {
+    width: 48, paddingVertical: 10, paddingHorizontal: 4,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.surface.default,
+    marginRight: 8,
+    alignItems: 'center',
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.xs,
+  },
+  // Active day = web brand-600 selected state with branded shadow
+  dayCardActive: {
+    backgroundColor: theme.brand[600],
+    borderColor: theme.brand[700],
+    ...theme.shadow.brand,
+  },
+  dayCardRest: { opacity: 0.45 },
+  dayName:     { fontSize: 10, fontWeight: '700', color: theme.text.tertiary, letterSpacing: 0.8, textTransform: 'uppercase' },
+  dayDate:     { fontSize: 18, fontWeight: '800', color: theme.text.primary, marginTop: 2, fontVariant: ['tabular-nums'] },
+  weekTxtW:    { color: '#FFFFFF' },
+  activeLine:  { width: 16, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.55)', marginTop: 5 },
+  dayLabel:    { fontSize: 9, fontWeight: '600', color: theme.text.primary, marginTop: 5, textAlign: 'center', lineHeight: 11, opacity: 0.7 },
+  dayExPill:   { marginTop: 4, backgroundColor: theme.neutral[100], borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1.5 },
+  dayExCount:  { fontSize: 9, fontWeight: '700', color: theme.text.tertiary },
+
+  /* ── Exercise cards (web .card) ──────────────────────────────── */
+  exCardStatic: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,              // 16
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.card,
+  },
+  exCardDone:   { borderColor: 'rgba(22,163,74,0.28)', backgroundColor: 'rgba(22,163,74,0.04)' },
+  exCardActive: { borderWidth: 1.5, borderColor: theme.brand[500], ...theme.shadow.raised },
+
+  exCardTouch: {
+    flexDirection: 'row', alignItems: 'center',
+    padding: 18, gap: 16,
+    minHeight: 80,                              // finger-friendly
+  },
+  // Icon chip = web num-badge-brand
+  exIcon: {
+    width: 48, height: 48, borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(79,70,229,0.10)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  exIconDone: {
+    backgroundColor: theme.success[600],
+    borderWidth: 1, borderColor: theme.success[700],
+    ...theme.shadow.success,
+  },
+
+  exName:     { fontSize: theme.fontSize.xl, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.3 },
+  exNameDone: { color: theme.neutral[400], textDecorationLine: 'line-through', textDecorationColor: theme.neutral[300] },
+  exMeta:     { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 4, letterSpacing: 0 },
+
+  exExpandedContent: { paddingHorizontal: 18, paddingBottom: 16, paddingLeft: 82, gap: 8 },
+
+  /* Muscle tag — web .tag-pill */
+  exMusclePill: {
+    backgroundColor: 'rgba(79,70,229,0.08)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  exMuscleText: { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
+  exNoteText:   { fontSize: 12, color: theme.text.secondary, fontStyle: 'italic', flex: 1, lineHeight: 18 },
+
+  /* ── Live chip ("in progress") — web status-pill-brand ───────── */
+  liveChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(79,70,229,0.10)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.brand[600] },
+  liveTxt: { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
+
+  /* ── Primary / secondary action buttons ──────────────────────── */
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+
+  // "Start Workout" = web .btn-primary (solid brand-600, 52 pt, brand shadow)
+  startBtn: {
+    backgroundColor: theme.brand[600],
+    borderWidth: 1, borderColor: theme.brand[700],
+    borderRadius: theme.radius.md,              // 12 — web .btn radius
+    paddingVertical: 16, paddingHorizontal: 20,
+    alignItems: 'center', justifyContent: 'center',
+    minHeight: 52,
+    ...theme.shadow.brand,
+  },
+  startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: 0.1 },
+
+  // "Postpone" = web outline-warning secondary
+  postponeBtn: {
+    borderWidth: 1.5, borderColor: 'rgba(234,179,8,0.45)',
+    borderRadius: theme.radius.md,
+    paddingVertical: 14, paddingHorizontal: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: theme.warning[50],
+    minHeight: 48,
+  },
+  postponeBtnTxt: { color: theme.warning[700], fontWeight: '700', fontSize: theme.fontSize.base },
+
+  /* ── Sticky logging header (appears when scrolled past hero) ─── */
+  stickyHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 18, paddingVertical: 14,
+    backgroundColor: theme.surface.default,
+    borderBottomWidth: 1, borderBottomColor: theme.border.default,
+    ...theme.shadow.raised,
+  },
+  stickyTitle: { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2 },
+  stickyTimer: { fontSize: theme.fontSize['2xl'], fontWeight: '800', marginTop: 2, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+  stickyCount: { fontSize: 13, fontWeight: '700', color: theme.brand[600] },
+  pauseBtn:    { padding: 8, borderRadius: theme.radius.sm },
+
+  /* ── Trainer notification — web .info-card-brand ─────────────── */
+  trainerNotif: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: theme.brand[50],
+    borderRadius: theme.radius.xl,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1, borderColor: theme.brand[100],
+  },
+  trainerNotifIcon: {
+    width: 40, height: 40, borderRadius: theme.radius.md,
+    backgroundColor: theme.brand[600],
+    alignItems: 'center', justifyContent: 'center',
+    ...theme.shadow.brand,
+  },
+  trainerNotifTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
+  trainerNotifSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+
+  /* ── Selected day header (viewing a non-today day) ───────────── */
   selectedDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  selectedDayTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: C.primary + '0A' },
-  backBtnTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
-  exCountHint: { fontSize: 13, fontWeight: '600', color: C.mid, marginBottom: 12, letterSpacing: 0.1 },
-  /* Done chip */
-  doneChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.green + '12', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
-  doneTxt: { fontSize: 11, fontWeight: '700', color: C.green },
-  /* Empty states */
-  emptyState: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-  emptyIconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.deepBlue + '08', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: '800', color: C.dark, letterSpacing: -0.3 },
-  emptySub: { fontSize: 14, color: C.mid, marginTop: 8, textAlign: 'center', lineHeight: 22 },
-  /* Floating rest timer */
-  floatRest: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 28, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1.5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  selectedDayTitle:  { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.5 },
+  // Back chip — web .btn-link / ghost
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.brand[50],
+    minHeight: 36,
+  },
+  backBtnTxt:  { fontSize: 13, fontWeight: '700', color: theme.brand[700] },
+  exCountHint: { fontSize: theme.fontSize.sm, fontWeight: '600', color: theme.text.secondary, marginBottom: 12 },
+
+  /* ── Done chip — web status-pill-success ─────────────────────── */
+  doneChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(22,163,74,0.10)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  doneTxt: { fontSize: 11, fontWeight: '700', color: theme.success[700], letterSpacing: 0.2 },
+
+  /* ── Empty states ────────────────────────────────────────────── */
+  emptyState: { alignItems: 'center', paddingVertical: 56, paddingHorizontal: 24 },
+  emptyIconCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: theme.brand[50],
+    borderWidth: 1, borderColor: theme.brand[100],
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 18,
+  },
+  emptyTitle: { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.4 },
+  emptySub:   { fontSize: theme.fontSize.base, color: theme.text.secondary, marginTop: 8, textAlign: 'center', lineHeight: 22 },
+
+  /* ── Floating rest timer (draggable pill) ────────────────────── */
+  floatRest: {
+    position: 'absolute',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: theme.radius.full,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderWidth: 1.5,
+    ...theme.shadow.float,
+  },
   floatRestInner: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  floatRestTime: { fontSize: 20, fontWeight: '900', letterSpacing: 0.5 },
-  floatRestAdj: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E8E8ED' },
+  floatRestTime:  { fontSize: theme.fontSize['2xl'], fontWeight: '800', letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+  floatRestAdj: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: theme.surface.default,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: theme.border.default,
+  },
 });
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
@@ -3949,11 +4801,39 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ProgressScreen — redesigned to match the web admin dashboard.
+//
+//   Parity touchpoints (vs. lift-gym-app/src/index.css):
+//   • Tab bar is a 1:1 port of web `.modal-tabs` / `.modal-tab` — sunken
+//     container, radius-lg, active tab = surface white + brand-600 text +
+//     shadow-card.
+//   • Cards reuse web `.card` geometry via theme tokens (radius-xl, border
+//     default, shadow.card).
+//   • Chart containers use `.surface-card` look with a section header pattern
+//     matching web dashboard panels.
+//   • Stats at the top of the Workouts tab use the same `QuickStat` anatomy
+//     as the Home screen so the product reads as one system.
+//   • Bar-chart bars tinted brand-600 (indigo), with a track line at the
+//     chart baseline — matches web `.stat-card` internal chart tone.
+//   • Goal-progress bar uses success-tinted fill inside a brand-tinted info
+//     panel (web `.info-card-brand`).
+//   • Weight input bar uses web `.input-base` focus ring (brand-500 glow) +
+//     web `.btn-primary` anatomy for the Log button.
+// ═══════════════════════════════════════════════════════════════════════════════
+const PROGRESS_TABS = [
+  { key: 'Weight',       label: 'Weight'       },
+  { key: 'Measurements', label: 'Measurements' },
+  { key: 'Photos',       label: 'Photos'       },
+  { key: 'Workouts',     label: 'Workouts'     },
+];
+
 function ProgressScreen({ member, gymId, memberId }) {
   const [activeTab, setActiveTab] = useState('Weight');
   const [weightLog, setWeightLog] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [weightInput, setWeightInput] = useState('');
+  const [weightFocused, setWeightFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState([]);
 
@@ -3968,10 +4848,8 @@ function ProgressScreen({ member, gymId, memberId }) {
 
   useEffect(() => {
     if (!memberId) return;
-    // Use the same namespace as weight logs/measurements so gym members and freelance members both work
     const ns = gymId || (member && (member.trainerId || member.id));
     if (!ns) return;
-    // Use top-level imports; removed orderBy to avoid composite index requirement
     const q = query(
       collection(db, 'gyms', ns, 'workoutLogs'),
       where('memberId', '==', memberId),
@@ -3990,7 +4868,6 @@ function ProgressScreen({ member, gymId, memberId }) {
     if (!val || !ns || !memberId) { Alert.alert('Error', 'Could not save. Try again.'); return; }
     setSaving(true);
     try {
-      // Use top-level imports — inline require() can fail in production builds
       const logRef = doc(collection(db, 'gyms', ns, 'weightLogs'));
       await setDoc(logRef, {
         id: logRef.id,
@@ -4000,7 +4877,6 @@ function ProgressScreen({ member, gymId, memberId }) {
         height: member?.height || 0,
         loggedAt: Date.now(),
       });
-      // Also update member's current weight
       await updateDoc(doc(db, 'members', memberId), { weight: val, updatedAt: Date.now() }).catch(() => {});
       setWeightInput('');
     } catch (e) {
@@ -4013,44 +4889,82 @@ function ProgressScreen({ member, gymId, memberId }) {
     ? (member.weight / ((member.height / 100) ** 2)).toFixed(1)
     : null;
 
-
   return (
-    <ScrollView style={g.screen}>
-      <Text style={g.pageTitle}>Progress</Text>
+    <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
+      <Text style={pr.pageTitle}>Progress</Text>
+      <Text style={pr.pageSub}>Track your body, workouts and photos — stay on the wave.</Text>
+
+      {/* ─── Tab bar — ported from web `.modal-tabs` ─────────────────── */}
       <View style={pr.tabs}>
-        {['Weight', 'Measurements', 'Photos', 'Workouts'].map(t => (
-          <TouchableOpacity key={t} style={[pr.tab, activeTab === t && pr.tabActive]} onPress={() => setActiveTab(t)}>
-            <Text style={[pr.tabTxt, activeTab === t && pr.tabTxtActive]}>{t}</Text>
-          </TouchableOpacity>
-        ))}
+        {PROGRESS_TABS.map(t => {
+          const isActive = activeTab === t.key;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={[pr.tab, isActive && pr.tabActive]}
+              onPress={() => setActiveTab(t.key)}
+              activeOpacity={0.85}
+            >
+              <Text style={[pr.tabTxt, isActive && pr.tabTxtActive]} numberOfLines={1}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
+      {/* ─── WEIGHT TAB ──────────────────────────────────────────────── */}
       {activeTab === 'Weight' && (
         <>
           {bmi && (() => {
             const bmiNum = parseFloat(bmi);
-            const bmiColor = bmiNum < 18.5 ? '#3B82F6' : bmiNum < 25 ? C.green : bmiNum < 30 ? C.amber : C.red;
-            const bmiCat   = bmiNum < 18.5 ? 'Underweight' : bmiNum < 25 ? 'Normal' : bmiNum < 30 ? 'Overweight' : 'Obese';
+            // Semantic BMI colors match web: info / success / warning / danger
+            const bmiColor = bmiNum < 18.5 ? theme.info[500]
+                           : bmiNum < 25   ? theme.success[600]
+                           : bmiNum < 30   ? theme.warning[600]
+                           :                 theme.danger[600];
+            const bmiCat   = bmiNum < 18.5 ? 'Underweight'
+                           : bmiNum < 25   ? 'Normal'
+                           : bmiNum < 30   ? 'Overweight'
+                           :                 'Obese';
             return (
               <View style={pr.bmiCard}>
-                <View>
-                  <Text style={pr.bmiLabel}>Current BMI</Text>
+                {/* Left — current BMI with semantic tag */}
+                <View style={{ flex: 1 }}>
+                  <Text style={pr.cardLabel}>Current BMI</Text>
                   <Text style={[pr.bmiVal, { color: bmiColor }]}>{bmi}</Text>
-                  <View style={[pr.bmiTag, { backgroundColor: bmiColor + '22' }]}>
+                  <View style={[pr.bmiTag, { backgroundColor: bmiColor + '1A', borderColor: bmiColor + '33' }]}>
+                    <View style={[pr.bmiTagDot, { backgroundColor: bmiColor }]} />
                     <Text style={[pr.bmiTagTxt, { color: bmiColor }]}>{bmiCat}</Text>
                   </View>
                 </View>
+                {/* Right — weight + goal */}
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={pr.weightBig}>{member.weight} kg</Text>
-                  <Text style={pr.weightSub}>Goal: {member.goalWeight} kg</Text>
+                  <Text style={pr.cardLabel}>Current weight</Text>
+                  <Text style={pr.weightBig}>
+                    {member.weight}<Text style={pr.weightUnit}> kg</Text>
+                  </Text>
+                  {member.goalWeight ? (
+                    <View style={pr.goalChip}>
+                      <Ionicons name="flag-outline" size={11} color={theme.text.secondary} />
+                      <Text style={pr.goalChipTxt}>Goal {member.goalWeight} kg</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             );
           })()}
 
-          <MemberBMIZoneChart weightLog={weightLog} memberHeight={member?.height || 0} />
+          {/* Weight chart — inside a surface-card panel with section header */}
+          {weightLog.length > 0 && (
+            <View style={pr.chartPanel}>
+              <View style={pr.panelHeader}>
+                <Text style={pr.panelTitle}>Weight Trend</Text>
+                <Text style={pr.panelSub}>Last {Math.min(12, weightLog.length)} entries · BMI zones</Text>
+              </View>
+              <MemberBMIZoneChart weightLog={weightLog} memberHeight={member?.height || 0} />
+            </View>
+          )}
 
-          {/* Goal progress bar */}
+          {/* Goal progress — web `.info-card-brand` tint */}
           {(() => {
             const cw = member?.weight;
             const gw = member?.goalWeight;
@@ -4060,46 +4974,75 @@ function ProgressScreen({ member, gymId, memberId }) {
             const done = sw - cw;
             const pct = Math.min(100, Math.max(0, (done / total) * 100));
             return (
-              <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 14, marginBottom: 16 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <Text style={{ fontSize: 13, color: C.mid, fontWeight: '600' }}>Goal Progress</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: C.green }}>{pct.toFixed(0)}%</Text>
+              <View style={pr.goalPanel}>
+                <View style={pr.goalHeader}>
+                  <View>
+                    <Text style={pr.cardLabel}>Goal Progress</Text>
+                    <Text style={pr.goalPanelTitle}>
+                      {Math.max(0, cw - gw).toFixed(1)} kg to goal
+                    </Text>
+                  </View>
+                  <View style={pr.goalPctBadge}>
+                    <Text style={pr.goalPctTxt}>{pct.toFixed(0)}%</Text>
+                  </View>
                 </View>
-                <View style={{ height: 10, backgroundColor: '#E5E7EB', borderRadius: 5 }}>
-                  <View style={{ height: 10, width: `${pct}%`, backgroundColor: C.green, borderRadius: 5 }} />
+                <View style={pr.goalBarBg}>
+                  <View style={[pr.goalBarFill, { width: `${pct}%` }]} />
                 </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}>
-                  <Text style={{ fontSize: 11, color: C.mid }}>Start: {sw} kg</Text>
-                  <Text style={{ fontSize: 11, color: C.mid }}>{Math.max(0, cw - gw).toFixed(1)} kg to goal ({gw} kg)</Text>
+                <View style={pr.goalFooter}>
+                  <Text style={pr.goalFooterTxt}>Start · {sw} kg</Text>
+                  <Text style={pr.goalFooterTxt}>Goal · {gw} kg</Text>
                 </View>
               </View>
             );
           })()}
 
-          <View style={[pr.logRow, { marginBottom: 16 }]}>
-            <TextInput
-              style={pr.logInput}
-              placeholder="Today's weight"
-              placeholderTextColor={C.mid}
-              keyboardType="decimal-pad"
-              value={weightInput}
-              onChangeText={setWeightInput}
-            />
-            <Text style={pr.unit}>kg</Text>
+          {/* Log weight row — web `.input-base` + `.btn-primary` */}
+          <Text style={pr.sectionLabel}>LOG TODAY'S WEIGHT</Text>
+          <View style={pr.logRow}>
+            <View style={[pr.logInputWrap, weightFocused && pr.logInputWrapFocus]}>
+              <Ionicons name="scale-outline" size={18} color={theme.text.tertiary} />
+              <TextInput
+                style={pr.logInput}
+                placeholder="Enter weight"
+                placeholderTextColor={theme.text.tertiary}
+                keyboardType="decimal-pad"
+                value={weightInput}
+                onChangeText={setWeightInput}
+                onFocus={() => setWeightFocused(true)}
+                onBlur={() => setWeightFocused(false)}
+              />
+              <Text style={pr.logUnit}>kg</Text>
+            </View>
             <TouchableOpacity
               style={[pr.logBtn, (!weightInput || saving) && pr.logBtnOff]}
               onPress={handleLogWeight}
-              disabled={!weightInput || saving}>
-              {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={pr.logBtnTxt}>Log</Text>}
+              disabled={!weightInput || saving}
+              activeOpacity={0.9}
+            >
+              {saving
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <>
+                    <Ionicons name="add" size={18} color="#fff" />
+                    <Text style={pr.logBtnTxt}>Log</Text>
+                  </>
+              }
             </TouchableOpacity>
           </View>
 
           {weightLog.length === 0 && (
-            <Text style={{ color: C.mid, textAlign: 'center', marginTop: 20 }}>No weight entries yet. Log your first weight above!</Text>
+            <View style={pr.emptyState}>
+              <View style={pr.emptyIconCircle}>
+                <Ionicons name="trending-up" size={22} color={theme.brand[600]} />
+              </View>
+              <Text style={pr.emptyTitle}>Start tracking</Text>
+              <Text style={pr.emptySub}>Log your first weight to see your trend and goal progress appear here.</Text>
+            </View>
           )}
         </>
       )}
 
+      {/* ─── MEASUREMENTS TAB ───────────────────────────────────────── */}
       {activeTab === 'Measurements' && (
         <MeasurementLogger
           member={member}
@@ -4108,9 +5051,13 @@ function ProgressScreen({ member, gymId, memberId }) {
           measurements={measurements}
         />
       )}
+
+      {/* ─── PHOTOS TAB ─────────────────────────────────────────────── */}
       {activeTab === 'Photos' && (
         <ProgressPhotosTab gymId={gymId} memberId={memberId} />
       )}
+
+      {/* ─── WORKOUTS TAB ───────────────────────────────────────────── */}
       {activeTab === 'Workouts' && (() => {
         const now = Date.now();
         const completedWorkouts = workoutLogs.filter(w => w.completedAt && w.completedAt > 0 && w.completedAt <= now);
@@ -4119,108 +5066,547 @@ function ProgressScreen({ member, gymId, memberId }) {
         const avgMins = completedWorkouts.length
           ? Math.round(completedWorkouts.reduce((s, w) => s + (w.durationSeconds || 0), 0) / completedWorkouts.length / 60)
           : 0;
+        const sessionCount = completedWorkouts.length;
         const maxSecs = Math.max(...recent.map(w => w.durationSeconds || 0), 1);
+
+        // 4-week consistency rows — pre-compute so we can reference in header
+        const weeks = [3, 2, 1, 0].map(ago => {
+          const end   = now - ago * 7 * 24 * 3600 * 1000;
+          const start = end - 7 * 24 * 3600 * 1000;
+          const count = completedWorkouts.filter(w => (w.completedAt ?? 0) >= start && (w.completedAt ?? 0) < end).length;
+          return { label: ago === 0 ? 'This week' : `${ago}w ago`, count, current: ago === 0 };
+        });
+        const maxC = Math.max(...weeks.map(w => w.count), 1);
+        const thisWeekCount = weeks[weeks.length - 1].count;
+
         return (
           <View>
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-              <View style={[pr.bmiCard, { flex: 1 }]}>
-                <View>
-                  <Text style={pr.bmiLabel}>Total Time</Text>
-                  <Text style={[pr.bmiVal, { color: C.primary, fontSize: 22 }]}>{totalMins} min</Text>
+            {/* Three stat cards — same anatomy as Home QuickStat */}
+            <View style={pr.statGrid}>
+              <ProgressStatCard
+                icon="time-outline" tone="brand"
+                value={totalMins} unit="min" label="Total time"
+              />
+              <ProgressStatCard
+                icon="trophy-outline" tone="success"
+                value={sessionCount} unit={sessionCount === 1 ? 'session' : 'sessions'} label="Completed"
+              />
+              <ProgressStatCard
+                icon="pulse-outline" tone="warning"
+                value={avgMins} unit="min" label="Avg / session"
+              />
+            </View>
+
+            {/* 4-week consistency — branded bars in surface-card */}
+            <View style={pr.chartPanel}>
+              <View style={pr.panelHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={pr.panelTitle}>4-Week Consistency</Text>
+                  <Text style={pr.panelSub}>{thisWeekCount} session{thisWeekCount === 1 ? '' : 's'} this week</Text>
                 </View>
+                {thisWeekCount > 0 ? (
+                  <View style={pr.streakBadge}>
+                    <Ionicons name="flame" size={12} color={theme.warning[600]} />
+                    <Text style={pr.streakBadgeTxt}>On pace</Text>
+                  </View>
+                ) : null}
               </View>
-              <View style={[pr.bmiCard, { flex: 1 }]}>
-                <View>
-                  <Text style={pr.bmiLabel}>Avg Duration</Text>
-                  <Text style={[pr.bmiVal, { color: C.green, fontSize: 22 }]}>{avgMins} min</Text>
-                </View>
+              <View style={pr.consistRow}>
+                {weeks.map((w, i) => {
+                  const barH = Math.max(6, (w.count / maxC) * 72);
+                  return (
+                    <View key={i} style={pr.consistCol}>
+                      <Text style={pr.consistVal}>{w.count}</Text>
+                      <View style={pr.consistBarTrack}>
+                        <View style={[pr.consistBarFill, {
+                          height: barH,
+                          backgroundColor: w.current ? theme.brand[600] : theme.brand[200],
+                        }]} />
+                      </View>
+                      <Text style={[pr.consistLbl, w.current && pr.consistLblCurrent]}>{w.label}</Text>
+                    </View>
+                  );
+                })}
               </View>
             </View>
-            {/* 4-week consistency bars */}
-            {(() => {
-              const weeks = [3, 2, 1, 0].map(ago => {
-                const end   = now - ago * 7 * 24 * 3600 * 1000;
-                const start = end - 7 * 24 * 3600 * 1000;
-                const count = completedWorkouts.filter(w => (w.completedAt ?? 0) >= start && (w.completedAt ?? 0) < end).length;
-                return { label: ago === 0 ? 'This\nweek' : `${ago}w\nago`, count };
-              });
-              const maxC = Math.max(...weeks.map(w => w.count), 1);
-              return (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 14, marginBottom: 16 }}>
-                  <Text style={{ fontSize: 13, color: C.mid, fontWeight: '600', marginBottom: 10 }}>4-Week Consistency</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 80 }}>
-                    {weeks.map((w, i) => (
-                      <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: C.primary, marginBottom: 3 }}>{w.count}</Text>
-                        <View style={{ width: '60%', height: Math.max(6, (w.count / maxC) * 48), backgroundColor: i === 3 ? C.primary : C.primary + '33', borderRadius: 4 }} />
-                        <Text style={{ fontSize: 10, color: C.mid, marginTop: 4, textAlign: 'center' }}>{w.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              );
-            })()}
 
             {recent.length === 0 ? (
-              <Text style={{ color: C.mid, textAlign: 'center', marginTop: 20 }}>Complete workouts to see your time trends here.</Text>
+              <View style={pr.emptyState}>
+                <View style={pr.emptyIconCircle}>
+                  <Ionicons name="barbell-outline" size={22} color={theme.brand[600]} />
+                </View>
+                <Text style={pr.emptyTitle}>No sessions yet</Text>
+                <Text style={pr.emptySub}>Complete a workout to see your time trends and session history here.</Text>
+              </View>
             ) : (
               <>
-                <Text style={[g.sec, { marginBottom: 12 }]}>Recent Sessions</Text>
-                <View style={[pr.chart, { height: 160, alignItems: 'flex-end' }]}>
-                  {recent.slice(0, 7).reverse().map((w, i) => {
+                {/* Recent-sessions bar chart */}
+                <View style={[pr.chartPanel, { paddingBottom: 20 }]}>
+                  <View style={pr.panelHeader}>
+                    <Text style={pr.panelTitle}>Session Duration</Text>
+                    <Text style={pr.panelSub}>Last {Math.min(7, recent.length)} workouts</Text>
+                  </View>
+                  <View style={pr.barChartRow}>
+                    {recent.slice(0, 7).reverse().map((w, i) => {
+                      const mins = Math.round((w.durationSeconds || 0) / 60);
+                      const barH = Math.max(8, Math.round(((w.durationSeconds || 0) / maxSecs) * 110));
+                      return (
+                        <View key={w.id || i} style={pr.barCol}>
+                          <Text style={pr.barVal}>{mins}m</Text>
+                          <View style={pr.barTrack}>
+                            <View style={[pr.barFill, { height: barH }]} />
+                          </View>
+                          <Text style={pr.barDate} numberOfLines={1}>
+                            {w.completedAt ? new Date(w.completedAt).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '—'}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Recent sessions list */}
+                <View style={pr.sectionHeader}>
+                  <Text style={pr.sectionLabel}>RECENT SESSIONS</Text>
+                  <Text style={pr.sectionCount}>{recent.length} shown</Text>
+                </View>
+                <View style={pr.sessionList}>
+                  {recent.map((w, i) => {
                     const mins = Math.round((w.durationSeconds || 0) / 60);
-                    const barH = Math.max(8, Math.round(((w.durationSeconds || 0) / maxSecs) * 100));
+                    const dateTxt = w.completedAt
+                      ? new Date(w.completedAt).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : '—';
                     return (
-                      <View key={w.id || i} style={pr.barGroup}>
-                        <Text style={pr.barVal}>{mins}m</Text>
-                        <View style={[pr.bar, { height: barH, backgroundColor: C.primary }]} />
-                        <Text style={pr.barDate}>{w.completedAt ? new Date(w.completedAt).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '—'}</Text>
+                      <View key={w.id || i} style={[pr.sessionRow, i > 0 && pr.sessionRowDivider]}>
+                        <View style={pr.sessionIcon}>
+                          <Ionicons name="checkmark" size={16} color={theme.success[700]} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={pr.sessionTitle} numberOfLines={1}>
+                            {w.workoutName || 'Workout'}
+                          </Text>
+                          <Text style={pr.sessionSub}>{dateTxt}</Text>
+                        </View>
+                        <View style={pr.sessionMetric}>
+                          <Text style={pr.sessionMetricVal}>{mins}</Text>
+                          <Text style={pr.sessionMetricUnit}>min</Text>
+                        </View>
                       </View>
                     );
                   })}
                 </View>
-                {recent.map((w, i) => (
-                  <View key={w.id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8 }}>
-                    <Text style={{ color: C.dark, fontWeight: '600' }}>{w.workoutName || 'Workout'}</Text>
-                    <Text style={{ color: C.mid, fontSize: 13 }}>
-                      {Math.round((w.durationSeconds || 0) / 60)} min · {w.completedAt ? new Date(w.completedAt).toLocaleDateString() : '—'}
-                    </Text>
-                  </View>
-                ))}
               </>
             )}
           </View>
         );
       })()}
-      <View style={{ height: 30 }} />
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
+// ── ProgressStatCard ─────────────────────────────────────────────────────────
+// Reuses the anatomy of Home's QuickStat so the mobile app reads as one
+// system across screens.
+function ProgressStatCard({ icon, tone = 'brand', value, unit, label }) {
+  const tones = {
+    brand:   { icon: theme.brand[600],   chip: 'rgba(79,70,229,0.10)' },
+    success: { icon: theme.success[600], chip: 'rgba(22,163,74,0.10)' },
+    warning: { icon: theme.warning[600], chip: 'rgba(217,119,6,0.12)' },
+  }[tone];
+  return (
+    <View style={pr.statCard}>
+      <View style={[pr.statIconChip, { backgroundColor: tones.chip }]}>
+        <Ionicons name={icon} size={15} color={tones.icon} />
+      </View>
+      <View style={pr.statValueRow}>
+        <Text style={pr.statValue} numberOfLines={1}>{value}</Text>
+        {unit ? <Text style={pr.statUnit} numberOfLines={1}>{unit}</Text> : null}
+      </View>
+      <Text style={pr.statLabel} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
 const pr = StyleSheet.create({
-  tabs: { flexDirection: 'row', backgroundColor: C.light, borderRadius: 12, padding: 4, marginBottom: 20 },
-  tab: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
-  tabActive: { backgroundColor: '#fff' },
-  tabTxt: { fontSize: 14, fontWeight: '600', color: C.mid },
-  tabTxtActive: { color: C.primary },
-  bmiCard: { backgroundColor: C.card, borderRadius: 16, padding: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
-  bmiLabel: { fontSize: 12, color: C.mid, fontWeight: '500', marginBottom: 4 },
-  bmiVal: { fontSize: 32, fontWeight: '800' },
-  weightBig: { fontSize: 28, fontWeight: '800', color: C.dark },
-  weightSub: { fontSize: 13, color: C.mid },
-  bmiTag: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3, marginTop: 6, alignSelf: 'flex-start' },
-  bmiTagTxt: { fontSize: 11, fontWeight: '700' },
-  chart: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: 130, elevation: 1 },
-  barGroup: { alignItems: 'center' },
-  bar: { width: 28, backgroundColor: C.primary, borderRadius: 6 },
-  barVal: { fontSize: 10, color: C.mid, marginBottom: 4 },
-  barDate: { fontSize: 10, color: C.mid, marginTop: 4 },
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logInput: { flex: 1, backgroundColor: C.card, borderRadius: 12, padding: 14, fontSize: 18, color: C.dark, borderWidth: 1, borderColor: C.light },
-  unit: { fontSize: 15, color: C.mid, fontWeight: '600' },
-  logBtn: { backgroundColor: C.primary, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 14 },
-  logBtnOff: { backgroundColor: C.light },
-  logBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  /* ── Page header ──────────────────────────────────────────────────── */
+  pageTitle: {
+    fontSize: theme.fontSize['3xl'],
+    fontWeight: '800',
+    color: theme.text.primary,
+    letterSpacing: -0.5,
+    marginTop: 8,
+  },
+  pageSub: {
+    fontSize: theme.fontSize.sm,
+    color: theme.text.secondary,
+    marginTop: 4,
+    marginBottom: 18,
+    lineHeight: 20,
+  },
+
+  /* ── Tabs — ported from web .modal-tabs (line 1364, src/index.css) ── */
+  tabs: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    borderRadius: theme.radius.lg,           // 14 — matches web .modal-tabs
+    backgroundColor: theme.surface.sunken,   // sunken container
+    borderWidth: 1, borderColor: theme.border.default,
+    marginBottom: 22,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10, paddingHorizontal: 8,
+    borderRadius: theme.radius.md,           // 12 — matches web .modal-tab
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 38,
+  },
+  tabActive: {
+    backgroundColor: theme.surface.default,  // white on sunken track
+    ...theme.shadow.card,                    // shadow-card lift
+  },
+  tabTxt:       { fontSize: 13, fontWeight: '600', color: theme.text.secondary, letterSpacing: -0.1 },
+  tabTxtActive: { color: theme.brand[600] },
+
+  /* ── Generic card label (UPPERCASE, tracked) ──────────────────────── */
+  cardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.text.tertiary,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  /* ── BMI + weight card ────────────────────────────────────────────── */
+  bmiCard: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,
+    padding: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    borderWidth: 1, borderColor: theme.border.default,
+    marginBottom: 16,
+    ...theme.shadow.card,
+  },
+  bmiVal:     { fontSize: 34, fontWeight: '800', letterSpacing: -0.8, fontVariant: ['tabular-nums'], marginTop: 2 },
+  bmiTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 3,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+  },
+  bmiTagDot:  { width: 5, height: 5, borderRadius: 3 },
+  bmiTagTxt:  { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+
+  weightBig:  { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6, fontVariant: ['tabular-nums'], marginTop: 2 },
+  weightUnit: { fontSize: 14, fontWeight: '600', color: theme.text.tertiary },
+  goalChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: theme.surface.sunken,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 8, paddingVertical: 3,
+    marginTop: 8,
+  },
+  goalChipTxt: { fontSize: 11, fontWeight: '600', color: theme.text.secondary, letterSpacing: -0.1 },
+
+  /* ── Chart / surface panel (wraps chart components) ───────────────── */
+  chartPanel: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,
+    padding: 18,
+    borderWidth: 1, borderColor: theme.border.default,
+    marginBottom: 16,
+    ...theme.shadow.card,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  panelTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
+  panelSub:   { fontSize: 11, color: theme.text.tertiary, marginTop: 2, letterSpacing: 0.1 },
+
+  /* ── Goal-progress panel — web .info-card-brand ───────────────────── */
+  goalPanel: {
+    backgroundColor: theme.brand[50],
+    borderWidth: 1, borderColor: theme.brand[100],
+    borderRadius: theme.radius.xl,
+    padding: 16,
+    marginBottom: 16,
+  },
+  goalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  goalPanelTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, marginTop: 2, letterSpacing: -0.2 },
+  goalPctBadge: {
+    backgroundColor: theme.success[600],
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+    ...theme.shadow.success,
+  },
+  goalPctTxt: { fontSize: 13, fontWeight: '800', color: '#fff', letterSpacing: 0.1, fontVariant: ['tabular-nums'] },
+  goalBarBg: {
+    height: 10,
+    backgroundColor: theme.surface.default,
+    borderRadius: 5,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: theme.brand[100],
+  },
+  goalBarFill: {
+    height: '100%',
+    backgroundColor: theme.success[600],
+    borderRadius: 5,
+  },
+  goalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  goalFooterTxt: { fontSize: 11, color: theme.text.secondary, fontWeight: '600', letterSpacing: 0.1 },
+
+  /* ── Section labels ───────────────────────────────────────────────── */
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700',
+    color: theme.text.tertiary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    marginBottom: 10, marginTop: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10, marginTop: 12,
+  },
+  sectionCount: { fontSize: 11, color: theme.text.tertiary, fontWeight: '600', letterSpacing: 0.1 },
+
+  /* ── Weight logger (input + log button) — web .input-base + .btn-primary */
+  logRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  logInputWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1.5, borderColor: theme.border.default,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: 14,
+    minHeight: 52,
+  },
+  logInputWrapFocus: {
+    borderColor: theme.brand[500],
+    shadowColor: theme.brand[500],
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18, shadowRadius: 4,
+    elevation: 2,
+  },
+  logInput: {
+    flex: 1,
+    fontSize: theme.fontSize.lg,
+    fontWeight: '700',
+    color: theme.text.primary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.2,
+    paddingVertical: 12,
+  },
+  logUnit: { fontSize: 13, color: theme.text.tertiary, fontWeight: '700' },
+  logBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: theme.brand[600],
+    borderWidth: 1, borderColor: theme.brand[700],
+    borderRadius: theme.radius.md,
+    paddingHorizontal: 20,
+    minHeight: 52, minWidth: 88,
+    ...theme.shadow.brand,
+  },
+  logBtnOff: {
+    backgroundColor: theme.neutral[300],
+    borderColor: theme.neutral[300],
+    shadowOpacity: 0,
+  },
+  logBtnTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: 0.1 },
+
+  /* ── Workouts-tab stat grid ───────────────────────────────────────── */
+  statGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  statCard: {
+    flex: 1,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.border.default,
+    borderRadius: theme.radius.xl,
+    padding: 12,
+    minHeight: 100,
+    ...theme.shadow.card,
+  },
+  statIconChip: {
+    width: 26, height: 26,
+    borderRadius: theme.radius.sm,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  statValue: {
+    fontSize: theme.fontSize['2xl'],
+    fontWeight: '800',
+    color: theme.text.primary,
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  statUnit:  { fontSize: 11, fontWeight: '600', color: theme.text.tertiary },
+  statLabel: {
+    fontSize: 10, fontWeight: '700',
+    color: theme.text.tertiary,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+    marginTop: 4,
+  },
+
+  /* ── Streak / on-pace badge — web .status-pill-warning ────────────── */
+  streakBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(217,119,6,0.12)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  streakBadgeTxt: { fontSize: 11, fontWeight: '700', color: theme.warning[700], letterSpacing: 0.2 },
+
+  /* ── 4-week consistency bars ──────────────────────────────────────── */
+  consistRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 110,
+    paddingBottom: 4,
+  },
+  consistCol: { flex: 1, alignItems: 'center' },
+  consistVal: {
+    fontSize: 14, fontWeight: '800',
+    color: theme.text.primary,
+    marginBottom: 6,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
+  },
+  consistBarTrack: {
+    width: '55%',
+    height: 72,
+    borderRadius: 5,
+    backgroundColor: theme.surface.sunken,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  consistBarFill: {
+    width: '100%',
+    borderTopLeftRadius: 5, borderTopRightRadius: 5,
+  },
+  consistLbl: {
+    fontSize: 10,
+    color: theme.text.tertiary,
+    marginTop: 6,
+    textAlign: 'center',
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  consistLblCurrent: { color: theme.brand[600], fontWeight: '700' },
+
+  /* ── Session-duration bar chart ───────────────────────────────────── */
+  barChartRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 160,
+    paddingBottom: 6,
+  },
+  barCol: { flex: 1, alignItems: 'center' },
+  barVal: {
+    fontSize: 10,
+    color: theme.text.secondary,
+    fontWeight: '700',
+    marginBottom: 6,
+    fontVariant: ['tabular-nums'],
+  },
+  barTrack: {
+    width: '55%',
+    height: 120,
+    borderRadius: 5,
+    backgroundColor: theme.surface.sunken,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  barFill: {
+    width: '100%',
+    backgroundColor: theme.brand[600],
+    borderTopLeftRadius: 5, borderTopRightRadius: 5,
+  },
+  barDate: {
+    fontSize: 9,
+    color: theme.text.tertiary,
+    marginTop: 6,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+    fontWeight: '600',
+  },
+
+  /* ── Recent-sessions list ─────────────────────────────────────────── */
+  sessionList: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.xl,
+    borderWidth: 1, borderColor: theme.border.default,
+    overflow: 'hidden',
+    ...theme.shadow.card,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 64,
+  },
+  sessionRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: theme.border.subtle,
+  },
+  sessionIcon: {
+    width: 32, height: 32,
+    borderRadius: theme.radius.md,
+    backgroundColor: 'rgba(22,163,74,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sessionTitle: { fontSize: theme.fontSize.base, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
+  sessionSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  sessionMetric: { alignItems: 'flex-end' },
+  sessionMetricVal: {
+    fontSize: theme.fontSize.xl,
+    fontWeight: '800',
+    color: theme.text.primary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
+  },
+  sessionMetricUnit: { fontSize: 10, color: theme.text.tertiary, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+
+  /* ── Empty state ──────────────────────────────────────────────────── */
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40, paddingHorizontal: 24,
+    backgroundColor: theme.brand[50],
+    borderWidth: 1, borderColor: theme.brand[100],
+    borderRadius: theme.radius.xl,
+    marginTop: 8,
+  },
+  emptyIconCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: theme.surface.default,
+    borderWidth: 1, borderColor: theme.brand[100],
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: { fontSize: theme.fontSize.xl, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.3 },
+  emptySub:   { fontSize: theme.fontSize.sm, color: theme.text.secondary, marginTop: 6, textAlign: 'center', lineHeight: 20, maxWidth: 280 },
 });
 
 // ── TRAINER CHAT SCREEN ───────────────────────────────────────────────────────
@@ -4659,7 +6045,7 @@ const tcStyles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
     backgroundColor: '#FFFFFF',
   },
-  backBtn: { color: '#2563EB', fontSize: 15, fontWeight: '500', width: 60 },
+  backBtn: { color: C.primary, fontSize: 15, fontWeight: '500', width: 60 },
   headerName: { fontSize: 15, fontWeight: '700', color: '#111827' },
   msgRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 10, gap: 8 },
   msgRowMe: { flexDirection: 'row-reverse' },
@@ -4670,7 +6056,7 @@ const tcStyles = StyleSheet.create({
     borderWidth: 1, borderColor: '#E5E7EB',
     borderBottomLeftRadius: 4,
   },
-  bubbleMe: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
+  bubbleMe: { backgroundColor: C.primary, borderBottomRightRadius: 4 },
   bubbleText: { fontSize: 14, color: '#111827', lineHeight: 20 },
   bubbleTime: { fontSize: 10, color: '#6B7280', marginTop: 4, textAlign: 'right' },
   inputBar: {
@@ -4698,7 +6084,7 @@ const tcStyles = StyleSheet.create({
   },
   sendBtn: {
     width: 42, height: 42, borderRadius: 21,
-    backgroundColor: '#2563EB',
+    backgroundColor: C.primary,
     alignItems: 'center', justifyContent: 'center',
   },
 });
@@ -4732,9 +6118,14 @@ function NotificationsScreen({ onBack, memberId }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={nt.header}>
-        <TouchableOpacity onPress={onBack}><Text style={{ color: C.primary, fontSize: 15 }}>← Back</Text></TouchableOpacity>
+        {/* Back chevron matches web modal-back pattern — 36×36 tap zone */}
+        <TouchableOpacity onPress={onBack} hitSlop={8} style={nt.backChip}>
+          <Ionicons name="chevron-back" size={22} color={theme.text.primary} />
+        </TouchableOpacity>
         <Text style={nt.title}>Notifications</Text>
-        <TouchableOpacity onPress={handleMarkAll}><Text style={{ color: C.primary, fontSize: 13 }}>Mark all read</Text></TouchableOpacity>
+        <TouchableOpacity onPress={handleMarkAll} hitSlop={8}>
+          <Text style={nt.markAll}>Mark all read</Text>
+        </TouchableOpacity>
       </View>
       <ScrollView style={{ padding: 16 }}>
         {notifs.length === 0 && (
@@ -4760,14 +6151,42 @@ function NotificationsScreen({ onBack, memberId }) {
 }
 
 const nt = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light },
-  title: { fontSize: 16, fontWeight: '700', color: C.dark },
-  card: { backgroundColor: C.card, borderRadius: 14, padding: 14, marginBottom: 10, flexDirection: 'row', alignItems: 'center', elevation: 1 },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: C.primary },
-  nTitle: { fontSize: 14, fontWeight: '600', color: C.dark },
-  nBody: { fontSize: 13, color: C.mid, marginTop: 2 },
-  nTime: { fontSize: 11, color: C.light, marginTop: 4 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.primary },
+  // Header — matches web modal-header pattern: surface bg, subtle hairline,
+  // centered title with flanking back chevron + action link.
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.pageX,
+    paddingVertical: theme.spacing[3],
+    backgroundColor: theme.surface.default,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border.subtle,
+  },
+  // Back chevron chip — 36×36 tap zone
+  backChip: {
+    width: 36, height: 36,
+    borderRadius: theme.radius.full,
+    alignItems: 'center', justifyContent: 'center',
+    marginLeft: -8,
+  },
+  title:   { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
+  markAll: { fontSize: 13, fontWeight: '600', color: theme.brand[600] },
+  // Notification cards — now token-driven with shadow.card parity
+  card: {
+    backgroundColor: theme.surface.default,
+    borderRadius: theme.radius.lg,
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: theme.border.default,
+    ...theme.shadow.card,
+  },
+  cardUnread: { borderLeftWidth: 3, borderLeftColor: theme.brand[600] },
+  nTitle: { fontSize: 14, fontWeight: '600', color: theme.text.primary },
+  nBody:  { fontSize: 13, color: theme.text.secondary, marginTop: 2 },
+  nTime:  { fontSize: 11, color: theme.text.tertiary, marginTop: 4 },
+  dot:    { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.brand[600] },
 });
 
 // ── PROFILE SCREEN ────────────────────────────────────────────────────────────
@@ -5430,10 +6849,40 @@ const pf = StyleSheet.create({
 });
 
 // ── GLOBAL STYLES ─────────────────────────────────────────────────────────────
+// App-wide page chrome. Token-driven so every Profile/Notification/Invites-style
+// screen renders with the same spacing rhythm and typography as the web app.
+//   • screen: 16 pt horizontal pad + 16 pt top pad (matches web --spacing-page-x)
+//   • screenNoPad: used by screens (HomeScreen) that manage their own padding
+//   • pageTitle: 30 pt display heading with -0.5 tracking (web .text-heading-1)
+//   • sec: uppercase 11 pt label with 1.2 letter-spacing (web .text-label)
 const g = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.bg, padding: 16 },
-  pageTitle: { fontSize: 26, fontWeight: '800', color: C.dark, marginBottom: 20, marginTop: 8 },
-  sec: { fontSize: 13, fontWeight: '700', color: C.mid, marginTop: 20, marginBottom: 10, letterSpacing: 0.5, textTransform: 'uppercase' },
+  screen: {
+    flex: 1,
+    backgroundColor: theme.surface.raised,
+    paddingHorizontal: theme.spacing.pageX,
+    paddingTop: theme.spacing.pageY,
+  },
+  screenNoPad: {
+    flex: 1,
+    backgroundColor: theme.surface.raised,
+  },
+  pageTitle: {
+    fontSize: theme.fontSize['3xl'],
+    fontWeight: '800',
+    color: theme.text.primary,
+    letterSpacing: -0.5,
+    marginBottom: theme.spacing[5],
+    marginTop: theme.spacing[1],
+  },
+  sec: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.text.tertiary,
+    marginTop: theme.spacing[5],
+    marginBottom: theme.spacing[3],
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
 });
 
 // ── WORKOUT FINISH SCREEN ─────────────────────────────────────────────────────
@@ -5660,8 +7109,22 @@ const wh = StyleSheet.create({
   exMeta: { fontSize: 11, color: C.mid, marginTop: 1 },
 });
 
+// ── Theme provider (wraps the entire tree) ───────────────────────────────────
+import { ThemeProvider } from './LIFT_PROJECT/theme/ThemeProvider';
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
+// Root default export wraps the app body with the ThemeProvider so every
+// screen below it can call useTheme(). The inner <AppBody/> holds the real
+// navigation/auth state — same logic as before, just decoupled for the wrap.
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppBody />
+    </ThemeProvider>
+  );
+}
+
+function AppBody() {
   const [screen, setScreen] = useState('splash');
   const [tab, setTab] = useState('Home');
   const [uid, setUid] = useState(null);
@@ -6068,7 +7531,7 @@ export default function App() {
 
   if (authLoading || screen === 'loading') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={{ fontSize: 52, fontWeight: '800', color: '#fff', letterSpacing: 6 }}>LIFT</Text>
         <ActivityIndicator color="#fff" style={{ marginTop: 30 }} />
       </View>
@@ -6187,29 +7650,152 @@ export default function App() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+    <ThemedSafeArea>
       <View style={{ flex: 1 }}>{renderTab()}</View>
       {!keyboardVisible && (
-      <View style={mn.tabBar}>
-        {tabs.map(t => {
-          const active = tab === t.name;
-          return (
-            <TouchableOpacity key={t.name} style={mn.tabItem} onPress={() => setTab(t.name)}>
-              <Ionicons name={active ? t.icon : t.iconOutline} size={24} color={active ? C.primary : C.mid} />
-              <Text style={[mn.tabLbl, active && mn.tabLblActive]}>{t.name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+        <BottomTabBar tabs={tabs} activeTab={tab} onSelect={setTab} />
       )}
-    </SafeAreaView>
+    </ThemedSafeArea>
     </KeyboardAvoidingView>
   );
 }
 
-const mn = StyleSheet.create({
-  tabBar: { flexDirection: 'row', backgroundColor: C.card, paddingVertical: 10, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.light },
-  tabItem: { flex: 1, alignItems: 'center', gap: 3 },
-  tabLbl: { fontSize: 10, color: C.mid, fontWeight: '600' },
-  tabLblActive: { color: C.primary, fontWeight: '700' },
-});
+// ThemedSafeArea — pulls bg color from the active theme so the safe-area
+// insets match the dark surface instead of bleeding the old light C.bg color.
+function ThemedSafeArea({ children }) {
+  const { theme } = useTheme();
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface.raised }}>
+      {children}
+    </SafeAreaView>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BottomTabBar — ported from the web admin sidebar (src/components/Layout.jsx).
+//
+//   Web pattern per tab:
+//     • 28 × 28 rounded-lg icon chip (brand-100 bg when active, transparent else)
+//     • Icon inside chip is brand-600 when active, text-tertiary otherwise
+//     • Label is brand-700 when active, text-secondary otherwise
+//     • Tiny 6 px brand-500 active dot
+//   Stroke-width bump: active items use slightly thicker icons to feel "solid".
+//
+//   Mobile adaptation:
+//     • Icon chip grows to 34 × 34 for thumb-friendliness.
+//     • Active pill: light brand-50 wash behind the chip+label row (web-equivalent
+//       of the sidebar's nav-active pill) — brand-tinted but subtle.
+//     • Selected icon scales 1 → 1.05 on activation via spring, per the "subtle
+//       micro-interaction" brief.
+//     • Pressable opacity dims to 0.6 while finger is down.
+// ═══════════════════════════════════════════════════════════════════════════════
+function BottomTabBar({ tabs, activeTab, onSelect }) {
+  const mn = useTabBarStyles();
+  return (
+    <View style={mn.tabBar}>
+      {tabs.map(t => (
+        <BottomTabItem
+          key={t.name}
+          tab={t}
+          active={activeTab === t.name}
+          onPress={() => onSelect(t.name)}
+        />
+      ))}
+    </View>
+  );
+}
+
+function BottomTabItem({ tab, active, onPress }) {
+  const { theme, resolved } = useTheme();
+  const dark = resolved === 'dark';
+  const mn = useTabBarStyles();
+
+  const scale = useRef(new Animated.Value(active ? 1.05 : 1)).current;
+  useEffect(() => {
+    Animated.spring(scale, { toValue: active ? 1.05 : 1, useNativeDriver: true, friction: 7, tension: 140 }).start();
+  }, [active, scale]);
+
+  // Icon / label colors shift with mode. Web light: brand-600/700; dark: brand-400/300.
+  const iconActive = theme.brand[dark ? 400 : 600];
+  const iconIdle   = theme.text.tertiary;
+  const labelActive = theme.brand[dark ? 300 : 700];
+  const dotColor    = theme.brand[dark ? 400 : 500];
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [mn.tabItem, pressed && { opacity: 0.6 }]}
+      hitSlop={4}
+    >
+      {active && <View style={mn.tabActivePill} pointerEvents="none" />}
+      <Animated.View
+        style={[
+          mn.tabIconChip,
+          active && mn.tabIconChipActive,
+          { transform: [{ scale }] },
+        ]}
+      >
+        <Ionicons
+          name={active ? tab.icon : tab.iconOutline}
+          size={20}
+          color={active ? iconActive : iconIdle}
+        />
+      </Animated.View>
+      <Text
+        style={[mn.tabLbl, active && { color: labelActive, fontWeight: '700' }]}
+        numberOfLines={1}
+      >
+        {tab.name}
+      </Text>
+      {active && <View style={[mn.tabActiveDot, { backgroundColor: dotColor }]} pointerEvents="none" />}
+    </Pressable>
+  );
+}
+
+// Theme-reactive stylesheet: rebuilt whenever theme changes via makeStyles().
+const useTabBarStyles = makeStyles((t) => StyleSheet.create({
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: t.surface.default,
+    paddingTop: 8, paddingBottom: 24, paddingHorizontal: 8,
+    borderTopWidth: 1, borderTopColor: t.border.subtle,
+    gap: 4,
+    ...t.shadow.xs,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 6,
+    borderRadius: t.radius.lg,
+    minHeight: 56,
+    position: 'relative',
+  },
+  // Active pill — brand-50 on light; brand-900-tinted wash on dark.
+  tabActivePill: {
+    position: 'absolute',
+    top: 2, bottom: 2, left: 8, right: 8,
+    borderRadius: t.radius.lg,
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
+  },
+  tabIconChip: {
+    width: 34, height: 34,
+    borderRadius: t.radius.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // Icon chip fill when active: brand-100 on light, brand-900 tint on dark.
+  tabIconChipActive: {
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.20)' : t.brand[100],
+  },
+  tabLbl: {
+    fontSize: 10,
+    color: t.text.tertiary,
+    fontWeight: '600',
+    marginTop: 2,
+    letterSpacing: 0.1,
+  },
+  tabActiveDot: {
+    position: 'absolute',
+    top: 4,
+    width: 4, height: 4, borderRadius: 2,
+  },
+}));
