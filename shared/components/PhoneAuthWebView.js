@@ -18,6 +18,12 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
   const readyRef = useRef(false);
   const retryRef = useRef(null);
   const failsafeRef = useRef(null);
+  // Tracks whether reCAPTCHA has been rendered at least once in this WebView
+  // session. Firebase RecaptchaVerifier cannot be re-rendered into the same
+  // DOM element — attempting to do so throws "reCAPTCHA has already been
+  // rendered in this element". The fix: reload the WebView before the second
+  // (and any subsequent) sendOtp call, resetting all Firebase/reCAPTCHA state.
+  const usedOnceRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
@@ -44,6 +50,9 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
 
       case 'verificationId':
         cleanup();
+        // Mark as used — the next sendOtp must reload the WebView to reset
+        // the reCAPTCHA container before Firebase can render a new verifier.
+        usedOnceRef.current = true;
         setShowOverlay(false);
         pendingRef.current?.resolve(data.verificationId);
         pendingRef.current = null;
@@ -52,6 +61,9 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
 
       case 'error':
         cleanup();
+        // Also mark used on error — Firebase has still attempted to render
+        // reCAPTCHA, leaving the container in a "consumed" state.
+        usedOnceRef.current = true;
         setShowOverlay(false);
         pendingRef.current?.reject(new Error(data.error));
         pendingRef.current = null;
@@ -77,12 +89,21 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
       phoneRef.current = phoneNumber;
       setShowOverlay(true);
 
-      if (readyRef.current) {
+      if (usedOnceRef.current) {
+        // reCAPTCHA was already rendered in this WebView session.
+        // Reload the page to get a clean DOM and fresh Firebase state.
+        // The 'ready' message fired by the reloaded page will call fireSendOtp.
+        usedOnceRef.current = false;
+        readyRef.current = false;
+        webViewRef.current?.reload();
+        // Fall through to ping/failsafe below — they handle the wait.
+      } else if (readyRef.current) {
+        // First use and page is already ready — send immediately.
         fireSendOtp(phoneNumber);
       }
-      // else: 'ready' message will trigger fireSendOtp automatically
+      // else: first use, page still loading — 'ready' message triggers fireSendOtp.
 
-      // Ping every 3s as backup in case 'ready' was missed
+      // Ping every 3s as backup in case 'ready' was missed or after a reload.
       retryRef.current = setTimeout(function ping() {
         if (!pendingRef.current) return;
         webViewRef.current?.injectJavaScript("post({type:'pong',ready:ready}); true;");

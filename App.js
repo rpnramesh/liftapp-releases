@@ -218,6 +218,25 @@ const wl = StyleSheet.create({
 // FROM: import { signInWithPhoneNumber, onAuthStateChanged } from 'firebase/auth';
 // TO:   import { signInWithPhoneNumber, onAuthStateChanged, RecaptchaVerifier } from 'firebase/auth';
 
+// Never surface raw Firebase / reCAPTCHA internal error strings to users.
+// Returns a clean, human-readable message regardless of what Firebase throws.
+function friendlyOtpError(e) {
+  const code = e?.code || '';
+  const msg  = (e?.message || '').toLowerCase();
+  if (code === 'auth/too-many-requests'    || msg.includes('too many'))       return 'Too many attempts. Please wait a few minutes and try again.';
+  if (code === 'auth/invalid-phone-number' || msg.includes('invalid phone'))  return 'Invalid phone number format. Please check and try again.';
+  if (code === 'auth/quota-exceeded')                                          return 'SMS quota exceeded. Please try again later.';
+  if (code === 'auth/network-request-failed' || msg.includes('network'))      return 'Network error. Please check your connection and try again.';
+  // reCAPTCHA internals — must never be shown to users
+  if (msg.includes('recaptcha') || msg.includes('captcha') || msg.includes('already been rendered') || msg.includes('render')) {
+    return 'Verification service reset. Please tap "Receive OTP" again.';
+  }
+  if (msg.includes('timeout') || msg.includes('timed out'))                  return 'OTP request timed out. Please try again.';
+  if (code === 'auth/app-not-authorized')                                     return 'App not authorised for phone auth. Please contact support.';
+  // Fallback — show something generic, not the raw Firebase message
+  return 'Could not send OTP. Please try again.';
+}
+
 function OtpLoginScreen({ onSuccess }) {
   const phoneAuthRef = useRef(null);
   const [phone, setPhone] = useState('');
@@ -237,14 +256,8 @@ function OtpLoginScreen({ onSuccess }) {
       setVerificationId(vId);
       setStep('otp');
     } catch (e) {
-      console.log('OTP error:', e?.message);
-      if (e?.message?.includes('too-many-requests') || e?.message?.includes('Too many')) {
-        setError('Too many attempts. Please try again later.');
-      } else if (e?.message?.includes('invalid-phone-number')) {
-        setError('Invalid phone number format.');
-      } else {
-        setError(e?.message || 'Could not send OTP. Please try again.');
-      }
+      console.log('OTP send error:', e?.code, e?.message);
+      setError(friendlyOtpError(e));
     } finally { setLoading(false); }
   };
 
@@ -454,8 +467,8 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
       setVerificationId(vId);
       setStep('otp');
     } catch (e) {
-      console.log('Profile OTP send error:', e?.message);
-      setError(e?.message || 'Could not send OTP. Please try again.');
+      console.log('Profile OTP send error:', e?.code, e?.message);
+      setError(friendlyOtpError(e));
     } finally {
       setLoading(false);
     }
