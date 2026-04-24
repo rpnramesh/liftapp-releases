@@ -57,6 +57,7 @@ import STORAGE_KEYS from './LIFT_PROJECT/constants/storageKeys';
 import theme from './LIFT_PROJECT/constants/theme';
 import sharedC from './LIFT_PROJECT/constants/colors';
 import { Pill as UiPill } from './LIFT_PROJECT/components/ui';
+import SwipeableSetRow from './LIFT_PROJECT/components/ui/SwipeableSetRow';
 import { useTheme, makeStyles, usePalette } from './LIFT_PROJECT/theme/ThemeProvider';
 import ThemeToggle from './LIFT_PROJECT/theme/ThemeToggle';
 
@@ -2477,6 +2478,91 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RPEPickerRow — inline Rate of Perceived Exertion selector.
+//   Appears below a set row immediately after it is marked done.
+//   Auto-dismisses after 4 s if not tapped (parent sets pendingRpeKey=null).
+//   Zones: 1-3 easy (success), 4-6 moderate (brand), 7-8 hard (warning),
+//          9-10 max (danger) — colour-coded for intuition, not just numbers.
+// ─────────────────────────────────────────────────────────────────────────────
+function RPEPickerRow({ onSelect, onSkip, C, t }) {
+  const rpeZone = (n) => {
+    if (n <= 3) return t.success[600];
+    if (n <= 6) return t.brand[600];
+    if (n <= 8) return t.warning[600];
+    return t.danger[600];
+  };
+  const rpeZoneBg = (n) => {
+    if (n <= 3) return 'rgba(22,163,74,0.12)';
+    if (n <= 6) return 'rgba(79,70,229,0.10)';
+    if (n <= 8) return 'rgba(217,119,6,0.12)';
+    return 'rgba(225,29,72,0.10)';
+  };
+  const rpeLabel = (n) => {
+    if (n <= 3) return 'Easy';
+    if (n <= 6) return 'Mod';
+    if (n <= 8) return 'Hard';
+    return 'Max';
+  };
+
+  return (
+    <View style={rpe.row}>
+      <Text style={[rpe.prompt, { color: C.mid }]}>RPE</Text>
+      {[1,2,3,4,5,6,7,8,9,10].map(n => (
+        <TouchableOpacity
+          key={n}
+          style={[rpe.btn, { backgroundColor: rpeZoneBg(n), borderColor: rpeZone(n) + '30' }]}
+          onPress={() => { Vibration.vibrate(8); onSelect(n); }}
+          activeOpacity={0.75}
+        >
+          <Text style={[rpe.num, { color: rpeZone(n) }]}>{n}</Text>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity onPress={onSkip} style={rpe.skip} hitSlop={8}>
+        <Ionicons name="close" size={14} color={C.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const rpe = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+    backgroundColor: theme.surface.sunken,
+    borderTopWidth: 1,
+    borderTopColor: theme.border.subtle,
+  },
+  prompt: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    width: 26,
+  },
+  btn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+  },
+  num: {
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 14,
+  },
+  skip: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
 // ── RestTimerStrip — inline rest countdown, extracted to avoid re-rendering
 // the entire exercise card on every tick. Only the set whose timer is active
 // renders this strip.
@@ -3159,6 +3245,29 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     color: t.brand[t.mode === 'dark' ? 300 : 700],
     letterSpacing: -0.1,
   },
+  // "Match last" button — slightly elevated vs. plain adjust buttons
+  quickBtnMatch: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50],
+    borderColor: t.brand[t.mode === 'dark' ? 700 : 200],
+  },
+
+  /* ── RPE badge on done set row ───────────────────────────────── */
+  rpeBadge: {
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50],
+    borderRadius: t.radius.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: t.brand[t.mode === 'dark' ? 700 : 200],
+  },
+  rpeBadgeTxt: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: t.brand[t.mode === 'dark' ? 300 : 700],
+    letterSpacing: 0.1,
+  },
 
   /* ── Rest timer strip (inline, below set row) ────────────────── */
   restStrip: {
@@ -3344,6 +3453,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [expandedOverview, setExpandedOverview] = useState(null); // overview card expand
   const [localSetWeights, setLocalSetWeights] = useState({});
   const [lastWeights, setLastWeights] = useState({});
+  const [lastReps, setLastReps] = useState({});   // reps from previous session
+  const [rpeLog, setRpeLog] = useState({});        // RPE recorded per stateKey
+  const [pendingRpeKey, setPendingRpeKey] = useState(null); // awaiting RPE input
+  const rpeTimerRef = useRef(null);                // auto-dismiss timer
   const [restTimers, setRestTimers] = useState({});
   const [isPaused, setIsPaused] = useState(false);
   const [scrolledPastHeader, setScrolledPastHeader] = useState(false);
@@ -3407,6 +3520,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     );
   };
   const adjustWkWeight = (stateKey, delta) => {
+    Vibration.vibrate(8); // light haptic confirms action
     const cur = parseFloat(localSetWeights[stateKey] || lastWeights[stateKey] || '0');
     const next = Math.max(0, Math.round((cur + delta) * 10) / 10);
     const updated = { ...localSetWeights, [stateKey]: String(next) };
@@ -3414,11 +3528,20 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     setWorkoutSetWeights(updated);
   };
   const matchWkLast = (stateKey) => {
+    Vibration.vibrate(8);
     const lastW = lastWeights[stateKey];
-    if (!lastW) return;
-    const updated = { ...localSetWeights, [stateKey]: lastW };
-    setLocalSetWeights(updated);
-    setWorkoutSetWeights(updated);
+    const lastR = lastReps[stateKey];
+    if (!lastW && !lastR) return;
+    // Match weight
+    if (lastW) {
+      const updatedW = { ...localSetWeights, [stateKey]: lastW };
+      setLocalSetWeights(updatedW);
+      setWorkoutSetWeights(updatedW);
+    }
+    // Match reps from previous session
+    if (lastR) {
+      setCustomReps(prev => ({ ...prev, [stateKey]: lastR }));
+    }
   };
 
   // ── Floating rest timer (draggable) ─────────────────────────────────────────
@@ -3544,21 +3667,25 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     };
   }, [isLogging, restEndTimes, isPaused]);
 
-  // ── Load last weights from AsyncStorage when logging starts ──────────────────
+  // ── Load last weights + reps from AsyncStorage when logging starts ───────────
   useEffect(() => {
     if (!isLogging) return;
     const exs = (loggingWorkout ?? todayWorkout)?.exercises || [];
     const load = async () => {
-      const stored = {};
+      const storedW = {};
+      const storedR = {};
       for (const ex of exs) {
         for (let s = 1; s <= ex.sets; s++) {
           try {
-            const val = await AsyncStorage.getItem(`lift_w_${ex.id}_s${s}`);
-            if (val) stored[`${ex.id}_${s}`] = val;
+            const w = await AsyncStorage.getItem(`lift_w_${ex.id}_s${s}`);
+            if (w) storedW[`${ex.id}_${s}`] = w;
+            const r = await AsyncStorage.getItem(`lift_r_${ex.id}_s${s}`);
+            if (r) storedR[`${ex.id}_${s}`] = r;
           } catch (_) {}
         }
       }
-      setLastWeights(stored);
+      setLastWeights(storedW);
+      setLastReps(storedR);
     };
     load();
     setLocalSetWeights(workoutSetWeights || {});
@@ -3818,14 +3945,24 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   const markSetDone = async (exId, setNo, defaultRest, totalSets) => {
     const stateKey = `${exId}_${setNo}`;
+    // Persist weight
     const val = localSetWeights[stateKey];
     if (val) {
       try { await AsyncStorage.setItem(`lift_w_${exId}_s${setNo}`, val); } catch (_) {}
+    }
+    // Persist reps so "Match last" can fill them next session
+    const repsVal = customReps[stateKey];
+    if (repsVal != null) {
+      try { await AsyncStorage.setItem(`lift_r_${exId}_s${setNo}`, String(repsVal)); } catch (_) {}
     }
     const newDone = { ...workoutDoneSets, [stateKey]: true };
     setWorkoutDoneSets(newDone);
     vibratedRef.current = {};
     setRestEndTimes({});
+    // Trigger RPE picker — auto-dismisses after 4 s if ignored
+    if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+    setPendingRpeKey(stateKey);
+    rpeTimerRef.current = setTimeout(() => setPendingRpeKey(null), 4000);
 
     const allSetsOfThisExDone = Array.from(
       { length: totalSets }, (_, i) => `${exId}_${i + 1}`
@@ -4545,68 +4682,118 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
                             return (
                               <View key={setNo}>
-                                <View style={[lv.setRow, isDoneSet && lv.setRowDone, isCurrent && lv.setRowCurrent, isFlashing && { overflow: 'hidden' }]}>
-                                  {isFlashing && <Animated.View pointerEvents="none" style={[lv.flashOverlay, { opacity: wkFlashAnim }]} />}
+                                {/* ── Swipe-right gesture wraps the row ──────
+                                    SwipeableSetRow: pan right > 72px → fires
+                                    markSetDone + flash. Disabled once done.
+                                    Tap the ✓ button still works as before.  */}
+                                <SwipeableSetRow
+                                  done={!!isDoneSet}
+                                  enabled={!isDoneSet}
+                                  onComplete={() => {
+                                    markSetDone(ex.id, setNo, ex.rest, totalSets);
+                                    triggerWkFlash(stateKey);
+                                  }}
+                                >
+                                  <View style={[lv.setRow, isDoneSet && lv.setRowDone, isCurrent && lv.setRowCurrent, isFlashing && { overflow: 'hidden' }]}>
+                                    {isFlashing && <Animated.View pointerEvents="none" style={[lv.flashOverlay, { opacity: wkFlashAnim }]} />}
 
-                                  <View style={[lv.setNumBadge, isDoneSet ? lv.setNumBadgeDone : isCurrent ? lv.setNumBadgeCurrent : null]}>
+                                    <View style={[lv.setNumBadge, isDoneSet ? lv.setNumBadgeDone : isCurrent ? lv.setNumBadgeCurrent : null]}>
+                                      {isDoneSet
+                                        ? <Ionicons name="checkmark" size={13} color="#fff" />
+                                        : <Text style={[lv.setNumTxt, isCurrent && lv.setNumTxtCurrent]}>{setNo}</Text>}
+                                    </View>
+
+                                    <View style={lv.repsCol}>
+                                      <Text style={lv.fieldLabel}>REPS</Text>
+                                      {isDoneSet
+                                        ? <Text style={lv.fieldValueDone}>{customReps[stateKey] ?? ex.reps}</Text>
+                                        : <TextInput
+                                            style={[lv.fieldInput, isCurrent && lv.fieldInputActive]}
+                                            keyboardType="number-pad" maxLength={3}
+                                            value={String(customReps[stateKey] ?? ex.reps)}
+                                            onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
+                                            selectTextOnFocus
+                                          />}
+                                    </View>
+
+                                    <View style={lv.weightCol}>
+                                      <Text style={lv.fieldLabel}>KG</Text>
+                                      {isDoneSet
+                                        ? (
+                                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                            <Text style={lv.fieldValueDone}>{localSetWeights[stateKey] || lastW || '—'}</Text>
+                                            {/* RPE badge — shown after user selects RPE */}
+                                            {rpeLog[stateKey] != null && (
+                                              <View style={lv.rpeBadge}>
+                                                <Text style={lv.rpeBadgeTxt}>RPE {rpeLog[stateKey]}</Text>
+                                              </View>
+                                            )}
+                                          </View>
+                                        ) : (
+                                          <TextInput
+                                            style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
+                                            keyboardType="decimal-pad"
+                                            placeholder={lastW || '0'} placeholderTextColor={C.muted}
+                                            value={localSetWeights[stateKey] || ''}
+                                            editable={!isDoneSet}
+                                            onFocus={() => scrollToCard(ex.id)}
+                                            onChangeText={val => {
+                                              const updated = { ...localSetWeights, [stateKey]: val };
+                                              setLocalSetWeights(updated); setWorkoutSetWeights(updated);
+                                            }}
+                                            selectTextOnFocus
+                                          />
+                                        )}
+                                    </View>
+
                                     {isDoneSet
-                                      ? <Ionicons name="checkmark" size={13} color="#fff" />
-                                      : <Text style={[lv.setNumTxt, isCurrent && lv.setNumTxtCurrent]}>{setNo}</Text>}
+                                      ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={30} color={C.green} /></View>
+                                      : <TouchableOpacity
+                                          style={[lv.completeSetBtn, isCurrent && lv.completeSetBtnActive]}
+                                          onPress={() => { markSetDone(ex.id, setNo, ex.rest, totalSets); triggerWkFlash(stateKey); }}
+                                          activeOpacity={0.75}>
+                                          <Ionicons name="checkmark" size={20} color={isCurrent ? '#fff' : C.muted} />
+                                        </TouchableOpacity>}
                                   </View>
+                                </SwipeableSetRow>
 
-                                  <View style={lv.repsCol}>
-                                    <Text style={lv.fieldLabel}>REPS</Text>
-                                    {isDoneSet
-                                      ? <Text style={lv.fieldValueDone}>{customReps[stateKey] ?? ex.reps}</Text>
-                                      : <TextInput
-                                          style={[lv.fieldInput, isCurrent && lv.fieldInputActive]}
-                                          keyboardType="number-pad" maxLength={3}
-                                          value={String(customReps[stateKey] ?? ex.reps)}
-                                          onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
-                                          selectTextOnFocus
-                                        />}
-                                  </View>
-
-                                  <View style={lv.weightCol}>
-                                    <Text style={lv.fieldLabel}>KG</Text>
-                                    {isDoneSet
-                                      ? <Text style={lv.fieldValueDone}>{localSetWeights[stateKey] || lastW || '—'}</Text>
-                                      : <TextInput
-                                          style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
-                                          keyboardType="decimal-pad"
-                                          placeholder={lastW || '0'} placeholderTextColor={C.muted}
-                                          value={localSetWeights[stateKey] || ''}
-                                          editable={!isDoneSet}
-                                          onFocus={() => scrollToCard(ex.id)}
-                                          onChangeText={val => {
-                                            const updated = { ...localSetWeights, [stateKey]: val };
-                                            setLocalSetWeights(updated); setWorkoutSetWeights(updated);
-                                          }}
-                                          selectTextOnFocus
-                                        />}
-                                  </View>
-
-                                  {isDoneSet
-                                    ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={30} color={C.green} /></View>
-                                    : <TouchableOpacity
-                                        style={[lv.completeSetBtn, isCurrent && lv.completeSetBtnActive]}
-                                        onPress={() => { markSetDone(ex.id, setNo, ex.rest, totalSets); triggerWkFlash(stateKey); }}
-                                        activeOpacity={0.75}>
-                                        <Ionicons name="checkmark" size={20} color={isCurrent ? '#fff' : C.muted} />
-                                      </TouchableOpacity>}
-                                </View>
-
-                                {/* Quick-action bar — current set only */}
+                                {/* ── Quick-action bar — current set only ── */}
                                 {isCurrent && !isDoneSet && (
                                   <View style={lv.quickActions}>
-                                    {lastW && <TouchableOpacity style={lv.quickBtn} onPress={() => matchWkLast(stateKey)}><Text style={lv.quickBtnTxt}>Match last</Text></TouchableOpacity>}
+                                    {(lastW || lastReps[stateKey]) && (
+                                      <TouchableOpacity
+                                        style={[lv.quickBtn, lv.quickBtnMatch]}
+                                        onPress={() => matchWkLast(stateKey)}
+                                      >
+                                        <Ionicons name="copy-outline" size={11} color={C.primary} />
+                                        <Text style={[lv.quickBtnTxt, { color: C.primary }]}>Match last</Text>
+                                      </TouchableOpacity>
+                                    )}
                                     <TouchableOpacity style={lv.quickBtn} onPress={() => adjustWkWeight(stateKey, 2.5)}><Text style={lv.quickBtnTxt}>+2.5 kg</Text></TouchableOpacity>
                                     <TouchableOpacity style={lv.quickBtn} onPress={() => adjustWkWeight(stateKey, 5)}><Text style={lv.quickBtnTxt}>+5 kg</Text></TouchableOpacity>
                                     <TouchableOpacity style={lv.quickBtn} onPress={() => adjustWkWeight(stateKey, -2.5)}><Text style={lv.quickBtnTxt}>−2.5</Text></TouchableOpacity>
                                   </View>
                                 )}
 
-                                {/* Inline rest timer */}
+                                {/* ── RPE picker — appears after set is marked
+                                    done, auto-dismisses in 4 s if ignored ── */}
+                                {pendingRpeKey === stateKey && (
+                                  <RPEPickerRow
+                                    C={C}
+                                    t={theme}
+                                    onSelect={(rating) => {
+                                      if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                                      setRpeLog(prev => ({ ...prev, [stateKey]: rating }));
+                                      setPendingRpeKey(null);
+                                    }}
+                                    onSkip={() => {
+                                      if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                                      setPendingRpeKey(null);
+                                    }}
+                                  />
+                                )}
+
+                                {/* ── Inline rest timer ──────────────────── */}
                                 {isDoneSet && restLeft !== undefined && restLeft > 0 && (
                                   <View style={lv.restStrip}>
                                     <Ionicons name="hourglass-outline" size={14} color={restLeft < 20 ? C.red : restLeft < 40 ? C.amber : C.green} />
