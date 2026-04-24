@@ -2501,6 +2501,418 @@ function RestTimerStrip({ stateKey, restTimers, adjustRest, C }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkoutProgressRing — pure-RN circular progress ring.
+//   Uses the two-half-container technique:
+//     • Background track: full-circle border at dim opacity.
+//     • Right arc:  clips to right 50% of space, inner ring rotates to reveal
+//                   0–180° of fill.
+//     • Left arc:   clips to left 50%, reveals 180–360° when progress > 50%.
+//   Rotation formula (both panels start with ring centered on the clip edge):
+//     rightRotation = clamp(angle, 0, 180) − 90   →  sweeps 0° at 0%, 90° at 25%, 180° at 50%
+//     leftRotation  = angle − 270                 →  sweeps 0° at 50%, 90° at 75%, 180° at 100%
+// ─────────────────────────────────────────────────────────────────────────────
+function WorkoutProgressRing({ progress = 0, size = 100, stroke = 8, color, trackColor, children }) {
+  const half = size / 2;
+  const p = Math.max(0, Math.min(1, progress));
+  const angle = p * 360;
+
+  const ringBase = {
+    position: 'absolute',
+    width: size,
+    height: size,
+    borderRadius: half,
+    borderWidth: stroke,
+  };
+
+  return (
+    <View style={{ width: size, height: size }}>
+      {/* Track ring */}
+      <View style={[ringBase, { borderColor: trackColor }]} />
+
+      {/* Right clip — reveals 0-180° of progress */}
+      {p > 0 && (
+        <View style={{
+          position: 'absolute',
+          width: half, height: size,
+          right: 0, overflow: 'hidden',
+        }}>
+          {/* Ring center (by right:0) aligns to left edge of panel = center of full circle */}
+          <View style={[
+            ringBase,
+            { right: 0, borderColor: color },
+            { transform: [{ rotate: `${Math.min(angle, 180) - 90}deg` }] },
+          ]} />
+        </View>
+      )}
+
+      {/* Left clip — reveals 180-360° when progress > 50% */}
+      {p > 0.5 && (
+        <View style={{
+          position: 'absolute',
+          width: half, height: size,
+          left: 0, overflow: 'hidden',
+        }}>
+          {/* Ring center (by left:0) aligns to right edge of panel = center of full circle */}
+          <View style={[
+            ringBase,
+            { left: 0, borderColor: color },
+            { transform: [{ rotate: `${angle - 270}deg` }] },
+          ]} />
+        </View>
+      )}
+
+      {/* Center content overlay */}
+      <View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkoutHeroHeader — replaces the minimal sticky header during active logging.
+//
+//   Layout (pinned above the ScrollView, same z-layer as stickyHeader):
+//
+//   ┌────────────────────────────────────────────────────────┐
+//   │ Row 1:  ← workout name                [■ pause] [✓]  │  48px
+//   ├────────────────────────────────────────────────────────┤
+//   │ Row 2:  ◯ BIG TIMER ◯    2/6 exercises    ●●●●○○    │  96px
+//   ├────────────────────────────────────────────────────────┤
+//   │ Row 3:  ↳ Current: Incline Barbell Press · Set 2/4   │  36px
+//   ├────────────────────────────────────────────────────────┤
+//   │ Row 4:  ████████████░░░░░░░░  thin progress bar       │  4px
+//   └────────────────────────────────────────────────────────┘
+//
+//   Design parity: surface card look matching web `.card-raised`, brand-600
+//   ring/accent matching web primary buttons, typography uses token scale.
+// ─────────────────────────────────────────────────────────────────────────────
+function WorkoutHeroHeader({
+  workoutName,
+  elapsed,
+  doneCount,
+  totalExercises,
+  currentExName,
+  totalDoneSets,
+  totalSets,
+  allDone,
+  isPaused,
+  elapsedColor,
+  C,
+  t,
+  onPauseToggle,
+  onFinish,
+}) {
+  const progress = totalExercises > 0 ? doneCount / totalExercises : 0;
+
+  // Ring color: matches exercise completion state
+  const ringColor = allDone ? C.green
+    : progress >= 0.67 ? t.success[500]
+    : progress >= 0.33 ? t.brand[400]
+    : t.brand[600];
+
+  const ringTrack = t.mode === 'dark'
+    ? 'rgba(255,255,255,0.08)'
+    : 'rgba(0,0,0,0.06)';
+
+  return (
+    <View style={wkh.container}>
+      {/* ── Row 1: Workout name + controls ─────────────────────── */}
+      <View style={wkh.topRow}>
+        <Text style={wkh.workoutName} numberOfLines={1}>
+          {workoutName || 'Workout Log'}
+        </Text>
+        <View style={wkh.controls}>
+          <TouchableOpacity
+            onPress={onPauseToggle}
+            style={wkh.controlBtn}
+            hitSlop={8}
+          >
+            <Ionicons
+              name={isPaused ? 'play' : 'pause'}
+              size={18}
+              color={C.primary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onFinish}
+            style={[wkh.controlBtn, wkh.finishBtn]}
+            hitSlop={8}
+          >
+            <Ionicons name="checkmark-done" size={15} color="#fff" />
+            <Text style={wkh.finishBtnTxt}>Finish</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── Row 2: Ring timer + progress info ──────────────────── */}
+      <View style={wkh.midRow}>
+        {/* Circular timer ring */}
+        <WorkoutProgressRing
+          progress={progress}
+          size={88}
+          stroke={7}
+          color={ringColor}
+          trackColor={ringTrack}
+        >
+          {/* Timer inside ring */}
+          <View style={{ alignItems: 'center' }}>
+            {isPaused ? (
+              <Ionicons name="pause" size={22} color={C.mid} />
+            ) : (
+              <Text style={[wkh.timerText, { color: elapsedColor }]}>
+                {formatElapsed(elapsed)}
+              </Text>
+            )}
+            <Text style={wkh.timerLabel}>
+              {allDone ? 'DONE' : isPaused ? 'PAUSED' : 'ELAPSED'}
+            </Text>
+          </View>
+        </WorkoutProgressRing>
+
+        {/* Right side: exercise count + set dots */}
+        <View style={wkh.statsCol}>
+          {/* Exercise fraction */}
+          <View style={wkh.exFractionRow}>
+            <Text style={[wkh.exDone, { color: ringColor }]}>
+              {doneCount}
+            </Text>
+            <Text style={wkh.exTotal}> of {totalExercises} exercises</Text>
+          </View>
+
+          {/* Exercise dot indicators (max 8 shown) */}
+          <View style={wkh.dotsRow}>
+            {Array.from({ length: Math.min(totalExercises, 8) }, (_, i) => (
+              <View
+                key={i}
+                style={[
+                  wkh.dot,
+                  i < doneCount
+                    ? [wkh.dotDone, { backgroundColor: ringColor }]
+                    : wkh.dotPending,
+                ]}
+              />
+            ))}
+            {totalExercises > 8 && (
+              <Text style={wkh.dotsOverflow}>+{totalExercises - 8}</Text>
+            )}
+          </View>
+
+          {/* Sets fraction */}
+          {totalSets > 0 && (
+            <Text style={wkh.setsFraction}>
+              {totalDoneSets}/{totalSets} sets logged
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* ── Row 3: Current exercise ─────────────────────────────── */}
+      {currentExName && !allDone && (
+        <View style={wkh.currentRow}>
+          <View style={[wkh.currentAccent, { backgroundColor: ringColor }]} />
+          <Ionicons name="barbell-outline" size={12} color={C.mid} />
+          <Text style={wkh.currentLabel}>NOW  </Text>
+          <Text style={wkh.currentName} numberOfLines={1}>{currentExName}</Text>
+        </View>
+      )}
+      {allDone && (
+        <View style={wkh.currentRow}>
+          <View style={[wkh.currentAccent, { backgroundColor: C.green }]} />
+          <Ionicons name="checkmark-circle" size={14} color={C.green} />
+          <Text style={[wkh.currentName, { color: C.green, marginLeft: 6 }]}>
+            All exercises complete!
+          </Text>
+        </View>
+      )}
+
+      {/* ── Row 4: Thin horizontal progress bar ─────────────────── */}
+      <View style={wkh.progressTrack}>
+        <View style={[
+          wkh.progressFill,
+          {
+            width: `${Math.round(progress * 100)}%`,
+            backgroundColor: ringColor,
+          },
+        ]} />
+      </View>
+    </View>
+  );
+}
+
+// WorkoutHeroHeader styles — inlined rather than makeStyles since this
+// component also uses C (palette) which is already reactive.
+const wkh = StyleSheet.create({
+  container: {
+    backgroundColor: '#0000',  // transparent — takes parent bg
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 0,
+    borderBottomWidth: 1,
+    // borderColor set inline from theme
+  },
+  /* Row 1 */
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  workoutName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginRight: 10,
+    color: theme.text.primary,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  controlBtn: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: theme.border.default,
+  },
+  finishBtn: {
+    flexDirection: 'row', gap: 5,
+    width: 'auto', paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#16a34a',
+    borderColor: '#15803d',
+  },
+  finishBtnTxt: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  /* Row 2 */
+  midRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    marginBottom: 10,
+  },
+  timerText: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    fontVariant: ['tabular-nums'],
+    lineHeight: 26,
+  },
+  timerLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    opacity: 0.5,
+    marginTop: 1,
+  },
+  statsCol: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 6,
+  },
+  exFractionRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  exDone: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
+  },
+  exTotal: {
+    fontSize: 13,
+    fontWeight: '500',
+    opacity: 0.55,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    gap: 4,
+  },
+  dot: {
+    width: 8, height: 8,
+    borderRadius: 4,
+  },
+  dotDone: {},
+  dotPending: {
+    backgroundColor: theme.border.default,
+  },
+  dotsOverflow: {
+    fontSize: 10,
+    fontWeight: '700',
+    opacity: 0.5,
+    marginLeft: 2,
+  },
+  setsFraction: {
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.45,
+    letterSpacing: 0.1,
+  },
+
+  /* Row 3 */
+  currentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingLeft: 2,
+  },
+  currentAccent: {
+    width: 3, height: 14, borderRadius: 2,
+  },
+  currentLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    opacity: 0.4,
+    textTransform: 'uppercase',
+  },
+  currentName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.1,
+  },
+
+  /* Row 4 — thin progress bar */
+  progressTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: theme.border.subtle,
+    overflow: 'hidden',
+    marginHorizontal: -16,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    minWidth: 3,
+  },
+});
+
+// Wrapper style for the hero header — positioned outside ScrollView so it
+// stays fixed above the exercise list. Color values are set inline (C.card,
+// C.border) so they respond to the live palette (dark mode).
+const wk_heroHeaderBase = {
+  borderBottomWidth: 1,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // LoggingView styles (lv) — restyled to match web admin design system.
 //   Every key name is preserved so the 760-line JSX in LoggingView() continues
@@ -3354,6 +3766,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const doneCount = logExercises.filter(ex => allSetsOf(ex)).length;
   const elapsed = workoutTimer?.elapsed || 0;
   const elapsedColor = allDone ? C.green : elapsed > 3600 ? C.red : elapsed > 1800 ? C.amber : C.green;
+
+  // Total set counts for hero header "X/Y sets logged"
+  const totalSetsAll = logExercises.reduce((s, ex) => s + getTotalSets(ex), 0);
+  const totalDoneSetsAll = logExercises.reduce((s, ex) => {
+    return s + Array.from({ length: getTotalSets(ex) }, (_, i) => `${ex.id}_${i + 1}`).filter(k => workoutDoneSets[k]).length;
+  }, 0);
+  // Name of first incomplete exercise — shown in "NOW" line
+  const currentExName = isLogging
+    ? (logExercises.find(ex => !allSetsOf(ex) && !isSkipped(ex))?.name || null)
+    : null;
   const formatRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   const startRestTimer = (stateKey, secs) => {
@@ -3520,24 +3942,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      {/* Sticky workout header — visible only while logging */}
+      {/* ── Hero workout header — replaces the old minimal sticky bar ── */}
       {isLogging && (
-        <View style={wk.stickyHeader}>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={wk.stickyTitle}>Workout Log</Text>
-            {scrolledPastHeader && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Ionicons name={allDone ? 'checkmark-circle-outline' : 'time-outline'} size={13} color={elapsedColor} />
-                <Text style={[wk.stickyTimer, { color: elapsedColor }]}>{formatElapsed(elapsed)}</Text>
-              </View>
-            )}
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <Text style={wk.stickyCount}>{doneCount}/{logExercises.length} done</Text>
-            <TouchableOpacity onPress={handlePauseToggle} style={wk.pauseBtn}>
-              <Ionicons name={isPaused ? 'play' : 'pause-circle-outline'} size={28} color={C.primary} />
-            </TouchableOpacity>
-          </View>
+        <View style={[wk.heroHeader, {
+          backgroundColor: C.card,
+          borderBottomColor: C.border,
+        }]}>
+          <WorkoutHeroHeader
+            workoutName={activeWorkout?.dayLabel || activeWorkout?.name || 'Workout'}
+            elapsed={elapsed}
+            doneCount={doneCount}
+            totalExercises={logExercises.length}
+            currentExName={currentExName}
+            totalDoneSets={totalDoneSetsAll}
+            totalSets={totalSetsAll}
+            allDone={allDone}
+            isPaused={isPaused}
+            elapsedColor={elapsedColor}
+            C={C}
+            t={theme}
+            onPauseToggle={handlePauseToggle}
+            onFinish={() => { setCompleteMinutes(''); setShowCompleteModal(true); }}
+          />
         </View>
       )}
 
@@ -4521,6 +4947,11 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   postponeBtnTxt: { color: t.warning[700], fontWeight: '700', fontSize: t.fontSize.base },
 
   /* ── Sticky logging header (appears when scrolled past hero) ─── */
+  /* heroHeader wrapper — color set inline from C.card / C.border */
+  heroHeader: {
+    borderBottomWidth: 1,
+  },
+  /* Keep stickyHeader for non-logging use (if ever restored) */
   stickyHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 18, paddingVertical: 14,
