@@ -19,10 +19,12 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  LayoutAnimation,
   PanResponder,
   Platform,
   Pressable,
   Share,
+  UIManager,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -3255,6 +3257,23 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   },
 
   /* ── RPE badge on done set row ───────────────────────────────── */
+  /* ── Exercise state labels (active logging right-side badges) ────────────
+     Each encodes status without relying on color alone (accessibility).
+     DONE: success-tinted · UP NEXT: neutral · X/Y: brand · SKIP: muted  */
+  exStateLabelBase: {
+    borderRadius: t.radius.full,
+    paddingHorizontal: 7, paddingVertical: 2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  exStateLabelDone:    { borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(22,163,74,0.12)' },
+  exStateLabelActive:  { borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.20)' : t.brand[50] },
+  exStateLabelIdle:    { borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: t.surface.sunken },
+  exStateLabelSkip:    { borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(0,0,0,0.06)' },
+  exStateLabelTxtDone:   { fontSize: 9, fontWeight: '800', letterSpacing: 0.8, color: t.success[t.mode === 'dark' ? 400 : 700] },
+  exStateLabelTxtActive: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4, color: t.brand[t.mode === 'dark' ? 300 : 700], fontVariant: ['tabular-nums'] },
+  exStateLabelTxtIdle:   { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, color: t.text.tertiary },
+  exStateLabelTxtSkip:   { fontSize: 9, fontWeight: '700', letterSpacing: 0.8, color: t.text.disabled },
+
   rpeBadge: {
     backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50],
     borderRadius: t.radius.full,
@@ -3442,6 +3461,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const C = usePalette();
   const g = useGlobalStyles();
   const wk = useWkStyles();
+  // Enable LayoutAnimation on Android — required once per screen mount.
+  // On iOS it works without this call.
+  useEffect(() => {
+    if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
+  }, []);
   const lv = useLvStyles();
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
@@ -4233,7 +4257,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     <View key={exKey} style={wk.exCardStatic}>
                       <TouchableOpacity
                         style={wk.exCardTouch}
-                        onPress={() => setExpandedOverview(isOpen ? null : exKey)}
+                        onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : exKey); }}
                         activeOpacity={0.7}
                       >
                         <TouchableOpacity style={wk.exIcon} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} activeOpacity={0.6}>
@@ -4356,46 +4380,88 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   </View>
                 ) : null}
 
-                {/* Expandable exercise list — shown when not logging */}
-                {!isLogging && todayWorkout.exercises?.map(ex => {
+                {/* ── Overview exercise cards (pre-logging state) ─────────────
+                    Improvements vs before:
+                    • Exercise sequence number (01, 02…) in the icon chip
+                    • Status badge: "DONE ✓" / "Xkg last" — at-a-glance info
+                    • Muscle group tag visible in collapsed state
+                    • Placeholder rows use token colors (not hardcoded greys)
+                    • LayoutAnimation on expand for smooth height transition  */}
+                {!isLogging && todayWorkout.exercises?.map((ex, exIdx) => {
                   const isOpen = expandedOverview === ex.id;
                   const isDone = allSetsOf(ex);
+                  // Best previous weight for this exercise (set 1, if loaded)
+                  const bestPrevW = lastWeights[`${ex.id}_1`];
                   return (
                     <View key={ex.id} style={[wk.exCardStatic, isDone && wk.exCardDone]}>
                       <TouchableOpacity
                         style={wk.exCardTouch}
-                        onPress={() => setExpandedOverview(isOpen ? null : ex.id)}
-                        activeOpacity={0.7}
+                        onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : ex.id); }}
+                        activeOpacity={0.75}
                       >
-                        <TouchableOpacity style={[wk.exIcon, isDone && wk.exIconDone]} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} activeOpacity={0.6}>
+                        {/* Icon chip: shows sequence number until done, then checkmark */}
+                        <TouchableOpacity
+                          style={[wk.exIcon, isDone && wk.exIconDone]}
+                          onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
+                          activeOpacity={0.6}
+                        >
                           {isDone
-                            ? <Ionicons name="checkmark" size={22} color="#fff" />
-                            : <Ionicons name="play-circle" size={22} color={C.deepBlue} />
+                            ? <Ionicons name="checkmark" size={20} color="#fff" />
+                            : <Text style={wk.exSeqNum}>{String(exIdx + 1).padStart(2, '0')}</Text>
                           }
                         </TouchableOpacity>
+
                         <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Ionicons name="fitness-outline" size={13} color={isDone ? C.green : C.mid} />
-                            <Text style={[wk.exName, isDone && wk.exNameDone]}>{ex.name}</Text>
-                          </View>
-                          <Text style={wk.exMeta}>
-                            {ex.sets} sets × {ex.reps} reps  •  {ex.rest}s rest
+                          {/* Exercise name */}
+                          <Text style={[wk.exName, isDone && wk.exNameDone]} numberOfLines={1}>
+                            {ex.name}
                           </Text>
+
+                          {/* Meta: sets × reps · rest */}
+                          <Text style={wk.exMeta}>
+                            {ex.sets} sets × {ex.reps} reps  ·  {ex.rest}s rest
+                          </Text>
+
+                          {/* Bottom row: muscle tag + last weight */}
+                          <View style={wk.exMetaRow}>
+                            {ex.muscleGroup ? (
+                              <View style={wk.exMusclePill}>
+                                <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
+                              </View>
+                            ) : null}
+                            {bestPrevW && !isDone ? (
+                              <Text style={wk.exLastWeight}>Last: {bestPrevW} kg</Text>
+                            ) : null}
+                          </View>
                         </View>
-                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isDone ? C.green : '#C7C7CC'} />
+
+                        {/* Right: status badge + chevron */}
+                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                          {isDone ? (
+                            <View style={wk.exStatusDone}>
+                              <Ionicons name="checkmark-circle" size={12} color={C.green} />
+                              <Text style={[wk.exStatusTxt, { color: C.green }]}>DONE</Text>
+                            </View>
+                          ) : (
+                            <View style={wk.exStatusReady}>
+                              <Text style={[wk.exStatusTxt, { color: C.muted }]}>READY</Text>
+                            </View>
+                          )}
+                          <Ionicons
+                            name={isOpen ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={isDone ? C.green : C.muted}
+                          />
+                        </View>
                       </TouchableOpacity>
+
+                      {/* Expanded: read-only set preview */}
                       {isOpen && (
                         <View style={lv.setsContainer}>
-                          {ex.muscleGroup ? (
-                            <View style={[wk.exMusclePill, { marginLeft: 0, marginBottom: 8 }]}>
-                              <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
-                            </View>
-                          ) : null}
                           <View style={lv.setHeaderRow}>
                             <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
-                            <Text style={[lv.setHeaderTxt, { width: 48 }]}>REPS</Text>
-                            <Text style={[lv.setHeaderTxt, { width: 48 }]}>PREV</Text>
-                            <Text style={[lv.setHeaderTxt, { flex: 1 }]}>WEIGHT</Text>
+                            <Text style={[lv.setHeaderTxt, { width: 52 }]}>REPS</Text>
+                            <Text style={[lv.setHeaderTxt, { flex: 1 }]}>PREV WEIGHT</Text>
                           </View>
                           {(ex.warmupSets > 0) && Array.from({ length: ex.warmupSets }, (_, i) => {
                             const stateKey = `${ex.id}_w_${i + 1}`;
@@ -4408,14 +4474,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                 <View style={lv.repsBox}>
                                   <Text style={lv.repsVal}>{ex.reps}</Text>
                                 </View>
-                                <View style={lv.lastBox}>
-                                  <Text style={lv.lastVal}>{lastW || '—'}</Text>
-                                </View>
-                                <View style={lv.weightGroup}>
-                                  <View style={[lv.weightInput, { backgroundColor: '#F0F0F2', borderColor: '#E0E0E3' }]}>
-                                    <Text style={{ color: '#C7C7CC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>—</Text>
-                                  </View>
-                                  <Text style={lv.kgLbl}>kg</Text>
+                                <View style={[lv.weightGroup, { justifyContent: 'center' }]}>
+                                  <Text style={[lv.lastVal, { fontSize: 15 }]}>{lastW ? `${lastW} kg` : '—'}</Text>
                                 </View>
                               </View>
                             );
@@ -4432,21 +4492,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                 <View style={lv.repsBox}>
                                   <Text style={lv.repsVal}>{ex.reps}</Text>
                                 </View>
-                                <View style={lv.lastBox}>
-                                  <Text style={lv.lastVal}>{lastW || '—'}</Text>
-                                </View>
-                                <View style={lv.weightGroup}>
-                                  <View style={[lv.weightInput, { backgroundColor: '#F0F0F2', borderColor: '#E0E0E3' }]}>
-                                    <Text style={{ color: '#C7C7CC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>—</Text>
-                                  </View>
-                                  <Text style={lv.kgLbl}>kg</Text>
+                                <View style={[lv.weightGroup, { justifyContent: 'center' }]}>
+                                  <Text style={[lv.lastVal, { fontSize: 15 }]}>{lastW ? `${lastW} kg` : '—'}</Text>
                                 </View>
                               </View>
                             );
                           })}
                           {ex.note ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.deepBlue} />
+                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.primary} />
                               <Text style={wk.exNoteText}>{ex.note}</Text>
                             </View>
                           ) : null}
@@ -4539,7 +4593,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   {/* Card header */}
                   <TouchableOpacity
                     style={lv.exHeader}
-                    onPress={() => setExpanded(isOpen ? null : ex.id)}
+                    onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpanded(isOpen ? null : ex.id); }}
                     activeOpacity={0.8}
                   >
                     {/* Status chip — taps open video */}
@@ -4577,12 +4631,32 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       )}
                     </View>
 
-                    <Ionicons
-                      name={isOpen ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={isDone ? C.green : isInProgress ? C.primary : C.muted}
-                      style={{ marginLeft: 8 }}
-                    />
+                    {/* Right-side status indicator — text label encodes state
+                        at a glance without requiring the card to be expanded */}
+                    <View style={{ alignItems: 'flex-end', gap: 4, marginLeft: 8 }}>
+                      {isDone && !skipped ? (
+                        <View style={lv.exStateLabelDone}>
+                          <Text style={lv.exStateLabelTxtDone}>DONE</Text>
+                        </View>
+                      ) : isInProgress ? (
+                        <View style={lv.exStateLabelActive}>
+                          <Text style={lv.exStateLabelTxtActive}>{doneSetsCount}/{totalSets}</Text>
+                        </View>
+                      ) : skipped ? (
+                        <View style={lv.exStateLabelSkip}>
+                          <Text style={lv.exStateLabelTxtSkip}>SKIP</Text>
+                        </View>
+                      ) : (
+                        <View style={lv.exStateLabelIdle}>
+                          <Text style={lv.exStateLabelTxtIdle}>UP NEXT</Text>
+                        </View>
+                      )}
+                      <Ionicons
+                        name={isOpen ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={isDone ? C.green : isInProgress ? C.primary : C.muted}
+                      />
+                    </View>
                   </TouchableOpacity>
 
                   {/* Expanded: set rows */}
@@ -5097,6 +5171,17 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   },
   exMuscleText: { fontSize: 11, fontWeight: '700', color: t.brand[700], letterSpacing: 0.2 },
   exNoteText:   { fontSize: 12, color: t.text.secondary, fontStyle: 'italic', flex: 1, lineHeight: 18 },
+
+  /* ── Overview card additions ────────────────────────────────────────────── */
+  // Sequence number inside icon chip (01, 02…)
+  exSeqNum: { fontSize: 14, fontWeight: '800', color: t.brand[t.mode === 'dark' ? 300 : 600], letterSpacing: -0.5 },
+  // Bottom metadata row (muscle tag + last weight)
+  exMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' },
+  exLastWeight: { fontSize: 11, fontWeight: '600', color: t.brand[t.mode === 'dark' ? 400 : 600] },
+  // "DONE" / "READY" pills on overview cards
+  exStatusDone: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(22,163,74,0.10)', borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2 },
+  exStatusReady: { backgroundColor: t.surface.sunken, borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2 },
+  exStatusTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
 
   /* ── Live chip ("in progress") — web status-pill-brand ───────── */
   liveChip: {
