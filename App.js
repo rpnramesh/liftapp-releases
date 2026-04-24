@@ -57,7 +57,7 @@ import STORAGE_KEYS from './LIFT_PROJECT/constants/storageKeys';
 import theme from './LIFT_PROJECT/constants/theme';
 import sharedC from './LIFT_PROJECT/constants/colors';
 import { Pill as UiPill } from './LIFT_PROJECT/components/ui';
-import { useTheme, makeStyles } from './LIFT_PROJECT/theme/ThemeProvider';
+import { useTheme, makeStyles, usePalette } from './LIFT_PROJECT/theme/ThemeProvider';
 import ThemeToggle from './LIFT_PROJECT/theme/ThemeToggle';
 
 const { width } = Dimensions.get('window');
@@ -810,6 +810,9 @@ function MembershipDetailModal({ visible, onClose, member }) {
 //     ≥48 px (finger-friendly; exceeds Apple's 44 pt minimum).
 // ═══════════════════════════════════════════════════════════════════════════════
 function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount, onStartWorkout }) {
+  const C = usePalette();
+  const g = useGlobalStyles();
+  const hm = useHmStyles();
   const [showMembership, setShowMembership] = useState(false);
 
   // ── Derived values ───────────────────────────────────────────────────────
@@ -1188,6 +1191,7 @@ function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout
 //   • a soft white diagonal wash in the top-left (like .stat-card::before)
 //   • a thin 1px white inset edge at the top (like btn-primary inset shadow)
 function HeroHighlight() {
+  const hm = useHmStyles();
   return (
     <>
       <View pointerEvents="none" style={hm.heroGlowTL} />
@@ -1201,6 +1205,7 @@ function HeroHighlight() {
 // One of the 3 home stat cards. Uses the surface-card look from
 // `/src/index.css > .stat-card`.
 function QuickStat({ icon, tone = 'brand', value, unit, label, footer, onPress }) {
+  const hm = useHmStyles();
   const tones = {
     brand:   { icon: theme.brand[600],   chip: 'rgba(79,70,229,0.10)'  },
     success: { icon: theme.success[600], chip: 'rgba(22,163,74,0.10)'  },
@@ -1223,12 +1228,12 @@ function QuickStat({ icon, tone = 'brand', value, unit, label, footer, onPress }
   );
 }
 
-const hm = StyleSheet.create({
+const useHmStyles = makeStyles((t) => StyleSheet.create({
   // ── Scroll wrap ────────────────────────────────────────────────────────
   scrollContent: {
-    paddingHorizontal: theme.spacing.pageX,
-    paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[6],
+    paddingHorizontal: t.spacing.pageX,
+    paddingTop: t.spacing[3],
+    paddingBottom: t.spacing[6],
   },
 
   // ── Header ─────────────────────────────────────────────────────────────
@@ -1236,77 +1241,77 @@ const hm = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing[5],
+    marginBottom: t.spacing[5],
   },
   // Greeting: h1 weight, tight tracking — the one big moment of typography
-  greet:     { fontSize: theme.fontSize['3xl'], fontWeight: '700', color: theme.text.primary, letterSpacing: -0.4 },
-  greetName: { color: theme.brand[700] },
-  greetWave: { fontSize: theme.fontSize['2xl'] },
-  greetDate: { ...theme.typography.caption, marginTop: 2, color: theme.text.secondary },
+  greet:     { fontSize: t.fontSize['3xl'], fontWeight: '700', color: t.text.primary, letterSpacing: -0.4 },
+  greetName: { color: t.brand[700] },
+  greetWave: { fontSize: t.fontSize['2xl'] },
+  greetDate: { ...t.typography.caption, marginTop: 2, color: t.text.secondary },
 
   // Bell — 44×44 tap zone, subtle neutral pill bg on press
   bellBtn: {
     width: 44, height: 44,
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.xs,
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.xs,
   },
   bellBadge: {
     position: 'absolute', top: 8, right: 8,
     minWidth: 16, height: 16, borderRadius: 8,
     paddingHorizontal: 3,
-    backgroundColor: theme.danger[500],
+    backgroundColor: t.danger[500],
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: theme.surface.default,
+    borderWidth: 2, borderColor: t.surface.default,
   },
   bellBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: '800' },
 
   // ── Hero workout card ──────────────────────────────────────────────────
   hero: {
-    backgroundColor: theme.brand[600],          // indigo-600, matches web
-    borderRadius: theme.radius['2xl'],          // 20 — larger than generic cards
+    backgroundColor: t.brand[600],          // indigo-600, matches web
+    borderRadius: t.radius['2xl'],          // 20 — larger than generic cards
     padding: 20,
-    marginBottom: theme.spacing.section,
+    marginBottom: t.spacing.section,
     overflow: 'hidden',
     position: 'relative',
-    ...theme.shadow.brand,                      // branded glow (brand[600] @ 0.3)
+    ...t.shadow.brand,                      // branded glow (brand[600] @ 0.3)
   },
-  heroMuted: { backgroundColor: theme.brand[700] }, // "no session today"
-  heroRest:  { backgroundColor: theme.neutral[700] }, // "rest day" — neutral, not brand
+  heroMuted: { backgroundColor: t.brand[700] }, // "no session today"
+  heroRest:  { backgroundColor: t.neutral[700] }, // "rest day" — neutral, not brand
 
   heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: theme.spacing[2],
+    marginBottom: t.spacing[2],
   },
 
   heroPlanTag: {
     color: 'rgba(255,255,255,0.95)',
-    fontSize: theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     fontWeight: '700',
     marginBottom: 4,
     letterSpacing: -0.2,
   },
   heroLabel: {
     color: 'rgba(255,255,255,0.72)',
-    fontSize: theme.fontSize['2xs'],
+    fontSize: t.fontSize['2xs'],
     fontWeight: '700',
     letterSpacing: 1.2,
   },
   heroTimePill: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.18)',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
   },
   heroTimeTxt: { color: 'rgba(255,255,255,0.95)', fontSize: 12, fontWeight: '600' },
 
   heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   heroTitle: {
-    fontSize: theme.fontSize['3xl'],
+    fontSize: t.fontSize['3xl'],
     fontWeight: '800',
     color: '#fff',
     letterSpacing: -0.6,
@@ -1318,7 +1323,7 @@ const hm = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.22)',
     alignSelf: 'flex-start',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
     marginBottom: 8,
   },
@@ -1327,7 +1332,7 @@ const hm = StyleSheet.create({
 
   heroSub: {
     color: 'rgba(255,255,255,0.78)',
-    fontSize: theme.fontSize.sm,
+    fontSize: t.fontSize.sm,
     lineHeight: 20,
     marginBottom: 16,
   },
@@ -1340,12 +1345,12 @@ const hm = StyleSheet.create({
     gap: 8,
     backgroundColor: 'rgba(255,255,255,0.20)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
-    borderRadius: theme.radius.md,
+    borderRadius: t.radius.md,
     paddingVertical: 14, paddingHorizontal: 16,
     minHeight: 48,
   },
   heroCtaDone: { backgroundColor: 'rgba(34,197,94,0.28)', borderColor: 'rgba(34,197,94,0.4)' },
-  heroCtaTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: -0.1 },
+  heroCtaTxt: { color: '#fff', fontWeight: '700', fontSize: t.fontSize.md, letterSpacing: -0.1 },
 
   // Diagonal highlight wash — top-left (simulates .stat-card::before)
   heroGlowTL: {
@@ -1370,80 +1375,80 @@ const hm = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: theme.brand[50],
-    borderWidth: 1, borderColor: theme.brand[100],
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.brand[50],
+    borderWidth: 1, borderColor: t.brand[100],
+    borderRadius: t.radius.xl,
     padding: 16,
-    marginBottom: theme.spacing.section,
+    marginBottom: t.spacing.section,
   },
   emptyHeroIcon: {
     width: 44, height: 44,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.surface.default,
+    borderRadius: t.radius.md,
+    backgroundColor: t.surface.default,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: theme.brand[100],
+    borderWidth: 1, borderColor: t.brand[100],
   },
-  emptyHeroTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary },
-  emptyHeroSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  emptyHeroTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary },
+  emptyHeroSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
 
   // ── Section label + right action ───────────────────────────────────────
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing[3],
+    marginBottom: t.spacing[3],
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginBottom: theme.spacing[3],
-    marginTop: theme.spacing[5],
+    marginBottom: t.spacing[3],
+    marginTop: t.spacing[5],
   },
   sectionAction: {
     fontSize: 12,
     fontWeight: '600',
-    color: theme.brand[600],
-    marginTop: theme.spacing[5],
-    marginBottom: theme.spacing[3],
+    color: t.brand[600],
+    marginTop: t.spacing[5],
+    marginBottom: t.spacing[3],
   },
 
   // ── Quick Stats ────────────────────────────────────────────────────────
   statsRow: { flexDirection: 'row', gap: 10 },
   statCard: {
     flex: 1,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.border.default,
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.border.default,
+    borderRadius: t.radius.xl,
     padding: 12,
     minHeight: 112,            // finger-friendly tap target
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   statIconChip: {
     width: 28, height: 28,
-    borderRadius: theme.radius.sm,
+    borderRadius: t.radius.sm,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 8,
   },
   statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   statValue: {
-    fontSize: theme.fontSize['2xl'],      // 20 — mirrors web text-metric-sm
+    fontSize: t.fontSize['2xl'],      // 20 — mirrors web text-metric-sm
     fontWeight: '800',
-    color: theme.text.primary,
+    color: t.text.primary,
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
   },
   statUnit: {
     fontSize: 11,
     fontWeight: '600',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
   },
   statLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginTop: 4,
@@ -1457,22 +1462,22 @@ const hm = StyleSheet.create({
 
   // Micro-visual: segmented bar for exercise count
   segRow: { flexDirection: 'row', gap: 2 },
-  seg: { flex: 1, height: 3, borderRadius: 2, backgroundColor: theme.warning[400] },
+  seg: { flex: 1, height: 3, borderRadius: 2, backgroundColor: t.warning[400] },
 
   // ── Membership card ────────────────────────────────────────────────────
   memberCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.border.default,
-    borderRadius: theme.radius.lg,
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.border.default,
+    borderRadius: t.radius.lg,
     padding: 14,
     paddingLeft: 18,            // leaves room for accent bar
-    marginBottom: theme.spacing[3],
+    marginBottom: t.spacing[3],
     overflow: 'hidden',
     minHeight: 68,              // finger-friendly
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   memberAccent: {
     position: 'absolute', left: 0, top: 0, bottom: 0,
@@ -1480,12 +1485,12 @@ const hm = StyleSheet.create({
   },
   memberIconWrap: {
     width: 40, height: 40,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.brand[50],
+    borderRadius: t.radius.md,
+    backgroundColor: t.brand[50],
     alignItems: 'center', justifyContent: 'center',
   },
-  memberTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
-  memberSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  memberTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
+  memberSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
   memberRight: { flexDirection: 'row', alignItems: 'center' },
 
   // ── Trainer card ───────────────────────────────────────────────────────
@@ -1493,22 +1498,22 @@ const hm = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.border.default,
-    borderRadius: theme.radius.lg,
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.border.default,
+    borderRadius: t.radius.lg,
     padding: 14,
     minHeight: 68,
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   trainerIconWrap: {
     width: 44, height: 44,
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.brand[50],
+    borderRadius: t.radius.md,
+    backgroundColor: t.brand[50],
     alignItems: 'center', justifyContent: 'center',
   },
-  trainerTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
-  trainerSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
-});
+  trainerTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
+  trainerSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
+}));
 
 // ── EXERCISE VIDEO ────────────────────────────────────────────────────────────
 function ExerciseVideoModal({ visible, exerciseName, videoUrl, onClose }) {
@@ -1568,6 +1573,8 @@ const ev = StyleSheet.create({
 
 // ── WORKOUT LOGGING VIEW ──────────────────────────────────────────────────────
 function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, todayWorkout, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes, activeWorkoutLogId }) {
+  const C = usePalette();
+  const lv = useLvStyles();
   const [expanded, setExpanded] = useState(null);
   const [setWeights, setSetWeights] = useState(setWeightsExternal || {});
   const [lastWeights, setLastWeights] = useState({});
@@ -2264,38 +2271,38 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
 //       "currently editing" section feel.
 //     • Finish overlay uses success-500 fill + shadow-success (web `.btn-success`).
 // ═══════════════════════════════════════════════════════════════════════════════
-const lv = StyleSheet.create({
+const useLvStyles = makeStyles((t) => StyleSheet.create({
   /* ── Header bar ──────────────────────────────────────────────── */
   logHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
-    backgroundColor: theme.surface.default,
+    borderBottomWidth: 1, borderBottomColor: t.border.subtle,
+    backgroundColor: t.surface.default,
   },
-  logTitle:    { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
-  globalTimer: { fontSize: theme.fontSize.lg, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'], letterSpacing: 0.3 },
-  logCount:    { fontSize: theme.fontSize.base, fontWeight: '700', color: theme.brand[600] },
+  logTitle:    { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
+  globalTimer: { fontSize: t.fontSize.lg, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'], letterSpacing: 0.3 },
+  logCount:    { fontSize: t.fontSize.base, fontWeight: '700', color: t.brand[600] },
 
   exercisesLabel: {
-    fontSize: 11, fontWeight: '700', color: theme.text.tertiary,
+    fontSize: 11, fontWeight: '700', color: t.text.tertiary,
     letterSpacing: 1.2, textTransform: 'uppercase',
-    marginTop: theme.spacing[6], marginBottom: theme.spacing[3],
+    marginTop: t.spacing[6], marginBottom: t.spacing[3],
   },
 
   /* ── Exercise card (web .card) ───────────────────────────────── */
   exWrap: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,          // 16 — web card radius-xl
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,          // 16 — web card radius-xl
     marginBottom: 14,
     overflow: 'hidden',
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.card,                   // layered (iOS) / elevation (Android)
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.card,                   // layered (iOS) / elevation (Android)
   },
   // Completed: faint emerald tint + success border
   exWrapDone:   { borderColor: 'rgba(22,163,74,0.30)', backgroundColor: 'rgba(22,163,74,0.04)' },
   // Actively editing: brand-tinted (replaces old amber)
-  exWrapActive: { borderColor: theme.brand[300], backgroundColor: theme.brand[50], ...theme.shadow.raised },
-  exCheckActive: { backgroundColor: theme.brand[600], borderColor: theme.brand[700] },
+  exWrapActive: { borderColor: t.brand[300], backgroundColor: t.brand[50], ...t.shadow.raised },
+  exCheckActive: { backgroundColor: t.brand[600], borderColor: t.brand[700] },
 
   /* ── Exercise header row ─────────────────────────────────────── */
   exHeader: {
@@ -2306,52 +2313,52 @@ const lv = StyleSheet.create({
   // Empty-state check (not yet done): neutral ring, 44 pt tap
   exCheck: {
     width: 44, height: 44, borderRadius: 22,
-    borderWidth: 2, borderColor: theme.border.strong,
+    borderWidth: 2, borderColor: t.border.strong,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: theme.surface.default,
+    backgroundColor: t.surface.default,
   },
   // Done check = solid web .btn-success
   exCheckDone: {
-    backgroundColor: theme.success[600],
-    borderColor: theme.success[700],
-    ...theme.shadow.success,
+    backgroundColor: t.success[600],
+    borderColor: t.success[700],
+    ...t.shadow.success,
   },
 
-  exName:     { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
-  exNameDone: { color: theme.neutral[400], textDecorationLine: 'line-through', textDecorationColor: theme.neutral[300] },
-  exMeta:     { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 4, letterSpacing: 0.1 },
+  exName:     { fontSize: t.fontSize.lg, fontWeight: '700', color: t.text.primary, letterSpacing: -0.2 },
+  exNameDone: { color: t.neutral[400], textDecorationLine: 'line-through', textDecorationColor: t.neutral[300] },
+  exMeta:     { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 4, letterSpacing: 0.1 },
 
   /* ── Per-exercise progress bar (brand-tinted) ────────────────── */
   progressRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  progressBarBg:   { flex: 1, height: 5, borderRadius: 3, backgroundColor: theme.brand[100], maxWidth: 100 },
-  progressBarFill: { height: 5, borderRadius: 3, backgroundColor: theme.brand[600] },
-  progressText:    { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
+  progressBarBg:   { flex: 1, height: 5, borderRadius: 3, backgroundColor: t.brand[100], maxWidth: 100 },
+  progressBarFill: { height: 5, borderRadius: 3, backgroundColor: t.brand[600] },
+  progressText:    { fontSize: 11, fontWeight: '700', color: t.brand[700], letterSpacing: 0.2 },
 
   /* ── Sets table ──────────────────────────────────────────────── */
   setsContainer: {
-    borderTopWidth: 1, borderTopColor: theme.border.subtle,
+    borderTopWidth: 1, borderTopColor: t.border.subtle,
     paddingHorizontal: 18, paddingBottom: 18, paddingTop: 10,
   },
   setHeaderRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10, paddingHorizontal: 2, gap: 8,
-    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
+    borderBottomWidth: 1, borderBottomColor: t.border.subtle,
     marginBottom: 4,
   },
   setHeaderTxt: {
     fontSize: 10, fontWeight: '700',
-    color: theme.text.tertiary, letterSpacing: 1,
+    color: t.text.tertiary, letterSpacing: 1,
     textTransform: 'uppercase', textAlign: 'center',
   },
 
   setRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 10,                    // was 6 — more breathing room
-    borderBottomWidth: 1, borderBottomColor: theme.border.subtle,
+    borderBottomWidth: 1, borderBottomColor: t.border.subtle,
     gap: 8, paddingHorizontal: 2,
   },
   setRowDone: {
-    backgroundColor: theme.success[50],
+    backgroundColor: t.success[50],
     marginHorizontal: -18, paddingHorizontal: 20,
     borderBottomColor: 'rgba(22,163,74,0.15)',
   },
@@ -2364,39 +2371,39 @@ const lv = StyleSheet.create({
   },
   setNumBadgeDone:   { backgroundColor: 'rgba(22,163,74,0.15)' },
   setNumBadgeWarmup: { backgroundColor: 'rgba(217,119,6,0.15)' },
-  setNumTxt:         { fontSize: 12, fontWeight: '800', color: theme.brand[700] },
-  setNumTxtDone:     { color: theme.success[700] },
-  setNumTxtWarmup:   { color: theme.warning[700] },
+  setNumTxt:         { fontSize: 12, fontWeight: '800', color: t.brand[700] },
+  setNumTxtDone:     { color: t.success[700] },
+  setNumTxtWarmup:   { color: t.warning[700] },
 
   /* Reps + weight input boxes — tabular-num for glanceable columns */
   repsBox:   { alignItems: 'center', justifyContent: 'center', width: 50 },
-  repsVal:   { fontSize: 18, fontWeight: '800', color: theme.text.primary, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
-  repsInput: { fontSize: 18, fontWeight: '800', color: theme.text.primary, textAlign: 'center', width: 46, paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'] },
+  repsVal:   { fontSize: 18, fontWeight: '800', color: t.text.primary, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
+  repsInput: { fontSize: 18, fontWeight: '800', color: t.text.primary, textAlign: 'center', width: 46, paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'] },
 
   /* Add / remove set — web `.btn-link` (tertiary) */
   addSetBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 6 },
-  addSetTxt:    { fontSize: 13, fontWeight: '700', color: theme.brand[600] },
+  addSetTxt:    { fontSize: 13, fontWeight: '700', color: t.brand[600] },
   removeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 6 },
-  removeSetTxt: { fontSize: 13, fontWeight: '700', color: theme.danger[600] },
+  removeSetTxt: { fontSize: 13, fontWeight: '700', color: t.danger[600] },
   setActions:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
 
   /* "Last time" column */
   lastBox: { alignItems: 'center', justifyContent: 'center', width: 50 },
-  lastVal: { fontSize: 13, fontWeight: '600', color: theme.text.tertiary, fontVariant: ['tabular-nums'] },
+  lastVal: { fontSize: 13, fontWeight: '600', color: t.text.tertiary, fontVariant: ['tabular-nums'] },
 
   /* Weight input column */
   weightGroup:      { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  weightInput:      { flex: 1, fontSize: 18, fontWeight: '800', color: theme.text.primary, textAlign: 'center', paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
-  weightInputDone:  { color: theme.success[700], opacity: 0.85 },
-  kgLbl:            { fontSize: 12, color: theme.text.tertiary, fontWeight: '700' },
+  weightInput:      { flex: 1, fontSize: 18, fontWeight: '800', color: t.text.primary, textAlign: 'center', paddingVertical: 4, paddingHorizontal: 0, fontVariant: ['tabular-nums'], letterSpacing: -0.2 },
+  weightInputDone:  { color: t.success[700], opacity: 0.85 },
+  kgLbl:            { fontSize: 12, color: t.text.tertiary, fontWeight: '700' },
 
   /* ── "Mark set done" button — web .btn-success mini ──────────── */
   doneBtn: {
-    width: 38, height: 38, borderRadius: theme.radius.md,
-    backgroundColor: theme.success[600],
-    borderWidth: 1, borderColor: theme.success[700],
+    width: 38, height: 38, borderRadius: t.radius.md,
+    backgroundColor: t.success[600],
+    borderWidth: 1, borderColor: t.success[700],
     alignItems: 'center', justifyContent: 'center',
-    ...theme.shadow.success,
+    ...t.shadow.success,
   },
   donedTag: { width: 38, alignItems: 'center', justifyContent: 'center' },
 
@@ -2405,23 +2412,23 @@ const lv = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 18, gap: 14,
     marginHorizontal: -18, paddingHorizontal: 18,
-    backgroundColor: theme.brand[50],
-    borderTopWidth: 1, borderTopColor: theme.brand[100],
+    backgroundColor: t.brand[50],
+    borderTopWidth: 1, borderTopColor: t.brand[100],
   },
   restAdjBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.full,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.full,
     paddingHorizontal: 16, paddingVertical: 10,
-    borderWidth: 1.5, borderColor: theme.border.default,
-    ...theme.shadow.xs,
+    borderWidth: 1.5, borderColor: t.border.default,
+    ...t.shadow.xs,
     minWidth: 60, minHeight: 40,
     justifyContent: 'center',
   },
-  restAdjTxt: { fontSize: 13, color: theme.text.primary, fontWeight: '800', letterSpacing: -0.1 },
+  restAdjTxt: { fontSize: 13, color: t.text.primary, fontWeight: '800', letterSpacing: -0.1 },
   restTimerBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 24, paddingVertical: 12,
     minWidth: 140, justifyContent: 'center',
   },
@@ -2430,19 +2437,19 @@ const lv = StyleSheet.create({
   restDoneRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 16,
-    backgroundColor: theme.success[50],
+    backgroundColor: t.success[50],
     marginHorizontal: -18, paddingHorizontal: 18,
   },
-  restDoneTxt:    { fontSize: 14, color: theme.success[700], fontWeight: '700', letterSpacing: -0.1 },
+  restDoneTxt:    { fontSize: 14, color: t.success[700], fontWeight: '700', letterSpacing: -0.1 },
 
   /* ── Trainer note row ────────────────────────────────────────── */
   trainerNoteRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
     marginTop: 14, paddingTop: 14,
-    borderTopWidth: 1, borderTopColor: theme.border.subtle,
+    borderTopWidth: 1, borderTopColor: t.border.subtle,
   },
   trainerNote: {
-    fontSize: 13, color: theme.text.secondary,
+    fontSize: 13, color: t.text.secondary,
     fontStyle: 'italic', flex: 1, lineHeight: 20,
   },
 
@@ -2451,7 +2458,7 @@ const lv = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24, marginHorizontal: -18,
     paddingHorizontal: 24, paddingTop: 52, paddingBottom: 40,
-    backgroundColor: theme.success[50],
+    backgroundColor: t.success[50],
     borderTopWidth: 1, borderTopColor: 'rgba(22,163,74,0.15)',
     overflow: 'hidden',
   },
@@ -2462,58 +2469,62 @@ const lv = StyleSheet.create({
   },
   finishIconCircle: {
     width: 96, height: 96, borderRadius: 48,
-    backgroundColor: theme.success[600],
-    borderWidth: 1, borderColor: theme.success[700],
+    backgroundColor: t.success[600],
+    borderWidth: 1, borderColor: t.success[700],
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 24,
-    ...theme.shadow.success,
+    ...t.shadow.success,
   },
-  finishTitle:    { fontSize: 30, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6 },
-  finishGreeting: { fontSize: theme.fontSize.lg, fontWeight: '500', color: theme.text.secondary, marginTop: 6 },
+  finishTitle:    { fontSize: 30, fontWeight: '800', color: t.text.primary, letterSpacing: -0.6 },
+  finishGreeting: { fontSize: t.fontSize.lg, fontWeight: '500', color: t.text.secondary, marginTop: 6 },
   finishTimerRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginTop: 28,
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,
     paddingHorizontal: 28, paddingVertical: 16,
     borderWidth: 1, borderColor: 'rgba(22,163,74,0.2)',
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
-  finishTimerTxt:   { fontSize: 34, fontWeight: '800', color: theme.text.primary, letterSpacing: 1, fontVariant: ['tabular-nums'] },
-  finishTimerLabel: { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10 },
-  finishDivider:    { width: 60, height: 2, borderRadius: 1, backgroundColor: theme.border.default, marginVertical: 26 },
+  finishTimerTxt:   { fontSize: 34, fontWeight: '800', color: t.text.primary, letterSpacing: 1, fontVariant: ['tabular-nums'] },
+  finishTimerLabel: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10 },
+  finishDivider:    { width: 60, height: 2, borderRadius: 1, backgroundColor: t.border.default, marginVertical: 26 },
   finishStatRow:    { flexDirection: 'row', alignItems: 'center' },
   finishStatBox:    { flex: 1, alignItems: 'center', paddingVertical: 8 },
-  finishStatVal:    { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
-  finishStatLbl:    { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 },
+  finishStatVal:    { fontSize: 28, fontWeight: '800', color: t.text.primary, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  finishStatLbl:    { fontSize: 11, fontWeight: '700', color: t.text.tertiary, textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 },
 
   /* Primary action — web .btn-success (solid emerald, 48 pt, inset shadow) */
   finishPrimaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: theme.success[600],
-    borderWidth: 1, borderColor: theme.success[700],
-    borderRadius: theme.radius.lg,
+    backgroundColor: t.success[600],
+    borderWidth: 1, borderColor: t.success[700],
+    borderRadius: t.radius.lg,
     paddingVertical: 16,
     marginTop: 32, width: '100%',
     minHeight: 52,
-    ...theme.shadow.success,
+    ...t.shadow.success,
   },
-  finishPrimaryTxt: { fontSize: theme.fontSize.lg, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
+  finishPrimaryTxt: { fontSize: t.fontSize.lg, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
 
   /* Secondary action — web .btn-secondary (success-tinted) */
   finishSecondaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderWidth: 1.5, borderColor: 'rgba(22,163,74,0.35)',
-    borderRadius: theme.radius.lg,
+    borderRadius: t.radius.lg,
     paddingVertical: 14, marginTop: 12, width: '100%',
-    backgroundColor: theme.surface.default,
+    backgroundColor: t.surface.default,
     minHeight: 48,
   },
-  finishSecondaryTxt: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.success[700] },
-});
+  finishSecondaryTxt: { fontSize: t.fontSize.md, fontWeight: '700', color: t.success[700] },
+}));
 
 // ── WORKOUTS SCREEN ───────────────────────────────────────────────────────────
 function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, setTodayWorkout, activeWorkoutLog, workoutTimer, startWorkoutTimer, stopWorkoutTimer, pauseWorkoutTimer, resumeWorkoutTimer, workoutDoneSets, setWorkoutDoneSets, workoutSetWeights, setWorkoutSetWeights, restEndTimes, setRestEndTimes, autoStartLogging, setAutoStartLogging, onWorkoutFinish, onViewHistory, restDays, setRestDays }) {
+  const C = usePalette();
+  const g = useGlobalStyles();
+  const wk = useWkStyles();
+  const lv = useLvStyles();
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
   const [selectedDayIdx, setSelectedDayIdx] = useState(null); // null = today
@@ -2549,6 +2560,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const loggingDayIdxRef = useRef(null); // planIdx of the day being actively logged (null=today)
   const pausedEndTimesRef = useRef(null);
   const scrollRef = useRef(null);
+  // Scroll active input above the keyboard — measures the input's Y position
+  // and scrolls so it appears ~120 px above the keyboard with a small margin.
+  const scrollToInput = (inputRef) => {
+    if (!inputRef?.current || !scrollRef?.current) return;
+    setTimeout(() => {
+      try {
+        inputRef.current.measureLayout(
+          scrollRef.current.getInnerViewRef?.() ?? scrollRef.current,
+          (x, y) => { scrollRef.current.scrollTo({ y: Math.max(0, y - 120), animated: true }); },
+          () => { scrollRef.current.scrollTo({ y: 200, animated: true }); }
+        );
+      } catch (_) {
+        scrollRef.current.scrollTo({ y: 200, animated: true });
+      }
+    }, 80);
+  };
 
   // ── Floating rest timer (draggable) ─────────────────────────────────────────
   const floatPan = useRef(new Animated.ValueXY({ x: width - 200, y: 100 })).current;
@@ -3082,9 +3109,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         </View>
       )}
 
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={60}
+      >
       <ScrollView
         ref={scrollRef}
         style={g.screen}
+        contentContainerStyle={{ paddingBottom: 280 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -3391,6 +3424,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   <View style={[lv.weightInput, { backgroundColor: '#F0F0F2', borderColor: '#E0E0E3' }]}>
                                     <Text style={{ color: '#C7C7CC', fontSize: 15, fontWeight: '700', textAlign: 'center' }}>—</Text>
                                   </View>
+                                  <Text style={lv.kgLbl}>kg</Text>
                                 </View>
                               </View>
                             );
@@ -3575,6 +3609,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   keyboardType="decimal-pad"
                                   value={localSetWeights[stateKey] || ''}
                                   editable={!isDoneSet}
+                                  onFocus={() => setTimeout(() => scrollRef.current?.scrollTo({ y: 9999, animated: true }), 150)}
                                   onChangeText={val => {
                                     const updated = { ...localSetWeights, [stateKey]: val };
                                     setLocalSetWeights(updated);
@@ -3585,7 +3620,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                               </View>
                               {!isDoneSet ? (
                                 <TouchableOpacity style={lv.doneBtn} activeOpacity={0.7}
-                                  onPress={() => markSetDone(ex.id, stateKey, 0, ex.warmupSets)}>
+                                  onPress={() => markSetDone(ex.id, `w_${i + 1}`, 0, ex.warmupSets)}>
                                   <Ionicons name="checkmark" size={18} color="#fff" />
                                 </TouchableOpacity>
                               ) : (
@@ -3634,6 +3669,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                   keyboardType="decimal-pad"
                                   value={localSetWeights[stateKey] || ''}
                                   editable={!isDoneSet}
+                                  onFocus={() => setTimeout(() => scrollRef.current?.scrollTo({ y: 9999, animated: true }), 150)}
                                   onChangeText={val => {
                                     const updated = { ...localSetWeights, [stateKey]: val };
                                     setLocalSetWeights(updated);
@@ -4026,6 +4062,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
         <View style={{ height: 60 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* ── Floating draggable rest timer ─────────────────────────────── */}
       {isLogging && activeRestLeft !== undefined && activeRestLeft > 0 && (
@@ -4164,82 +4201,82 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 //     • Week strip active day = brand-600 (matches web selected-state).
 //     • Trainer notif = web .info-card-brand (brand-50 + brand-100 border).
 // ═══════════════════════════════════════════════════════════════════════════════
-const wk = StyleSheet.create({
+const useWkStyles = makeStyles((t) => StyleSheet.create({
   /* ── Header ──────────────────────────────────────────────────── */
   headerRow:         { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 12, marginBottom: 4 },
-  headerTitle:       { fontSize: theme.fontSize['3xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.5 },
-  dayWorkoutTitle:   { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6, marginBottom: 14, lineHeight: 34 },
-  headerSub:         { fontSize: theme.fontSize.sm, color: theme.text.secondary, marginTop: 6, lineHeight: 20, letterSpacing: 0 },
+  headerTitle:       { fontSize: t.fontSize['3xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5 },
+  dayWorkoutTitle:   { fontSize: 28, fontWeight: '800', color: t.text.primary, letterSpacing: -0.6, marginBottom: 14, lineHeight: 34 },
+  headerSub:         { fontSize: t.fontSize.sm, color: t.text.secondary, marginTop: 6, lineHeight: 20, letterSpacing: 0 },
 
   /* Live timer pill — displays during active session */
   timerPill: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.full,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.full,
     paddingHorizontal: 16, paddingVertical: 10,
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.card,
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.card,
   },
-  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.success[500] },
-  timerVal: { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.success[500] },
+  timerVal: { fontSize: t.fontSize['2xl'], fontWeight: '800', color: t.text.primary, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
 
   /* History button — web .btn-secondary */
   historyBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, paddingVertical: 9,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.brand[50],
-    borderWidth: 1.5, borderColor: theme.brand[200],
+    borderRadius: t.radius.full,
+    backgroundColor: t.brand[50],
+    borderWidth: 1.5, borderColor: t.brand[200],
   },
-  historyTxt: { fontSize: 13, fontWeight: '700', color: theme.brand[700], letterSpacing: -0.1 },
+  historyTxt: { fontSize: 13, fontWeight: '700', color: t.brand[700], letterSpacing: -0.1 },
 
   /* ── Section labels ──────────────────────────────────────────── */
   sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: theme.text.tertiary,
+    fontSize: 11, fontWeight: '700', color: t.text.tertiary,
     letterSpacing: 1.2, textTransform: 'uppercase',
-    marginTop: theme.spacing[7], marginBottom: theme.spacing[4],
+    marginTop: t.spacing[7], marginBottom: t.spacing[4],
   },
   todayLabel: {
-    fontSize: 12, fontWeight: '700', color: theme.text.tertiary,
+    fontSize: 12, fontWeight: '700', color: t.text.tertiary,
     letterSpacing: 0.6, textTransform: 'uppercase',
   },
 
   /* ── Week day strip ──────────────────────────────────────────── */
   dayCard: {
     width: 48, paddingVertical: 10, paddingHorizontal: 4,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.surface.default,
+    borderRadius: t.radius.lg,
+    backgroundColor: t.surface.default,
     marginRight: 8,
     alignItems: 'center',
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.xs,
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.xs,
   },
   // Active day = web brand-600 selected state with branded shadow
   dayCardActive: {
-    backgroundColor: theme.brand[600],
-    borderColor: theme.brand[700],
-    ...theme.shadow.brand,
+    backgroundColor: t.brand[600],
+    borderColor: t.brand[700],
+    ...t.shadow.brand,
   },
   dayCardRest: { opacity: 0.45 },
-  dayName:     { fontSize: 10, fontWeight: '700', color: theme.text.tertiary, letterSpacing: 0.8, textTransform: 'uppercase' },
-  dayDate:     { fontSize: 18, fontWeight: '800', color: theme.text.primary, marginTop: 2, fontVariant: ['tabular-nums'] },
+  dayName:     { fontSize: 10, fontWeight: '700', color: t.text.tertiary, letterSpacing: 0.8, textTransform: 'uppercase' },
+  dayDate:     { fontSize: 18, fontWeight: '800', color: t.text.primary, marginTop: 2, fontVariant: ['tabular-nums'] },
   weekTxtW:    { color: '#FFFFFF' },
   activeLine:  { width: 16, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.55)', marginTop: 5 },
-  dayLabel:    { fontSize: 9, fontWeight: '600', color: theme.text.primary, marginTop: 5, textAlign: 'center', lineHeight: 11, opacity: 0.7 },
-  dayExPill:   { marginTop: 4, backgroundColor: theme.neutral[100], borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1.5 },
-  dayExCount:  { fontSize: 9, fontWeight: '700', color: theme.text.tertiary },
+  dayLabel:    { fontSize: 9, fontWeight: '600', color: t.text.primary, marginTop: 5, textAlign: 'center', lineHeight: 11, opacity: 0.7 },
+  dayExPill:   { marginTop: 4, backgroundColor: t.neutral[100], borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1.5 },
+  dayExCount:  { fontSize: 9, fontWeight: '700', color: t.text.tertiary },
 
   /* ── Exercise cards (web .card) ──────────────────────────────── */
   exCardStatic: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,              // 16
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,              // 16
     marginBottom: 12,
     overflow: 'hidden',
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.card,
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.card,
   },
   exCardDone:   { borderColor: 'rgba(22,163,74,0.28)', backgroundColor: 'rgba(22,163,74,0.04)' },
-  exCardActive: { borderWidth: 1.5, borderColor: theme.brand[500], ...theme.shadow.raised },
+  exCardActive: { borderWidth: 1.5, borderColor: t.brand[500], ...t.shadow.raised },
 
   exCardTouch: {
     flexDirection: 'row', alignItems: 'center',
@@ -4248,152 +4285,152 @@ const wk = StyleSheet.create({
   },
   // Icon chip = web num-badge-brand
   exIcon: {
-    width: 48, height: 48, borderRadius: theme.radius.md,
+    width: 48, height: 48, borderRadius: t.radius.md,
     backgroundColor: 'rgba(79,70,229,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
   exIconDone: {
-    backgroundColor: theme.success[600],
-    borderWidth: 1, borderColor: theme.success[700],
-    ...theme.shadow.success,
+    backgroundColor: t.success[600],
+    borderWidth: 1, borderColor: t.success[700],
+    ...t.shadow.success,
   },
 
-  exName:     { fontSize: theme.fontSize.xl, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.3 },
-  exNameDone: { color: theme.neutral[400], textDecorationLine: 'line-through', textDecorationColor: theme.neutral[300] },
-  exMeta:     { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 4, letterSpacing: 0 },
+  exName:     { fontSize: t.fontSize.xl, fontWeight: '700', color: t.text.primary, letterSpacing: -0.3 },
+  exNameDone: { color: t.neutral[400], textDecorationLine: 'line-through', textDecorationColor: t.neutral[300] },
+  exMeta:     { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 4, letterSpacing: 0 },
 
   exExpandedContent: { paddingHorizontal: 18, paddingBottom: 16, paddingLeft: 82, gap: 8 },
 
   /* Muscle tag — web .tag-pill */
   exMusclePill: {
     backgroundColor: 'rgba(79,70,229,0.08)',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 3,
     alignSelf: 'flex-start',
   },
-  exMuscleText: { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
-  exNoteText:   { fontSize: 12, color: theme.text.secondary, fontStyle: 'italic', flex: 1, lineHeight: 18 },
+  exMuscleText: { fontSize: 11, fontWeight: '700', color: t.brand[700], letterSpacing: 0.2 },
+  exNoteText:   { fontSize: 12, color: t.text.secondary, fontStyle: 'italic', flex: 1, lineHeight: 18 },
 
   /* ── Live chip ("in progress") — web status-pill-brand ───────── */
   liveChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(79,70,229,0.10)',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.brand[600] },
-  liveTxt: { fontSize: 11, fontWeight: '700', color: theme.brand[700], letterSpacing: 0.2 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: t.brand[600] },
+  liveTxt: { fontSize: 11, fontWeight: '700', color: t.brand[700], letterSpacing: 0.2 },
 
   /* ── Primary / secondary action buttons ──────────────────────── */
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
 
   // "Start Workout" = web .btn-primary (solid brand-600, 52 pt, brand shadow)
   startBtn: {
-    backgroundColor: theme.brand[600],
-    borderWidth: 1, borderColor: theme.brand[700],
-    borderRadius: theme.radius.md,              // 12 — web .btn radius
+    backgroundColor: t.brand[600],
+    borderWidth: 1, borderColor: t.brand[700],
+    borderRadius: t.radius.md,              // 12 — web .btn radius
     paddingVertical: 16, paddingHorizontal: 20,
     alignItems: 'center', justifyContent: 'center',
     minHeight: 52,
-    ...theme.shadow.brand,
+    ...t.shadow.brand,
   },
-  startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: 0.1 },
+  startBtnTxt: { color: '#fff', fontWeight: '700', fontSize: t.fontSize.md, letterSpacing: 0.1 },
 
   // "Postpone" = web outline-warning secondary
   postponeBtn: {
     borderWidth: 1.5, borderColor: 'rgba(234,179,8,0.45)',
-    borderRadius: theme.radius.md,
+    borderRadius: t.radius.md,
     paddingVertical: 14, paddingHorizontal: 18,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: theme.warning[50],
+    backgroundColor: t.warning[50],
     minHeight: 48,
   },
-  postponeBtnTxt: { color: theme.warning[700], fontWeight: '700', fontSize: theme.fontSize.base },
+  postponeBtnTxt: { color: t.warning[700], fontWeight: '700', fontSize: t.fontSize.base },
 
   /* ── Sticky logging header (appears when scrolled past hero) ─── */
   stickyHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 18, paddingVertical: 14,
-    backgroundColor: theme.surface.default,
-    borderBottomWidth: 1, borderBottomColor: theme.border.default,
-    ...theme.shadow.raised,
+    backgroundColor: t.surface.default,
+    borderBottomWidth: 1, borderBottomColor: t.border.default,
+    ...t.shadow.raised,
   },
-  stickyTitle: { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2 },
-  stickyTimer: { fontSize: theme.fontSize['2xl'], fontWeight: '800', marginTop: 2, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
-  stickyCount: { fontSize: 13, fontWeight: '700', color: theme.brand[600] },
-  pauseBtn:    { padding: 8, borderRadius: theme.radius.sm },
+  stickyTitle: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, textTransform: 'uppercase', letterSpacing: 1.2 },
+  stickyTimer: { fontSize: t.fontSize['2xl'], fontWeight: '800', marginTop: 2, letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+  stickyCount: { fontSize: 13, fontWeight: '700', color: t.brand[600] },
+  pauseBtn:    { padding: 8, borderRadius: t.radius.sm },
 
   /* ── Trainer notification — web .info-card-brand ─────────────── */
   trainerNotif: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: theme.brand[50],
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.brand[50],
+    borderRadius: t.radius.xl,
     padding: 16,
     marginBottom: 16,
-    borderWidth: 1, borderColor: theme.brand[100],
+    borderWidth: 1, borderColor: t.brand[100],
   },
   trainerNotifIcon: {
-    width: 40, height: 40, borderRadius: theme.radius.md,
-    backgroundColor: theme.brand[600],
+    width: 40, height: 40, borderRadius: t.radius.md,
+    backgroundColor: t.brand[600],
     alignItems: 'center', justifyContent: 'center',
-    ...theme.shadow.brand,
+    ...t.shadow.brand,
   },
-  trainerNotifTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
-  trainerNotifSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  trainerNotifTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
+  trainerNotifSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
 
   /* ── Selected day header (viewing a non-today day) ───────────── */
   selectedDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  selectedDayTitle:  { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.5 },
+  selectedDayTitle:  { fontSize: t.fontSize['2xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5 },
   // Back chip — web .btn-link / ghost
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: theme.radius.full,
-    backgroundColor: theme.brand[50],
+    borderRadius: t.radius.full,
+    backgroundColor: t.brand[50],
     minHeight: 36,
   },
-  backBtnTxt:  { fontSize: 13, fontWeight: '700', color: theme.brand[700] },
-  exCountHint: { fontSize: theme.fontSize.sm, fontWeight: '600', color: theme.text.secondary, marginBottom: 12 },
+  backBtnTxt:  { fontSize: 13, fontWeight: '700', color: t.brand[700] },
+  exCountHint: { fontSize: t.fontSize.sm, fontWeight: '600', color: t.text.secondary, marginBottom: 12 },
 
   /* ── Done chip — web status-pill-success ─────────────────────── */
   doneChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(22,163,74,0.10)',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
   },
-  doneTxt: { fontSize: 11, fontWeight: '700', color: theme.success[700], letterSpacing: 0.2 },
+  doneTxt: { fontSize: 11, fontWeight: '700', color: t.success[700], letterSpacing: 0.2 },
 
   /* ── Empty states ────────────────────────────────────────────── */
   emptyState: { alignItems: 'center', paddingVertical: 56, paddingHorizontal: 24 },
   emptyIconCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: theme.brand[50],
-    borderWidth: 1, borderColor: theme.brand[100],
+    backgroundColor: t.brand[50],
+    borderWidth: 1, borderColor: t.brand[100],
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 18,
   },
-  emptyTitle: { fontSize: theme.fontSize['2xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.4 },
-  emptySub:   { fontSize: theme.fontSize.base, color: theme.text.secondary, marginTop: 8, textAlign: 'center', lineHeight: 22 },
+  emptyTitle: { fontSize: t.fontSize['2xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.4 },
+  emptySub:   { fontSize: t.fontSize.base, color: t.text.secondary, marginTop: 8, textAlign: 'center', lineHeight: 22 },
 
   /* ── Floating rest timer (draggable pill) ────────────────────── */
   floatRest: {
     position: 'absolute',
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingVertical: 8, paddingHorizontal: 12,
     borderWidth: 1.5,
-    ...theme.shadow.float,
+    ...t.shadow.float,
   },
   floatRestInner: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  floatRestTime:  { fontSize: theme.fontSize['2xl'], fontWeight: '800', letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
+  floatRestTime:  { fontSize: t.fontSize['2xl'], fontWeight: '800', letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
   floatRestAdj: {
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: theme.surface.default,
+    backgroundColor: t.surface.default,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: theme.border.default,
+    borderWidth: 1, borderColor: t.border.default,
   },
-});
+}));
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4843,6 +4880,9 @@ const PROGRESS_TABS = [
 ];
 
 function ProgressScreen({ member, gymId, memberId }) {
+  const C = usePalette();
+  const g = useGlobalStyles();
+  const pr = usePrStyles();
   const [activeTab, setActiveTab] = useState('Weight');
   const [weightLog, setWeightLog] = useState([]);
   const [measurements, setMeasurements] = useState([]);
@@ -5223,6 +5263,7 @@ function ProgressScreen({ member, gymId, memberId }) {
 // Reuses the anatomy of Home's QuickStat so the mobile app reads as one
 // system across screens.
 function ProgressStatCard({ icon, tone = 'brand', value, unit, label }) {
+  const pr = usePrStyles();
   const tones = {
     brand:   { icon: theme.brand[600],   chip: 'rgba(79,70,229,0.10)' },
     success: { icon: theme.success[600], chip: 'rgba(22,163,74,0.10)' },
@@ -5242,18 +5283,18 @@ function ProgressStatCard({ icon, tone = 'brand', value, unit, label }) {
   );
 }
 
-const pr = StyleSheet.create({
+const usePrStyles = makeStyles((t) => StyleSheet.create({
   /* ── Page header ──────────────────────────────────────────────────── */
   pageTitle: {
-    fontSize: theme.fontSize['3xl'],
+    fontSize: t.fontSize['3xl'],
     fontWeight: '800',
-    color: theme.text.primary,
+    color: t.text.primary,
     letterSpacing: -0.5,
     marginTop: 8,
   },
   pageSub: {
-    fontSize: theme.fontSize.sm,
-    color: theme.text.secondary,
+    fontSize: t.fontSize.sm,
+    color: t.text.secondary,
     marginTop: 4,
     marginBottom: 18,
     lineHeight: 20,
@@ -5264,31 +5305,31 @@ const pr = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     padding: 4,
-    borderRadius: theme.radius.lg,           // 14 — matches web .modal-tabs
-    backgroundColor: theme.surface.sunken,   // sunken container
-    borderWidth: 1, borderColor: theme.border.default,
+    borderRadius: t.radius.lg,           // 14 — matches web .modal-tabs
+    backgroundColor: t.surface.sunken,   // sunken container
+    borderWidth: 1, borderColor: t.border.default,
     marginBottom: 22,
   },
   tab: {
     flex: 1,
     paddingVertical: 10, paddingHorizontal: 8,
-    borderRadius: theme.radius.md,           // 12 — matches web .modal-tab
+    borderRadius: t.radius.md,           // 12 — matches web .modal-tab
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 38,
   },
   tabActive: {
-    backgroundColor: theme.surface.default,  // white on sunken track
-    ...theme.shadow.card,                    // shadow-card lift
+    backgroundColor: t.surface.default,  // white on sunken track
+    ...t.shadow.card,                    // shadow-card lift
   },
-  tabTxt:       { fontSize: 13, fontWeight: '600', color: theme.text.secondary, letterSpacing: -0.1 },
-  tabTxtActive: { color: theme.brand[600] },
+  tabTxt:       { fontSize: 13, fontWeight: '600', color: t.text.secondary, letterSpacing: -0.1 },
+  tabTxtActive: { color: t.brand[600] },
 
   /* ── Generic card label (UPPERCASE, tracked) ──────────────────────── */
   cardLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 4,
@@ -5296,20 +5337,20 @@ const pr = StyleSheet.create({
 
   /* ── BMI + weight card ────────────────────────────────────────────── */
   bmiCard: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,
     padding: 18,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    borderWidth: 1, borderColor: theme.border.default,
+    borderWidth: 1, borderColor: t.border.default,
     marginBottom: 16,
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   bmiVal:     { fontSize: 34, fontWeight: '800', letterSpacing: -0.8, fontVariant: ['tabular-nums'], marginTop: 2 },
   bmiTag: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 3,
     marginTop: 10,
     alignSelf: 'flex-start',
@@ -5318,25 +5359,25 @@ const pr = StyleSheet.create({
   bmiTagDot:  { width: 5, height: 5, borderRadius: 3 },
   bmiTagTxt:  { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
 
-  weightBig:  { fontSize: 28, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.6, fontVariant: ['tabular-nums'], marginTop: 2 },
-  weightUnit: { fontSize: 14, fontWeight: '600', color: theme.text.tertiary },
+  weightBig:  { fontSize: 28, fontWeight: '800', color: t.text.primary, letterSpacing: -0.6, fontVariant: ['tabular-nums'], marginTop: 2 },
+  weightUnit: { fontSize: 14, fontWeight: '600', color: t.text.tertiary },
   goalChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: theme.surface.sunken,
-    borderRadius: theme.radius.full,
+    backgroundColor: t.surface.sunken,
+    borderRadius: t.radius.full,
     paddingHorizontal: 8, paddingVertical: 3,
     marginTop: 8,
   },
-  goalChipTxt: { fontSize: 11, fontWeight: '600', color: theme.text.secondary, letterSpacing: -0.1 },
+  goalChipTxt: { fontSize: 11, fontWeight: '600', color: t.text.secondary, letterSpacing: -0.1 },
 
   /* ── Chart / surface panel (wraps chart components) ───────────────── */
   chartPanel: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,
     padding: 18,
-    borderWidth: 1, borderColor: theme.border.default,
+    borderWidth: 1, borderColor: t.border.default,
     marginBottom: 16,
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   panelHeader: {
     flexDirection: 'row',
@@ -5344,14 +5385,14 @@ const pr = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 14,
   },
-  panelTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
-  panelSub:   { fontSize: 11, color: theme.text.tertiary, marginTop: 2, letterSpacing: 0.1 },
+  panelTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.2 },
+  panelSub:   { fontSize: 11, color: t.text.tertiary, marginTop: 2, letterSpacing: 0.1 },
 
   /* ── Goal-progress panel — web .info-card-brand ───────────────────── */
   goalPanel: {
-    backgroundColor: theme.brand[50],
-    borderWidth: 1, borderColor: theme.brand[100],
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.brand[50],
+    borderWidth: 1, borderColor: t.brand[100],
+    borderRadius: t.radius.xl,
     padding: 16,
     marginBottom: 16,
   },
@@ -5361,24 +5402,24 @@ const pr = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  goalPanelTitle: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.text.primary, marginTop: 2, letterSpacing: -0.2 },
+  goalPanelTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, marginTop: 2, letterSpacing: -0.2 },
   goalPctBadge: {
-    backgroundColor: theme.success[600],
-    borderRadius: theme.radius.full,
+    backgroundColor: t.success[600],
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
-    ...theme.shadow.success,
+    ...t.shadow.success,
   },
   goalPctTxt: { fontSize: 13, fontWeight: '800', color: '#fff', letterSpacing: 0.1, fontVariant: ['tabular-nums'] },
   goalBarBg: {
     height: 10,
-    backgroundColor: theme.surface.default,
+    backgroundColor: t.surface.default,
     borderRadius: 5,
     overflow: 'hidden',
-    borderWidth: 1, borderColor: theme.brand[100],
+    borderWidth: 1, borderColor: t.brand[100],
   },
   goalBarFill: {
     height: '100%',
-    backgroundColor: theme.success[600],
+    backgroundColor: t.success[600],
     borderRadius: 5,
   },
   goalFooter: {
@@ -5386,12 +5427,12 @@ const pr = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 8,
   },
-  goalFooterTxt: { fontSize: 11, color: theme.text.secondary, fontWeight: '600', letterSpacing: 0.1 },
+  goalFooterTxt: { fontSize: 11, color: t.text.secondary, fontWeight: '600', letterSpacing: 0.1 },
 
   /* ── Section labels ───────────────────────────────────────────────── */
   sectionLabel: {
     fontSize: 11, fontWeight: '700',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     letterSpacing: 1.2, textTransform: 'uppercase',
     marginBottom: 10, marginTop: 8,
   },
@@ -5401,7 +5442,7 @@ const pr = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10, marginTop: 12,
   },
-  sectionCount: { fontSize: 11, color: theme.text.tertiary, fontWeight: '600', letterSpacing: 0.1 },
+  sectionCount: { fontSize: 11, color: t.text.tertiary, fontWeight: '600', letterSpacing: 0.1 },
 
   /* ── Weight logger (input + log button) — web .input-base + .btn-primary */
   logRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
@@ -5410,74 +5451,74 @@ const pr = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1.5, borderColor: theme.border.default,
-    borderRadius: theme.radius.md,
+    backgroundColor: t.surface.default,
+    borderWidth: 1.5, borderColor: t.border.default,
+    borderRadius: t.radius.md,
     paddingHorizontal: 14,
     minHeight: 52,
   },
   logInputWrapFocus: {
-    borderColor: theme.brand[500],
-    shadowColor: theme.brand[500],
+    borderColor: t.brand[500],
+    shadowColor: t.brand[500],
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.18, shadowRadius: 4,
     elevation: 2,
   },
   logInput: {
     flex: 1,
-    fontSize: theme.fontSize.lg,
+    fontSize: t.fontSize.lg,
     fontWeight: '700',
-    color: theme.text.primary,
+    color: t.text.primary,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.2,
     paddingVertical: 12,
   },
-  logUnit: { fontSize: 13, color: theme.text.tertiary, fontWeight: '700' },
+  logUnit: { fontSize: 13, color: t.text.tertiary, fontWeight: '700' },
   logBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: theme.brand[600],
-    borderWidth: 1, borderColor: theme.brand[700],
-    borderRadius: theme.radius.md,
+    backgroundColor: t.brand[600],
+    borderWidth: 1, borderColor: t.brand[700],
+    borderRadius: t.radius.md,
     paddingHorizontal: 20,
     minHeight: 52, minWidth: 88,
-    ...theme.shadow.brand,
+    ...t.shadow.brand,
   },
   logBtnOff: {
-    backgroundColor: theme.neutral[300],
-    borderColor: theme.neutral[300],
+    backgroundColor: t.neutral[300],
+    borderColor: t.neutral[300],
     shadowOpacity: 0,
   },
-  logBtnTxt: { color: '#fff', fontWeight: '700', fontSize: theme.fontSize.md, letterSpacing: 0.1 },
+  logBtnTxt: { color: '#fff', fontWeight: '700', fontSize: t.fontSize.md, letterSpacing: 0.1 },
 
   /* ── Workouts-tab stat grid ───────────────────────────────────────── */
   statGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statCard: {
     flex: 1,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.border.default,
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.border.default,
+    borderRadius: t.radius.xl,
     padding: 12,
     minHeight: 100,
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   statIconChip: {
     width: 26, height: 26,
-    borderRadius: theme.radius.sm,
+    borderRadius: t.radius.sm,
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 8,
   },
   statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
   statValue: {
-    fontSize: theme.fontSize['2xl'],
+    fontSize: t.fontSize['2xl'],
     fontWeight: '800',
-    color: theme.text.primary,
+    color: t.text.primary,
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
   },
-  statUnit:  { fontSize: 11, fontWeight: '600', color: theme.text.tertiary },
+  statUnit:  { fontSize: 11, fontWeight: '600', color: t.text.tertiary },
   statLabel: {
     fontSize: 10, fontWeight: '700',
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     letterSpacing: 0.8, textTransform: 'uppercase',
     marginTop: 4,
   },
@@ -5486,10 +5527,10 @@ const pr = StyleSheet.create({
   streakBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(217,119,6,0.12)',
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     paddingHorizontal: 10, paddingVertical: 4,
   },
-  streakBadgeTxt: { fontSize: 11, fontWeight: '700', color: theme.warning[700], letterSpacing: 0.2 },
+  streakBadgeTxt: { fontSize: 11, fontWeight: '700', color: t.warning[700], letterSpacing: 0.2 },
 
   /* ── 4-week consistency bars ──────────────────────────────────────── */
   consistRow: {
@@ -5501,7 +5542,7 @@ const pr = StyleSheet.create({
   consistCol: { flex: 1, alignItems: 'center' },
   consistVal: {
     fontSize: 14, fontWeight: '800',
-    color: theme.text.primary,
+    color: t.text.primary,
     marginBottom: 6,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
@@ -5510,7 +5551,7 @@ const pr = StyleSheet.create({
     width: '55%',
     height: 72,
     borderRadius: 5,
-    backgroundColor: theme.surface.sunken,
+    backgroundColor: t.surface.sunken,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
@@ -5520,13 +5561,13 @@ const pr = StyleSheet.create({
   },
   consistLbl: {
     fontSize: 10,
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     marginTop: 6,
     textAlign: 'center',
     fontWeight: '600',
     letterSpacing: 0.1,
   },
-  consistLblCurrent: { color: theme.brand[600], fontWeight: '700' },
+  consistLblCurrent: { color: t.brand[600], fontWeight: '700' },
 
   /* ── Session-duration bar chart ───────────────────────────────────── */
   barChartRow: {
@@ -5538,7 +5579,7 @@ const pr = StyleSheet.create({
   barCol: { flex: 1, alignItems: 'center' },
   barVal: {
     fontSize: 10,
-    color: theme.text.secondary,
+    color: t.text.secondary,
     fontWeight: '700',
     marginBottom: 6,
     fontVariant: ['tabular-nums'],
@@ -5547,18 +5588,18 @@ const pr = StyleSheet.create({
     width: '55%',
     height: 120,
     borderRadius: 5,
-    backgroundColor: theme.surface.sunken,
+    backgroundColor: t.surface.sunken,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   barFill: {
     width: '100%',
-    backgroundColor: theme.brand[600],
+    backgroundColor: t.brand[600],
     borderTopLeftRadius: 5, borderTopRightRadius: 5,
   },
   barDate: {
     fontSize: 9,
-    color: theme.text.tertiary,
+    color: t.text.tertiary,
     marginTop: 6,
     textAlign: 'center',
     letterSpacing: 0.1,
@@ -5567,11 +5608,11 @@ const pr = StyleSheet.create({
 
   /* ── Recent-sessions list ─────────────────────────────────────────── */
   sessionList: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1, borderColor: theme.border.default,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.xl,
+    borderWidth: 1, borderColor: t.border.default,
     overflow: 'hidden',
-    ...theme.shadow.card,
+    ...t.shadow.card,
   },
   sessionRow: {
     flexDirection: 'row',
@@ -5583,45 +5624,45 @@ const pr = StyleSheet.create({
   },
   sessionRowDivider: {
     borderTopWidth: 1,
-    borderTopColor: theme.border.subtle,
+    borderTopColor: t.border.subtle,
   },
   sessionIcon: {
     width: 32, height: 32,
-    borderRadius: theme.radius.md,
+    borderRadius: t.radius.md,
     backgroundColor: 'rgba(22,163,74,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  sessionTitle: { fontSize: theme.fontSize.base, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.1 },
-  sessionSub:   { fontSize: theme.fontSize.xs, color: theme.text.secondary, marginTop: 2 },
+  sessionTitle: { fontSize: t.fontSize.base, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
+  sessionSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
   sessionMetric: { alignItems: 'flex-end' },
   sessionMetricVal: {
-    fontSize: theme.fontSize.xl,
+    fontSize: t.fontSize.xl,
     fontWeight: '800',
-    color: theme.text.primary,
+    color: t.text.primary,
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
   },
-  sessionMetricUnit: { fontSize: 10, color: theme.text.tertiary, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  sessionMetricUnit: { fontSize: 10, color: t.text.tertiary, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
 
   /* ── Empty state ──────────────────────────────────────────────────── */
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40, paddingHorizontal: 24,
-    backgroundColor: theme.brand[50],
-    borderWidth: 1, borderColor: theme.brand[100],
-    borderRadius: theme.radius.xl,
+    backgroundColor: t.brand[50],
+    borderWidth: 1, borderColor: t.brand[100],
+    borderRadius: t.radius.xl,
     marginTop: 8,
   },
   emptyIconCircle: {
     width: 64, height: 64, borderRadius: 32,
-    backgroundColor: theme.surface.default,
-    borderWidth: 1, borderColor: theme.brand[100],
+    backgroundColor: t.surface.default,
+    borderWidth: 1, borderColor: t.brand[100],
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 14,
   },
-  emptyTitle: { fontSize: theme.fontSize.xl, fontWeight: '800', color: theme.text.primary, letterSpacing: -0.3 },
-  emptySub:   { fontSize: theme.fontSize.sm, color: theme.text.secondary, marginTop: 6, textAlign: 'center', lineHeight: 20, maxWidth: 280 },
-});
+  emptyTitle: { fontSize: t.fontSize.xl, fontWeight: '800', color: t.text.primary, letterSpacing: -0.3 },
+  emptySub:   { fontSize: t.fontSize.sm, color: t.text.secondary, marginTop: 6, textAlign: 'center', lineHeight: 20, maxWidth: 280 },
+}));
 
 // ── TRAINER CHAT SCREEN ───────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6105,6 +6146,9 @@ const tcStyles = StyleSheet.create({
 
 // ── NOTIFICATIONS SCREEN ──────────────────────────────────────────────────────
 function NotificationsScreen({ onBack, memberId }) {
+  const C = usePalette();
+  const g = useGlobalStyles();
+  const nt = useNtStyles();
   const [notifs, setNotifs] = useState([]);
 
   useEffect(() => {
@@ -6164,44 +6208,44 @@ function NotificationsScreen({ onBack, memberId }) {
   );
 }
 
-const nt = StyleSheet.create({
+const useNtStyles = makeStyles((t) => StyleSheet.create({
   // Header — matches web modal-header pattern: surface bg, subtle hairline,
   // centered title with flanking back chevron + action link.
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing.pageX,
-    paddingVertical: theme.spacing[3],
-    backgroundColor: theme.surface.default,
+    paddingHorizontal: t.spacing.pageX,
+    paddingVertical: t.spacing[3],
+    backgroundColor: t.surface.default,
     borderBottomWidth: 1,
-    borderBottomColor: theme.border.subtle,
+    borderBottomColor: t.border.subtle,
   },
   // Back chevron chip — 36×36 tap zone
   backChip: {
     width: 36, height: 36,
-    borderRadius: theme.radius.full,
+    borderRadius: t.radius.full,
     alignItems: 'center', justifyContent: 'center',
     marginLeft: -8,
   },
-  title:   { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.text.primary, letterSpacing: -0.2 },
-  markAll: { fontSize: 13, fontWeight: '600', color: theme.brand[600] },
+  title:   { fontSize: t.fontSize.lg, fontWeight: '700', color: t.text.primary, letterSpacing: -0.2 },
+  markAll: { fontSize: 13, fontWeight: '600', color: t.brand[600] },
   // Notification cards — now token-driven with shadow.card parity
   card: {
-    backgroundColor: theme.surface.default,
-    borderRadius: theme.radius.lg,
+    backgroundColor: t.surface.default,
+    borderRadius: t.radius.lg,
     padding: 14,
     marginBottom: 10,
     flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderColor: theme.border.default,
-    ...theme.shadow.card,
+    borderWidth: 1, borderColor: t.border.default,
+    ...t.shadow.card,
   },
-  cardUnread: { borderLeftWidth: 3, borderLeftColor: theme.brand[600] },
-  nTitle: { fontSize: 14, fontWeight: '600', color: theme.text.primary },
-  nBody:  { fontSize: 13, color: theme.text.secondary, marginTop: 2 },
-  nTime:  { fontSize: 11, color: theme.text.tertiary, marginTop: 4 },
-  dot:    { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.brand[600] },
-});
+  cardUnread: { borderLeftWidth: 3, borderLeftColor: t.brand[600] },
+  nTitle: { fontSize: 14, fontWeight: '600', color: t.text.primary },
+  nBody:  { fontSize: 13, color: t.text.secondary, marginTop: 2 },
+  nTime:  { fontSize: 11, color: t.text.tertiary, marginTop: 4 },
+  dot:    { width: 8, height: 8, borderRadius: 4, backgroundColor: t.brand[600] },
+}));
 
 // ── PROFILE SCREEN ────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6475,6 +6519,9 @@ const ti = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember, onRegisterSuccess }) {
+  const C = usePalette();
+  const g = useGlobalStyles();
+  const pf = usePfStyles();
   const [showMembership, setShowMembership] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [editingField, setEditingField] = useState(null);
@@ -6811,60 +6858,60 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember, onRegi
     </ScrollView>
   );
 }
-const pf = StyleSheet.create({
-  trainerCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: C.primary, marginBottom: 8 },
-  trainerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+const usePfStyles = makeStyles((t) => StyleSheet.create({
+  trainerCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: t.brand[600], marginBottom: 8 },
+  trainerAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   trainerAvatarText: { color: '#fff', fontWeight: '800', fontSize: 20 },
-  trainerName: { fontSize: 16, fontWeight: '700', color: C.dark },
-  trainerSub: { fontSize: 12, color: C.mid, marginTop: 2 },
-  trainerChatCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: C.light, marginBottom: 8 },
-  trainerChatTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  trainerChatSub: { fontSize: 12, color: C.mid, marginTop: 3 },
-  onlineBadge: { backgroundColor: '#D1FAE5', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  onlineTxt: { color: C.green, fontSize: 12, fontWeight: '700' },
-  removeTrainerBtn: { backgroundColor: '#FEE2E2', borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 4 },
-  removeTrainerTxt: { color: C.red, fontWeight: '600', fontSize: 14 },
-  noTrainerCard: { backgroundColor: C.card, borderRadius: 14, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: C.light },
-  noTrainerTitle: { fontSize: 16, fontWeight: '700', color: C.dark },
-  noTrainerSub: { fontSize: 13, color: C.mid, textAlign: 'center', lineHeight: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light },
-  modalTitle: { fontSize: 17, fontWeight: '700', color: C.dark },
-  trainerModalAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  trainerName: { fontSize: 16, fontWeight: '700', color: t.text.primary },
+  trainerSub: { fontSize: 12, color: t.text.secondary, marginTop: 2 },
+  trainerChatCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: t.border.default, marginBottom: 8 },
+  trainerChatTitle: { fontSize: 15, fontWeight: '700', color: t.text.primary },
+  trainerChatSub: { fontSize: 12, color: t.text.secondary, marginTop: 3 },
+  onlineBadge: { backgroundColor: t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  onlineTxt: { color: t.success[600], fontSize: 12, fontWeight: '700' },
+  removeTrainerBtn: { backgroundColor: t.danger[50], borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 4 },
+  removeTrainerTxt: { color: t.danger[600], fontWeight: '600', fontSize: 14 },
+  noTrainerCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: t.border.default },
+  noTrainerTitle: { fontSize: 16, fontWeight: '700', color: t.text.primary },
+  noTrainerSub: { fontSize: 13, color: t.text.secondary, textAlign: 'center', lineHeight: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: t.border.default },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: t.text.primary },
+  trainerModalAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   trainerModalAvatarText: { color: '#fff', fontWeight: '800', fontSize: 32 },
-  trainerModalName: { fontSize: 22, fontWeight: '800', color: C.dark },
-  verifiedBadge: { backgroundColor: '#D1FAE5', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
-  verifiedText: { color: C.green, fontSize: 12, fontWeight: '700' },
-  modalRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: C.card, padding: 14, marginBottom: 1, borderRadius: 2 },
-  modalRowKey: { fontSize: 14, color: C.mid },
-  modalRowVal: { fontSize: 14, fontWeight: '600', color: C.dark },
-  modalSectionTitle: { fontSize: 13, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
-  specChip: { backgroundColor: C.blue2, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
-  specChipText: { color: C.primary, fontSize: 13, fontWeight: '600' },
-  modalBio: { fontSize: 14, color: C.dark, lineHeight: 22, marginTop: 8 },
+  trainerModalName: { fontSize: 22, fontWeight: '800', color: t.text.primary },
+  verifiedBadge: { backgroundColor: t.success[50], borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
+  verifiedText: { color: t.success[600], fontSize: 12, fontWeight: '700' },
+  modalRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: t.surface.default, padding: 14, marginBottom: 1, borderRadius: 2 },
+  modalRowKey: { fontSize: 14, color: t.text.secondary },
+  modalRowVal: { fontSize: 14, fontWeight: '600', color: t.text.primary },
+  modalSectionTitle: { fontSize: 13, fontWeight: '700', color: t.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  specChip: { backgroundColor: t.brand[50], paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  specChipText: { color: t.brand[600], fontSize: 13, fontWeight: '600' },
+  modalBio: { fontSize: 14, color: t.text.primary, lineHeight: 22, marginTop: 8 },
   header: { alignItems: 'center', paddingVertical: 24 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   avatarTxt: { fontSize: 34, fontWeight: '800', color: '#fff' },
-  name: { fontSize: 22, fontWeight: '800', color: C.dark },
-  memberTag: { backgroundColor: C.blue2, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 4, marginTop: 6 },
-  memberTagTxt: { color: C.primary, fontSize: 12, fontWeight: '600' },
-  row: { backgroundColor: C.card, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 1, borderRadius: 2 },
-  rowKey: { fontSize: 14, color: C.mid, flex: 1 },
-  rowVal: { fontSize: 14, fontWeight: '600', color: C.dark },
+  name: { fontSize: 22, fontWeight: '800', color: t.text.primary },
+  memberTag: { backgroundColor: t.brand[50], borderRadius: 20, paddingHorizontal: 14, paddingVertical: 4, marginTop: 6 },
+  memberTagTxt: { color: t.brand[600], fontSize: 12, fontWeight: '600' },
+  row: { backgroundColor: t.surface.default, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 1, borderRadius: 2 },
+  rowKey: { fontSize: 14, color: t.text.secondary, flex: 1 },
+  rowVal: { fontSize: 14, fontWeight: '600', color: t.text.primary },
   editWrapper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  inlineInput: { fontSize: 14, fontWeight: '600', color: C.dark, borderBottomWidth: 1.5, borderBottomColor: C.primary, paddingVertical: 2, paddingHorizontal: 4, minWidth: 80, textAlign: 'right' },
+  inlineInput: { fontSize: 14, fontWeight: '600', color: t.text.primary, borderBottomWidth: 1.5, borderBottomColor: t.brand[600], paddingVertical: 2, paddingHorizontal: 4, minWidth: 80, textAlign: 'right' },
   editBtn: { padding: 4 },
   editBtnTxt: { fontSize: 14 },
-  trainerChatCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: C.light },
-  trainerChatTitle: { fontSize: 15, fontWeight: '700', color: C.dark },
-  trainerChatSub: { fontSize: 12, color: C.mid, marginTop: 3 },
-  onlineBadge: { backgroundColor: '#D1FAE5', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
-  onlineTxt: { color: C.green, fontSize: 12, fontWeight: '700' },
-  memberCard: { backgroundColor: C.card, borderRadius: 14, padding: 18, elevation: 1 },
-  planName: { fontSize: 17, fontWeight: '700', color: C.dark },
-  planSub: { fontSize: 13, color: C.mid, marginTop: 4 },
-  logoutBtn: { backgroundColor: '#FEE2E2', borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 24 },
-  logoutTxt: { color: C.red, fontWeight: '700', fontSize: 16 },
-});
+  trainerChatCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: t.border.default },
+  trainerChatTitle: { fontSize: 15, fontWeight: '700', color: t.text.primary },
+  trainerChatSub: { fontSize: 12, color: t.text.secondary, marginTop: 3 },
+  onlineBadge: { backgroundColor: t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  onlineTxt: { color: t.success[600], fontSize: 12, fontWeight: '700' },
+  memberCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 18, elevation: 1 },
+  planName: { fontSize: 17, fontWeight: '700', color: t.text.primary },
+  planSub: { fontSize: 13, color: t.text.secondary, marginTop: 4 },
+  logoutBtn: { backgroundColor: t.danger[50], borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 24 },
+  logoutTxt: { color: t.danger[600], fontWeight: '700', fontSize: 16 },
+}));
 
 // ── GLOBAL STYLES ─────────────────────────────────────────────────────────────
 // App-wide page chrome. Token-driven so every Profile/Notification/Invites-style
@@ -6873,34 +6920,19 @@ const pf = StyleSheet.create({
 //   • screenNoPad: used by screens (HomeScreen) that manage their own padding
 //   • pageTitle: 30 pt display heading with -0.5 tracking (web .text-heading-1)
 //   • sec: uppercase 11 pt label with 1.2 letter-spacing (web .text-label)
+// makeStyles factory — rebuilt on every theme change via useGlobalStyles()
+const useGlobalStyles = makeStyles((t) => StyleSheet.create({
+  screen:      { flex: 1, backgroundColor: t.surface.raised, paddingHorizontal: t.spacing.pageX, paddingTop: t.spacing.pageY },
+  screenNoPad: { flex: 1, backgroundColor: t.surface.raised },
+  pageTitle:   { fontSize: t.fontSize['3xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5, marginBottom: t.spacing[5], marginTop: t.spacing[1] },
+  sec:         { fontSize: 11, fontWeight: '700', color: t.text.tertiary, marginTop: t.spacing[5], marginBottom: t.spacing[3], letterSpacing: 1.2, textTransform: 'uppercase' },
+}));
+// Frozen fallback for non-reactive contexts (modals, one-off screens)
 const g = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: theme.surface.raised,
-    paddingHorizontal: theme.spacing.pageX,
-    paddingTop: theme.spacing.pageY,
-  },
-  screenNoPad: {
-    flex: 1,
-    backgroundColor: theme.surface.raised,
-  },
-  pageTitle: {
-    fontSize: theme.fontSize['3xl'],
-    fontWeight: '800',
-    color: theme.text.primary,
-    letterSpacing: -0.5,
-    marginBottom: theme.spacing[5],
-    marginTop: theme.spacing[1],
-  },
-  sec: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: theme.text.tertiary,
-    marginTop: theme.spacing[5],
-    marginBottom: theme.spacing[3],
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
+  screen:      { flex: 1, backgroundColor: theme.surface.raised, paddingHorizontal: theme.spacing.pageX, paddingTop: theme.spacing.pageY },
+  screenNoPad: { flex: 1, backgroundColor: theme.surface.raised },
+  pageTitle:   { fontSize: theme.fontSize['3xl'], fontWeight: '800', color: theme.text.primary, letterSpacing: -0.5, marginBottom: theme.spacing[5], marginTop: theme.spacing[1] },
+  sec:         { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, marginTop: theme.spacing[5], marginBottom: theme.spacing[3], letterSpacing: 1.2, textTransform: 'uppercase' },
 });
 
 // ── WORKOUT FINISH SCREEN ─────────────────────────────────────────────────────

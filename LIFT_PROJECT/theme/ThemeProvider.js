@@ -114,6 +114,43 @@ export function useThemeTokens() {
 }
 
 /**
+ * usePalette — returns a C-shaped object (matching App.js module-level C keys)
+ * that resolves live from the active theme. Add `const C = usePalette()` at the
+ * top of any component to shadow the frozen module-level C and get full dark-
+ * mode coverage for every C.* reference in that component's JSX.
+ */
+export function usePalette() {
+  const { theme: t, resolved } = useContext(ThemeContext);
+  const dark = resolved === 'dark';
+  return {
+    primary:  t.brand[dark ? 500 : 600],
+    accent:   t.brand[dark ? 500 : 600],
+    deepBlue: t.brand[dark ? 400 : 700],
+    bg:       t.surface.raised,
+    card:     t.surface.default,
+    sunken:   t.surface.sunken,
+    dark:     t.text.primary,
+    mid:      t.text.secondary,
+    muted:    t.text.tertiary,
+    light:    dark ? t.neutral[800] : t.neutral[200],
+    green:    t.success[dark ? 400 : 600],
+    greenSoft: dark ? 'rgba(34,197,94,0.15)' : t.success[50],
+    amber:    t.warning[dark ? 400 : 600],
+    amberSoft: dark ? 'rgba(234,179,8,0.15)' : t.warning[50],
+    red:      t.danger[dark ? 400 : 600],
+    redSoft:  dark ? 'rgba(244,63,94,0.15)' : t.danger[50],
+    blue2:    dark ? 'rgba(99,102,241,0.15)' : t.brand[50],
+    border:   t.border.default,
+    borderSubtle: t.border.subtle,
+    // Shadow helpers
+    cardShadow: t.shadow.card,
+    // Convenience
+    _theme: t,
+    _dark:  dark,
+  };
+}
+
+/**
  * makeStyles — factory helper.
  *   const useStyles = makeStyles((t) => StyleSheet.create({
  *     card: { backgroundColor: t.surface.default, borderColor: t.border.default, ... },
