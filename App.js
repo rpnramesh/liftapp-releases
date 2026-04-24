@@ -58,6 +58,7 @@ import theme from './LIFT_PROJECT/constants/theme';
 import sharedC from './LIFT_PROJECT/constants/colors';
 import { Pill as UiPill } from './LIFT_PROJECT/components/ui';
 import { useTheme, makeStyles } from './LIFT_PROJECT/theme/ThemeProvider';
+import ThemeToggle from './LIFT_PROJECT/theme/ThemeToggle';
 
 const { width } = Dimensions.get('window');
 
@@ -6618,6 +6619,10 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember, onRegi
           </View>
         );
       })}
+
+      {/* ── Appearance ───────────────────────────────────────────────── */}
+      <Text style={g.sec}>Appearance</Text>
+      <ThemeToggle style={{ marginBottom: 8 }} />
 
       <Text style={g.sec}>Account</Text>
       <View style={pf.memberCard}>
