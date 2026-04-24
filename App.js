@@ -22,6 +22,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  Share,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -7727,108 +7728,619 @@ const g = StyleSheet.create({
 });
 
 // ── WORKOUT FINISH SCREEN ─────────────────────────────────────────────────────
-function WorkoutFinishScreen({ data, memberName, onBack, onViewHistory }) {
-  const muscles = [...new Set(
-    (data?.exercises || []).map(e => e.muscleGroup).filter(Boolean)
-  )];
-  const formatDuration = (secs) => {
-    const m = Math.floor((secs || 0) / 60);
-    const s = (secs || 0) % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s || 0}s`;
-  };
-  const totalSets = (data?.exercises || []).reduce((acc, ex) => acc + (ex.targetSets || ex.actualSets || 0), 0);
+// ═══════════════════════════════════════════════════════════════════════════════
+// ConfettiLayer — pure-RN particle celebration, no external library.
+//   55 particles (mix of circles + rectangles) fall from the top of the screen
+//   with rotation and staggered delays. Uses native driver (GPU) for 60fps.
+//   pointerEvents="none" so the scroll/buttons beneath remain fully interactive.
+// ═══════════════════════════════════════════════════════════════════════════════
+function ConfettiLayer() {
+  const { width, height } = Dimensions.get('window');
+
+  // Brand + accent colors — vivid so they pop on both light and dark backgrounds
+  const COLORS = [
+    '#4f46e5', '#818cf8',   // brand indigo
+    '#22c55e', '#4ade80',   // success green
+    '#f59e0b', '#fbbf24',   // warning gold
+    '#f43f5e', '#fb7185',   // danger rose
+    '#a855f7', '#c084fc',   // accent violet
+    '#06b6d4', '#22d3ee',   // info cyan
+  ];
+
+  // Build stable particle configs (useMemo prevents recreation on re-render)
+  const particles = React.useMemo(() =>
+    Array.from({ length: 55 }, (_, i) => ({
+      startX:   Math.random() * width,
+      startY:   -20 - Math.random() * 80,
+      color:    COLORS[i % COLORS.length],
+      size:     5 + Math.random() * 7,
+      isCircle: Math.random() > 0.45,
+      duration: 2400 + Math.random() * 1800,
+      delay:    Math.random() * 1400,
+      animY:    new Animated.Value(0),
+      animR:    new Animated.Value(0),
+      animO:    new Animated.Value(1),
+    })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  []);
+
+  useEffect(() => {
+    const anims = particles.map(p =>
+      Animated.sequence([
+        Animated.delay(p.delay),
+        Animated.parallel([
+          // Fall the full screen height
+          Animated.timing(p.animY, { toValue: 1, duration: p.duration, useNativeDriver: true }),
+          // Spin 2-3 full rotations
+          Animated.timing(p.animR, { toValue: 1, duration: p.duration, useNativeDriver: true }),
+          // Fade out in the bottom third
+          Animated.sequence([
+            Animated.delay(p.duration * 0.65),
+            Animated.timing(p.animO, { toValue: 0, duration: p.duration * 0.35, useNativeDriver: true }),
+          ]),
+        ]),
+      ])
+    );
+    Animated.parallel(anims).start();
+    return () => anims.forEach(a => a.stop?.());
+  }, [particles]);
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 24, alignItems: 'center', paddingBottom: 48 }}>
-        <View style={wf.trophy}>
-          <Ionicons name="trophy" size={52} color={C.green} />
-        </View>
-        <Text style={wf.title}>Workout Complete!</Text>
-        <Text style={wf.sub}>Great work, {memberName || 'there'}!</Text>
-        {data?.planName ? (
-          <Text style={wf.planName}>{data.planName}{data.dayLabel ? ` · ${data.dayLabel}` : ''}</Text>
-        ) : null}
-        <View style={wf.statsRow}>
-          <View style={wf.statBox}>
-            <Ionicons name="time-outline" size={22} color={C.primary} />
-            <Text style={wf.statVal}>{formatDuration(data?.durationSeconds)}</Text>
-            <Text style={wf.statLbl}>Duration</Text>
-          </View>
-          <View style={wf.statBox}>
-            <Ionicons name="barbell-outline" size={22} color={C.primary} />
-            <Text style={wf.statVal}>{data?.exerciseCount || (data?.exercises?.length || 0)}</Text>
-            <Text style={wf.statLbl}>Exercises</Text>
-          </View>
-          <View style={wf.statBox}>
-            <Ionicons name="checkmark-circle-outline" size={22} color={C.green} />
-            <Text style={wf.statVal}>{totalSets}</Text>
-            <Text style={wf.statLbl}>Sets Done</Text>
-          </View>
-        </View>
-        {muscles.length > 0 && (
-          <View style={wf.musclesCard}>
-            <Text style={wf.musclesTitle}>Muscles Worked</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-              {muscles.map(m => (
-                <View key={m} style={wf.muscleChip}>
-                  <Text style={wf.muscleChipTxt}>{m}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-        {(data?.exercises || []).length > 0 && (
-          <View style={wf.breakdownCard}>
-            <Text style={[g.sec, { marginTop: 0, marginBottom: 12 }]}>Session Breakdown</Text>
-            {(data.exercises).map((ex, i) => (
-              <View key={i} style={[wf.exRow, i < data.exercises.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.light }]}>
-                <View style={wf.exCheck}><Text style={{ color: '#fff', fontSize: 11 }}>✓</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={wf.exName}>{ex.exerciseName || ex.name}</Text>
-                  <Text style={wf.exMeta}>
-                    {ex.actualSets || ex.targetSets} sets × {ex.actualReps || ex.targetReps} reps
-                    {ex.weight > 0 ? ` · ${ex.weight} kg` : ''}
-                  </Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-        <TouchableOpacity style={wf.histBtn} onPress={onViewHistory}>
-          <Ionicons name="list-outline" size={18} color={C.primary} />
-          <Text style={wf.histBtnTxt}>View Full History</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={wf.doneBtn} onPress={onBack}>
-          <Text style={wf.doneBtnTxt}>Back to Workouts</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    >
+      {particles.map((p, i) => {
+        const translateY = p.animY.interpolate({
+          inputRange: [0, 1],
+          outputRange: [p.startY, p.startY + height + 100],
+        });
+        const rotate = p.animR.interpolate({
+          inputRange: [0, 1],
+          outputRange: ['0deg', `${540 + Math.random() * 360}deg`],
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: p.startX,
+              top: 0,
+              width: p.size,
+              height: p.isCircle ? p.size : p.size * 1.6,
+              borderRadius: p.isCircle ? p.size / 2 : 2,
+              backgroundColor: p.color,
+              opacity: p.animO,
+              transform: [{ translateY }, { rotate }],
+            }}
+          />
+        );
+      })}
+    </View>
   );
 }
 
-const wf = StyleSheet.create({
-  trophy: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#F0FDF4', alignItems: 'center', justifyContent: 'center', marginBottom: 20, marginTop: 12 },
-  title: { fontSize: 28, fontWeight: '800', color: C.dark, marginBottom: 6 },
-  sub: { fontSize: 16, color: C.mid, marginBottom: 8 },
-  planName: { fontSize: 13, color: C.primary, fontWeight: '600', marginBottom: 24, textAlign: 'center' },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20, width: '100%' },
-  statBox: { flex: 1, backgroundColor: C.card, borderRadius: 14, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: C.light },
-  statVal: { fontSize: 20, fontWeight: '800', color: C.dark, marginTop: 6 },
-  statLbl: { fontSize: 11, color: C.mid, marginTop: 2, fontWeight: '500' },
-  musclesCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, width: '100%', marginBottom: 16, borderWidth: 1, borderColor: C.light },
-  musclesTitle: { fontSize: 13, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5 },
-  muscleChip: { backgroundColor: C.blue2, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
-  muscleChipTxt: { fontSize: 12, fontWeight: '600', color: C.primary },
-  breakdownCard: { backgroundColor: C.card, borderRadius: 14, padding: 16, width: '100%', marginBottom: 20, borderWidth: 1, borderColor: C.light },
-  exRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  exCheck: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
-  exName: { fontSize: 14, fontWeight: '600', color: C.dark },
-  exMeta: { fontSize: 12, color: C.mid, marginTop: 2 },
-  histBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderColor: C.primary, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 24, width: '100%', justifyContent: 'center', marginBottom: 12 },
-  histBtnTxt: { color: C.primary, fontWeight: '700', fontSize: 15 },
-  doneBtn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 16, width: '100%', alignItems: 'center' },
-  doneBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 16 },
-});
+// ═══════════════════════════════════════════════════════════════════════════════
+// WorkoutFinishScreen — premium post-workout summary.
+//
+//   Sections:
+//     1. Confetti celebration (absolute, pointerEvents none)
+//     2. Hero: success ring + trophy + workout name + date
+//     3. XP earned (volume-based gamification, display only)
+//     4. Stats 2×2 grid: Total Volume · Duration · Exercises · Total Sets
+//     5. Motivational quote (performance-adaptive)
+//     6. Muscles worked chips
+//     7. Exercise breakdown list
+//     8. Action row: Share · Log Notes · View Progress
+//     9. "Save & Close" primary CTA
+//
+//   Design: web `.card` geometry (radius-xl, shadow-card, brand-600 accents),
+//   dark mode via usePalette(), `tabular-nums` on all numbers.
+// ═══════════════════════════════════════════════════════════════════════════════
+function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, onViewProgress }) {
+  const C  = usePalette();
+  const wf = useWfStyles();
+  const t  = C._theme;
+  const [showNotes, setShowNotes] = useState(false);
+  const [notes, setNotes] = useState('');
+
+  // ── Derived stats ────────────────────────────────────────────────────────
+  const exs = data?.exercises || [];
+  const exerciseCount = data?.exerciseCount || exs.length;
+  const totalSets = exs.reduce((a, e) => a + (e.actualSets || e.targetSets || 0), 0);
+
+  // Total volume (kg): Σ weight × reps × sets
+  const totalVolume = exs.reduce((sum, ex) => {
+    const w = parseFloat(ex.weight) || 0;
+    const r = parseInt(ex.actualReps ?? ex.targetReps, 10) || 0;
+    const s = ex.actualSets || ex.targetSets || 0;
+    return sum + w * r * s;
+  }, 0);
+
+  const muscles = [...new Set(exs.map(e => e.muscleGroup).filter(Boolean))];
+
+  const durationMins = Math.round((data?.durationSeconds || 0) / 60);
+  const durationDisplay = durationMins >= 60
+    ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`
+    : `${durationMins}m`;
+
+  // ── XP calculation (display only — no backend) ───────────────────────────
+  const xpBase      = 100;
+  const xpExercises = exerciseCount * 20;
+  const xpSets      = totalSets * 5;
+  const xpVolume    = Math.min(150, Math.floor(totalVolume / 500) * 10);
+  const xpTotal     = xpBase + xpExercises + xpSets + xpVolume;
+  const xpLevel     = Math.floor(xpTotal / 100);
+
+  // ── Motivational message ─────────────────────────────────────────────────
+  const motivate = () => {
+    if (totalVolume > 8000) return { title: 'Absolute beast! 🔥', sub: 'That volume is elite-level. Your body will thank you tomorrow.' };
+    if (durationMins > 70)  return { title: 'Iron will! ⚡', sub: 'Over an hour of grinding. Mental strength is real strength.' };
+    if (exerciseCount >= 7) return { title: 'Full-body warrior! 💪', sub: 'Covered every angle. That\'s how champions train.' };
+    if (totalSets >= 20)    return { title: 'Set machine! 🏆', sub: `${totalSets} sets completed — consistency builds legends.` };
+    const defaults = [
+      { title: 'Crushed it! 🎯',   sub: 'Every rep counts. Showing up is the hardest part — you did it.' },
+      { title: 'Stronger today! ✨', sub: 'Progress isn\'t always visible, but it\'s always real.' },
+      { title: 'Well done! 🙌',    sub: 'Another session in the bank. Your future self is grateful.' },
+    ];
+    return defaults[Math.floor(Date.now() / 86400000) % defaults.length];
+  };
+  const { title: motivTitle, sub: motivSub } = motivate();
+
+  // ── Share text ───────────────────────────────────────────────────────────
+  const handleShare = async () => {
+    const vol = totalVolume > 0 ? `${Math.round(totalVolume).toLocaleString()} kg volume · ` : '';
+    const txt = [
+      '🏋️ Workout complete!',
+      '━━━━━━━━━━━━━━━',
+      `${data?.planName || 'Workout'}${data?.dayLabel ? ` · ${data.dayLabel}` : ''}`,
+      `⏱ ${durationDisplay} · ${vol}${exerciseCount} exercises · ${totalSets} sets`,
+      '',
+      '💪 via LIFT Fitness App',
+    ].join('\n');
+    try { await Share.share({ message: txt }); } catch (_) {}
+  };
+
+  // ── Celebration ring animation (scale in) ────────────────────────────────
+  const ringScale = useRef(new Animated.Value(0.6)).current;
+  const ringOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(ringScale,   { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(ringOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+  }, [ringScale, ringOpacity]);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* ── Confetti — absolute, non-blocking ── */}
+      <ConfettiLayer />
+
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={wf.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ── Hero: ring + trophy + headline ── */}
+          <View style={wf.hero}>
+            <Animated.View style={{ transform: [{ scale: ringScale }], opacity: ringOpacity }}>
+              <WorkoutProgressRing
+                progress={1}
+                size={108}
+                stroke={8}
+                color={t.success[500]}
+                trackColor={t.success[100]}
+              >
+                <Ionicons name="trophy" size={38} color={t.success[600]} />
+              </WorkoutProgressRing>
+            </Animated.View>
+
+            <Text style={[wf.headline, { color: C.dark }]}>Workout Complete!</Text>
+            <Text style={[wf.subline, { color: C.mid }]}>{motivTitle}</Text>
+
+            {(data?.planName || data?.dayLabel) ? (
+              <View style={[wf.planChip, { backgroundColor: C.blue2 }]}>
+                <Text style={[wf.planChipTxt, { color: C.primary }]}>
+                  {[data.planName, data.dayLabel].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text style={[wf.date, { color: C.muted }]}>
+              {new Date().toLocaleDateString('en', { weekday: 'long', month: 'long', day: 'numeric' })}
+            </Text>
+          </View>
+
+          {/* ── XP Earned banner ── */}
+          <View style={[wf.xpBanner, { backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.15)' : t.brand[50], borderColor: t.mode === 'dark' ? 'rgba(99,102,241,0.3)' : t.brand[100] }]}>
+            <View style={wf.xpLeft}>
+              <Text style={[wf.xpLabel, { color: C.muted }]}>XP EARNED</Text>
+              <Text style={[wf.xpValue, { color: C.primary }]}>+{xpTotal}</Text>
+            </View>
+            <View style={[wf.xpDivider, { backgroundColor: C.border }]} />
+            <View style={wf.xpRight}>
+              <Text style={[wf.xpLabel, { color: C.muted }]}>SESSION LEVEL</Text>
+              <Text style={[wf.xpValue, { color: C.primary }]}>Lv.{xpLevel}</Text>
+            </View>
+            <View style={wf.xpBarWrap}>
+              <View style={[wf.xpBarTrack, { backgroundColor: C.border }]}>
+                <View style={[wf.xpBarFill, {
+                  width: `${(xpTotal % 100)}%`,
+                  backgroundColor: C.primary,
+                }]} />
+              </View>
+              <Text style={[wf.xpBarTxt, { color: C.muted }]}>{xpTotal % 100}/100 to Lv.{xpLevel + 1}</Text>
+            </View>
+          </View>
+
+          {/* ── Stats 2×2 grid ── */}
+          <View style={wf.statsGrid}>
+            {[
+              { icon: 'barbell-outline',        color: C.primary,        val: totalVolume > 0 ? String(Math.round(totalVolume).toLocaleString()) : '—', unit: totalVolume > 0 ? 'kg' : '', lbl: 'Total Volume' },
+              { icon: 'time-outline',            color: C.green,          val: durationDisplay,              unit: '',   lbl: 'Duration' },
+              { icon: 'fitness-outline',         color: t.warning[600],   val: String(exerciseCount),        unit: '',   lbl: 'Exercises' },
+              { icon: 'checkmark-circle-outline',color: t.success[600],   val: String(totalSets),            unit: '',   lbl: 'Sets Done' },
+            ].map((s, i) => (
+              <View key={i} style={[wf.statCard, { backgroundColor: C.card, borderColor: C.border }]}>
+                <View style={[wf.statIcon, { backgroundColor: s.color + '15' }]}>
+                  <Ionicons name={s.icon} size={18} color={s.color} />
+                </View>
+                <View style={wf.statValRow}>
+                  <Text style={[wf.statVal, { color: C.dark }]}>{s.val}</Text>
+                  {s.unit ? <Text style={[wf.statUnit, { color: C.muted }]}>{s.unit}</Text> : null}
+                </View>
+                <Text style={[wf.statLbl, { color: C.muted }]}>{s.lbl}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* ── Motivational quote card ── */}
+          <View style={[wf.quoteCard, { backgroundColor: C.card, borderColor: C.border }]}>
+            <View style={[wf.quoteAccent, { backgroundColor: C.primary }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={[wf.quoteTitle, { color: C.dark }]}>{motivTitle}</Text>
+              <Text style={[wf.quoteSub, { color: C.mid }]}>{motivSub}</Text>
+            </View>
+          </View>
+
+          {/* ── Muscles worked ── */}
+          {muscles.length > 0 && (
+            <View style={[wf.section, { backgroundColor: C.card, borderColor: C.border }]}>
+              <Text style={[wf.sectionLabel, { color: C.muted }]}>MUSCLES WORKED</Text>
+              <View style={wf.chips}>
+                {muscles.map(m => (
+                  <View key={m} style={[wf.chip, { backgroundColor: C.blue2 }]}>
+                    <Text style={[wf.chipTxt, { color: C.primary }]}>{m}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* ── Exercise breakdown ── */}
+          {exs.length > 0 && (
+            <View style={[wf.section, { backgroundColor: C.card, borderColor: C.border }]}>
+              <Text style={[wf.sectionLabel, { color: C.muted }]}>SESSION BREAKDOWN</Text>
+              {exs.map((ex, i) => {
+                const w = parseFloat(ex.weight) || 0;
+                const vol = w > 0
+                  ? `${Math.round(w * (parseInt(ex.actualReps ?? ex.targetReps, 10) || 0) * (ex.actualSets || ex.targetSets || 0))} kg vol`
+                  : null;
+                return (
+                  <View key={i} style={[wf.exRow, i < exs.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.borderSubtle }]}>
+                    <View style={[wf.exBadge, { backgroundColor: C.green + '20' }]}>
+                      <Ionicons name="checkmark" size={14} color={C.green} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[wf.exName, { color: C.dark }]} numberOfLines={1}>
+                        {ex.exerciseName || ex.name}
+                      </Text>
+                      <Text style={[wf.exMeta, { color: C.muted }]}>
+                        {ex.actualSets || ex.targetSets}×{ex.actualReps || ex.targetReps}
+                        {w > 0 ? `  ·  ${w} kg` : ''}
+                        {vol ? `  ·  ${vol}` : ''}
+                      </Text>
+                    </View>
+                    {w > 0 && (
+                      <View style={[wf.volChip, { backgroundColor: C.blue2 }]}>
+                        <Text style={[wf.volChipTxt, { color: C.primary }]}>{w} kg</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* ── Action buttons ── */}
+          <View style={wf.actionRow}>
+            <TouchableOpacity
+              style={[wf.actionBtn, { backgroundColor: C.card, borderColor: C.border }]}
+              onPress={handleShare}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="share-outline" size={20} color={C.primary} />
+              <Text style={[wf.actionBtnTxt, { color: C.primary }]}>Share</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[wf.actionBtn, { backgroundColor: C.card, borderColor: C.border }]}
+              onPress={() => setShowNotes(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="pencil-outline" size={20} color={C.primary} />
+              <Text style={[wf.actionBtnTxt, { color: C.primary }]}>Notes</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[wf.actionBtn, { backgroundColor: C.card, borderColor: C.border }]}
+              onPress={onViewProgress}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trending-up-outline" size={20} color={C.primary} />
+              <Text style={[wf.actionBtnTxt, { color: C.primary }]}>Progress</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Save & Close primary CTA ── */}
+          <TouchableOpacity
+            style={[wf.saveBtn, { backgroundColor: C.green, borderColor: t.success[700] }]}
+            onPress={onBack}
+            activeOpacity={0.88}
+          >
+            <Ionicons name="checkmark-done" size={20} color="#fff" />
+            <Text style={wf.saveBtnTxt}>Save & Close</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={onViewHistory} style={wf.histLink}>
+            <Ionicons name="time-outline" size={14} color={C.mid} />
+            <Text style={[wf.histLinkTxt, { color: C.mid }]}>View full workout history</Text>
+          </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </SafeAreaView>
+
+      {/* ── Log Notes modal ── */}
+      <Modal
+        visible={showNotes}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotes(false)}
+      >
+        <View style={[wf.notesBackdrop]}>
+          <View style={[wf.notesSheet, { backgroundColor: C.card, borderColor: C.border }]}>
+            <View style={wf.notesHandle} />
+            <Text style={[wf.notesTitle, { color: C.dark }]}>Session Notes</Text>
+            <Text style={[wf.notesSub, { color: C.mid }]}>How did this session feel? Any PRs or form cues?</Text>
+            <TextInput
+              style={[wf.notesInput, { backgroundColor: C.sunken, borderColor: C.border, color: C.dark }]}
+              multiline
+              placeholder="e.g. Felt strong on bench. Left shoulder tight on overhead press."
+              placeholderTextColor={C.muted}
+              value={notes}
+              onChangeText={setNotes}
+              maxLength={500}
+              textAlignVertical="top"
+              autoFocus
+            />
+            <View style={wf.notesBtnRow}>
+              <TouchableOpacity
+                style={[wf.notesCancelBtn, { backgroundColor: C.light, borderColor: C.border }]}
+                onPress={() => setShowNotes(false)}
+              >
+                <Text style={[wf.notesCancelTxt, { color: C.mid }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[wf.notesSaveBtn, { backgroundColor: C.primary, borderColor: t.brand[700] }]}
+                onPress={() => setShowNotes(false)}
+              >
+                <Text style={wf.notesSaveTxt}>Save Note</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// makeStyles for WorkoutFinishScreen — theme-reactive
+const useWfStyles = makeStyles((t) => StyleSheet.create({
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    alignItems: 'center',
+  },
+
+  /* ── Hero ── */
+  hero: { alignItems: 'center', paddingTop: 16, paddingBottom: 24, width: '100%' },
+  headline: {
+    fontSize: 30, fontWeight: '800', letterSpacing: -0.6,
+    marginTop: 20, textAlign: 'center',
+  },
+  subline: { fontSize: 16, fontWeight: '500', marginTop: 6, textAlign: 'center' },
+  planChip: {
+    borderRadius: t.radius.full,
+    paddingHorizontal: 14, paddingVertical: 5,
+    marginTop: 10,
+  },
+  planChipTxt: { fontSize: 13, fontWeight: '600', letterSpacing: -0.1 },
+  date: { fontSize: 12, marginTop: 8, letterSpacing: 0.2 },
+
+  /* ── XP banner ── */
+  xpBanner: {
+    width: '100%',
+    borderRadius: t.radius.xl,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  xpLeft:  { alignItems: 'center', flex: 1 },
+  xpRight: { alignItems: 'center', flex: 1 },
+  xpDivider: { width: 1, height: 40 },
+  xpLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
+  xpValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  xpBarWrap: { width: '100%', marginTop: 2 },
+  xpBarTrack: { height: 4, borderRadius: 2, overflow: 'hidden', marginBottom: 4 },
+  xpBarFill: { height: '100%', borderRadius: 2 },
+  xpBarTxt: { fontSize: 10, fontWeight: '600', textAlign: 'center' },
+
+  /* ── Stats 2×2 grid ── */
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    width: '100%',
+    marginBottom: 16,
+  },
+  statCard: {
+    width: '47.5%',
+    borderRadius: t.radius.xl,
+    padding: 14,
+    borderWidth: 1,
+    ...t.shadow.card,
+  },
+  statIcon: {
+    width: 34, height: 34,
+    borderRadius: t.radius.md,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 10,
+  },
+  statValRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  statVal:  { fontSize: 24, fontWeight: '800', letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  statUnit: { fontSize: 12, fontWeight: '600' },
+  statLbl:  { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 4 },
+
+  /* ── Motivational quote ── */
+  quoteCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: t.radius.xl,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    gap: 12,
+    ...t.shadow.card,
+    overflow: 'hidden',
+  },
+  quoteAccent: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
+  quoteTitle:  { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  quoteSub:    { fontSize: 13, marginTop: 4, lineHeight: 18 },
+
+  /* ── Generic section card ── */
+  section: {
+    width: '100%',
+    borderRadius: t.radius.xl,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    ...t.shadow.card,
+  },
+  sectionLabel: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.2,
+    textTransform: 'uppercase', marginBottom: 12,
+  },
+
+  /* ── Muscles chips ── */
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { borderRadius: t.radius.full, paddingHorizontal: 12, paddingVertical: 5 },
+  chipTxt: { fontSize: 12, fontWeight: '600' },
+
+  /* ── Exercise row ── */
+  exRow: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 10, paddingVertical: 10,
+  },
+  exBadge: {
+    width: 28, height: 28, borderRadius: t.radius.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  exName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
+  exMeta: { fontSize: 12, marginTop: 2, fontVariant: ['tabular-nums'] },
+  volChip: { borderRadius: t.radius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  volChipTxt: { fontSize: 11, fontWeight: '700' },
+
+  /* ── Action buttons row ── */
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginBottom: 16,
+  },
+  actionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: t.radius.xl,
+    borderWidth: 1,
+    ...t.shadow.card,
+    minHeight: 64,
+  },
+  actionBtnTxt: { fontSize: 12, fontWeight: '700', letterSpacing: -0.1 },
+
+  /* ── Save & Close CTA ── */
+  saveBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 17,
+    borderRadius: t.radius.lg,
+    borderWidth: 1,
+    minHeight: 54,
+    ...t.shadow.success,
+    marginBottom: 12,
+  },
+  saveBtnTxt: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.1 },
+
+  histLink: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 10,
+  },
+  histLinkTxt: { fontSize: 13, fontWeight: '600' },
+
+  /* ── Notes modal ── */
+  notesBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  notesSheet: {
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+    padding: 24, paddingTop: 16,
+  },
+  notesHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: '#d4d4d4',
+    alignSelf: 'center', marginBottom: 18,
+  },
+  notesTitle: { fontSize: 20, fontWeight: '800', letterSpacing: -0.4, marginBottom: 6 },
+  notesSub:   { fontSize: 13, marginBottom: 16, lineHeight: 18 },
+  notesInput: {
+    borderWidth: 1.5, borderRadius: 12,
+    padding: 14, fontSize: 15,
+    minHeight: 120, marginBottom: 20,
+  },
+  notesBtnRow: { flexDirection: 'row', gap: 10 },
+  notesCancelBtn: {
+    flex: 1, paddingVertical: 14,
+    borderRadius: 12, alignItems: 'center', borderWidth: 1,
+  },
+  notesCancelTxt: { fontSize: 15, fontWeight: '600' },
+  notesSaveBtn: {
+    flex: 1.4, paddingVertical: 14,
+    borderRadius: 12, alignItems: 'center', borderWidth: 1,
+  },
+  notesSaveTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
+}));
 
 // ── WORKOUT HISTORY SCREEN ─────────────────────────────────────────────────────
 function WorkoutHistoryScreen({ member, memberId, onBack }) {
@@ -8388,9 +8900,11 @@ function AppBody() {
   if (screen === 'workoutFinish') return (
     <WorkoutFinishScreen
       data={workoutFinishData}
+      member={member}
       memberName={member?.name || 'there'}
       onBack={() => { setScreen('main'); setTab('Workouts'); }}
       onViewHistory={() => setScreen('workoutHistory')}
+      onViewProgress={() => { setScreen('main'); setTab('Progress'); }}
     />
   );
   if (screen === 'workoutHistory') return (
