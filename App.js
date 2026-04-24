@@ -2488,6 +2488,202 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
 //   Zones: 1-3 easy (success), 4-6 moderate (brand), 7-8 hard (warning),
 //          9-10 max (danger) — colour-coded for intuition, not just numbers.
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ManualBreakTimer — user-controlled countdown timer for set breaks.
+//
+//   Separate from the auto-rest timer (which fires after marking a set done
+//   based on the exercise's rest period). This one the user starts manually:
+//   "I'm taking a break now — start counting."
+//
+//   Behaviour:
+//     • Default target: 60 s. +30/−30 adjust before or during countdown.
+//     • Start/Pause toggles the countdown. Pause preserves remaining time.
+//     • Reaches 0: haptic double-buzz, shows "Done!" in green.
+//     • Reset: returns to 60 s, stopped.
+//     • A thin progress bar across the top drains as time runs out — turns
+//       amber < 20 s, red < 10 s to signal urgency without a sound.
+//
+//   Design: compact, ≤60px tall — doesn't compete with the exercise cards.
+// ─────────────────────────────────────────────────────────────────────────────
+function ManualBreakTimer({ C, t }) {
+  const DEFAULT = 60;
+  const [remaining, setRemaining] = useState(DEFAULT);
+  const [target,    setTarget]    = useState(DEFAULT);
+  const [running,   setRunning]   = useState(false);
+  const endTimeRef  = useRef(null);
+  const tickRef     = useRef(null);
+
+  // ── Tick ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!running) return;
+    const tick = () => {
+      const r = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
+      setRemaining(r);
+      if (r === 0) {
+        clearInterval(tickRef.current);
+        setRunning(false);
+        Vibration.vibrate([0, 300, 150, 300]);  // double buzz at done
+      }
+    };
+    tick();
+    tickRef.current = setInterval(tick, 300);
+    return () => clearInterval(tickRef.current);
+  }, [running]);
+
+  // ── Controls ─────────────────────────────────────────────────────────────
+  const handleStartPause = () => {
+    if (running) {
+      clearInterval(tickRef.current);
+      setRunning(false);
+      setTarget(remaining);      // next start will count from current remaining
+      endTimeRef.current = null;
+    } else {
+      Vibration.vibrate(8);
+      endTimeRef.current = Date.now() + remaining * 1000;
+      setRunning(true);
+    }
+  };
+
+  const handleAdjust = (delta) => {
+    Vibration.vibrate(8);
+    setRemaining(prev => {
+      const next = Math.max(10, prev + delta);
+      if (running && endTimeRef.current) {
+        endTimeRef.current = endTimeRef.current + delta * 1000;
+      }
+      setTarget(t2 => running ? t2 + delta : next);
+      return next;
+    });
+  };
+
+  const handleReset = () => {
+    clearInterval(tickRef.current);
+    setRunning(false);
+    setRemaining(DEFAULT);
+    setTarget(DEFAULT);
+    endTimeRef.current = null;
+  };
+
+  // ── Display ──────────────────────────────────────────────────────────────
+  const mins  = Math.floor(remaining / 60);
+  const secs  = remaining % 60;
+  const done  = remaining === 0;
+  const pct   = target > 0 ? remaining / target : 0;
+
+  // Color: green=idle, amber=running, red<20s, brand=done
+  const barColor = done       ? t.success[500]
+    : !running              ? t.brand[600]
+    : remaining < 10        ? t.danger[500]
+    : remaining < 20        ? t.warning[500]
+    : t.success[500];
+
+  return (
+    <View style={[bt.wrap, { backgroundColor: C.card, borderColor: C.border }]}>
+      {/* Thin drain bar — fills left to right as time elapses */}
+      <View style={[bt.barTrack, { backgroundColor: C.light }]}>
+        <View style={[bt.barFill, { width: `${(1 - pct) * 100}%`, backgroundColor: barColor }]} />
+      </View>
+
+      <View style={bt.body}>
+        {/* Time display */}
+        <View style={bt.timeBlock}>
+          <Text style={[bt.label, { color: C.muted }]}>BREAK</Text>
+          <Text style={[bt.time, { color: done ? C.green : C.dark }]}>
+            {mins}:{String(secs).padStart(2, '0')}
+          </Text>
+        </View>
+
+        {/* Controls */}
+        <View style={bt.controls}>
+          <TouchableOpacity
+            style={[bt.adjBtn, { borderColor: C.border }]}
+            onPress={() => handleAdjust(-30)}
+            hitSlop={8}
+          >
+            <Text style={[bt.adjTxt, { color: C.mid }]}>−30s</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[bt.playBtn, {
+              backgroundColor: running
+                ? (remaining < 20 ? t.danger[600] : t.warning[600])
+                : t.brand[600],
+            }]}
+            onPress={handleStartPause}
+          >
+            <Ionicons name={running ? 'pause' : 'play'} size={15} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[bt.adjBtn, { borderColor: C.border }]}
+            onPress={() => handleAdjust(30)}
+            hitSlop={8}
+          >
+            <Text style={[bt.adjTxt, { color: C.mid }]}>+30s</Text>
+          </TouchableOpacity>
+
+          {/* Reset — only shown when not at default */}
+          {(remaining !== DEFAULT || running) && (
+            <TouchableOpacity onPress={handleReset} hitSlop={8} style={bt.resetBtn}>
+              <Ionicons name="refresh" size={14} color={C.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const bt = StyleSheet.create({
+  wrap: {
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  // Drain bar — sits flush at top of card, 3 px tall
+  barTrack: { height: 3 },
+  barFill:  { height: '100%' },
+  body: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  timeBlock: {},
+  label: {
+    fontSize: 9, fontWeight: '800',
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  time: {
+    fontSize: 26, fontWeight: '800',
+    letterSpacing: -0.5, fontVariant: ['tabular-nums'],
+    lineHeight: 30,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adjBtn: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 46,
+    alignItems: 'center',
+  },
+  adjTxt: { fontSize: 12, fontWeight: '700' },
+  playBtn: {
+    width: 38, height: 38,
+    borderRadius: 19,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  resetBtn: { padding: 6 },
+});
+
 function RPEPickerRow({ onSelect, onSkip, C, t }) {
   const rpeZone = (n) => {
     if (n <= 3) return t.success[600];
@@ -3124,11 +3320,11 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12, paddingHorizontal: 14,
+    paddingVertical: 7, paddingHorizontal: 12,    // ↓ was 12/14 — more compact rows
     borderBottomWidth: 1, borderBottomColor: t.border.subtle,
-    gap: 12,
+    gap: 10,
     position: 'relative',
-    minHeight: 64,
+    minHeight: 48,                                 // ↓ was 64
   },
   // Done set: light success wash
   setRowDone: {
@@ -3140,7 +3336,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     backgroundColor: t.mode === 'dark'
       ? 'rgba(99,102,241,0.12)'
       : 'rgba(79,70,229,0.06)',
-    paddingVertical: 14,
+    paddingVertical: 9,     // ↓ was 14 — current set still slightly taller than done
   },
 
   // Green flash overlay — animated, absolute
@@ -3152,8 +3348,8 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
 
   // Set number badge
   setNumBadge: {
-    width: 32, height: 32,
-    borderRadius: t.radius.md,
+    width: 28, height: 28,     // ↓ was 32
+    borderRadius: t.radius.sm,
     backgroundColor: t.surface.sunken,
     borderWidth: 1, borderColor: t.border.default,
     alignItems: 'center', justifyContent: 'center',
@@ -3165,7 +3361,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
 
   /* ── Reps column ─────────────────────────────────────────────── */
   repsCol: {
-    width: 62,
+    width: 54,               // ↓ was 62
     alignItems: 'center',
   },
   fieldLabel: {
@@ -3178,7 +3374,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   },
   // Read-only done value
   fieldValueDone: {
-    fontSize: t.fontSize.xl,
+    fontSize: t.fontSize.md,   // ↓ was xl(18) → md(15)
     fontWeight: '700',
     color: t.success[t.mode === 'dark' ? 400 : 700],
     fontVariant: ['tabular-nums'],
@@ -3186,13 +3382,13 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   },
   // Editable field (current / pending)
   fieldInput: {
-    fontSize: t.fontSize.xl,
+    fontSize: t.fontSize.md,   // ↓ was xl(18) → md(15)
     fontWeight: '800',
     color: t.text.primary,
     textAlign: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    minWidth: 44, minHeight: 40,
+    paddingVertical: 3,        // ↓ was 6
+    paddingHorizontal: 2,
+    minWidth: 38, minHeight: 32,  // ↓ was 44/40
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
   },
@@ -3207,8 +3403,8 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
 
   /* ── Complete set button ─────────────────────────────────────── */
   completeSetBtn: {
-    width: 44, height: 44,
-    borderRadius: t.radius.md,
+    width: 34, height: 34,     // ↓ was 44 — still 34 pt finger-friendly
+    borderRadius: t.radius.sm,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: t.surface.sunken,
     borderWidth: 1, borderColor: t.border.default,
@@ -3219,7 +3415,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     ...t.shadow.success,
   },
   doneTick: {
-    width: 44, height: 44,
+    width: 34, height: 34,     // ↓ matches completeSetBtn
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -3462,10 +3658,27 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const g = useGlobalStyles();
   const wk = useWkStyles();
   // Enable LayoutAnimation on Android — required once per screen mount.
-  // On iOS it works without this call.
   useEffect(() => {
     if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
   }, []);
+
+  // ── Collapsible metadata section (day pills + workout title) ──────────────
+  // Collapses automatically when logging starts so the hero header + exercises
+  // get the full screen without the week strip cluttering the view.
+  const [metaCollapsed, setMetaCollapsed] = useState(false);
+  useEffect(() => {
+    if (isLogging) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMetaCollapsed(true);
+    }
+  }, [isLogging]);
+
+  // ── Keyboard scroll fix: track scroll Y + per-input refs ─────────────────
+  // currentScrollY feeds the measureInWindow calculation so we scroll exactly
+  // the right amount when a weight/reps input is focused.
+  const currentScrollY = useRef(0);
+  // inputRefs: stateKey → TextInput ref, used for measureInWindow on focus.
+  const inputRefs = useRef({});
   const lv = useLvStyles();
   // ── View state ──────────────────────────────────────────────────────────────
   const [isLogging, setIsLogging] = useState(false);
@@ -3522,16 +3735,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
-  // scrollToCard — called onFocus of any weight/rep input.
-  // Scrolls so the top of the exercise card sits ~20 px below the sticky header,
-  // which places the set rows in the fully-visible area above the keyboard.
-  const scrollToCard = (exId) => {
+  // scrollToInput — called from weight/reps TextInput onFocus via inputRef.
+  //   Waits 400ms for the keyboard animation to finish, then uses
+  //   measureInWindow to get the input's exact screen Y, calculates
+  //   how much to scroll so the input sits above the keyboard with
+  //   32px breathing room, and fires scrollRef.scrollTo.
+  //   This fixes the bug where cardLayoutY was relative to the logging
+  //   section View (not the ScrollView root) causing wrong offsets.
+  const scrollToInput = (inputRef) => {
     setTimeout(() => {
-      const cardY = cardLayoutY.current[exId];
-      if (cardY == null || !scrollRef.current) return;
-      const targetY = Math.max(0, cardY - 20);
-      scrollRef.current.scrollTo({ y: targetY, animated: true });
-    }, 350);
+      if (!inputRef?.current || !scrollRef.current) return;
+      inputRef.current.measureInWindow((fx, fy, width, height) => {
+        const kbdH    = keyboardHeight.current || 320;
+        const screenH = Dimensions.get('window').height;
+        const inputBottom   = fy + height;
+        const visibleBottom = screenH - kbdH - 32;
+        if (inputBottom > visibleBottom) {
+          const overflow = inputBottom - visibleBottom;
+          const targetY  = Math.max(0, currentScrollY.current + overflow);
+          scrollRef.current.scrollTo({ y: targetY, animated: true });
+        }
+      });
+    }, 400);
   };
 
   // ── Flash animation + quick-action helpers for inline workout logging ─────
@@ -4137,14 +4362,46 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y;
+          currentScrollY.current = y;   // tracked for keyboard scroll calculation
           setScrolledPastHeader(y > 120);
         }}
         scrollEventThrottle={16}
       >
-        {/* ═══ HEADER ═══ */}
+        {/* ═══ HEADER ROW ═══
+            When logging: shows workout name + collapse toggle only.
+            When not logging: shows "Workouts" title + history button.
+            The collapse toggle (chevron) is always present when a plan
+            exists so the user can show/hide the week strip at will.      */}
         <View style={wk.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={wk.headerTitle}>Workouts</Text>
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {isLogging ? (
+              // While logging: show current workout name (not generic "Workouts")
+              // so the top of the scroll area confirms which session is active.
+              <>
+                <Text style={wk.headerTitleLogging} numberOfLines={1}>
+                  {activeWorkout?.dayLabel || activeWorkout?.name || 'Workout'}
+                </Text>
+              </>
+            ) : (
+              <Text style={wk.headerTitle}>Workouts</Text>
+            )}
+            {/* Collapse toggle — shown whenever metadata section exists */}
+            {(planWeek || assignment?.weekPlan) && (
+              <TouchableOpacity
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setMetaCollapsed(v => !v);
+                }}
+                hitSlop={10}
+                style={wk.metaToggleBtn}
+              >
+                <Ionicons
+                  name={metaCollapsed ? 'chevron-down' : 'chevron-up'}
+                  size={16}
+                  color={C.muted}
+                />
+              </TouchableOpacity>
+            )}
           </View>
           <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
             {isLogging && !scrolledPastHeader && (workoutTimer?.running || workoutTimer?.completed) ? (
@@ -4161,10 +4418,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </View>
         </View>
 
-        {/* Weekly Plan - tappable day cards */}
-        {(planWeek || assignment?.weekPlan) && (
+        {/* ── Collapsible metadata: day pills + workout name ─────────────
+            Hidden by default when isLogging (auto-collapses on start).
+            User can toggle with the chevron in the header row.          */}
+        {!metaCollapsed && (planWeek || assignment?.weekPlan) && (
           <>
-            <View style={{ marginTop: 16 }} />
+            <View style={{ marginTop: 12 }} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10, paddingHorizontal: 2 }}>
               {(planWeek || assignment.weekPlan).map((d, i) => {
                 const isToday = d.isToday ?? (i === todayPlanIdx);
@@ -4193,15 +4452,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                 );
               })}
             </ScrollView>
-            <View style={{ marginBottom: 8 }} />
+            <View style={{ marginBottom: 4 }} />
           </>
         )}
 
-        {/* Workout day title below day cards */}
-        {(() => {
+        {/* Workout day title — hidden when collapsed or when logging
+            (hero header already shows the name when logging)           */}
+        {!metaCollapsed && !isLogging && (() => {
           const selectedDayRest = selectedDayIdx !== null ? (selectedDay?.restDay || restDays?.[selectedDayIdx]) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]);
-          const isRest = selectedDayRest;
-          if (isRest) return null;
+          if (selectedDayRest) return null;
           const title = selectedDayIdx !== null && selectedDay
             ? (selectedDay.dayLabel || '')
             : (todayWorkout?.dayLabel || todayWorkout?.name || '');
@@ -4566,6 +4825,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* ── Inline workout logging cards ─────────────────────────────────── */}
         {isLogging && selectedDayIdx === null && (
           <View>
+            {/* ── Manual break timer — user-controlled set break countdown.
+                Always visible at the top of the exercise list so the user
+                can start a timed break at any point without hunting for it.
+                Separate from the auto-rest timer (which fires per-set).   */}
+            <ManualBreakTimer C={C} t={theme} />
+
             <Text style={lv.exercisesLabel}>EXERCISES</Text>
             {logExercises.map((ex) => {
               const isOpen        = expanded === ex.id;
@@ -4713,7 +4978,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                           placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                           value={localSetWeights[stateKey] || ''}
                                           editable={!isDoneSet}
-                                          onFocus={() => scrollToCard(ex.id)}
+                                          ref={ref => { inputRefs.current[stateKey + '_w'] = ref; }}
+                                          onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_w'] })}
                                           onChangeText={val => {
                                             const updated = { ...localSetWeights, [stateKey]: val };
                                             setLocalSetWeights(updated); setWorkoutSetWeights(updated);
@@ -4722,7 +4988,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                         />}
                                   </View>
                                   {isDoneSet
-                                    ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={30} color={C.green} /></View>
+                                    ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={22} color={C.green} /></View>
                                     : <TouchableOpacity
                                         style={[lv.completeSetBtn, isCurrent && lv.completeSetBtnActive]}
                                         onPress={() => { markSetDone(ex.id, `w_${wi + 1}`, 0, ex.warmupSets); triggerWkFlash(stateKey); }}
@@ -4811,7 +5077,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                             placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                             value={localSetWeights[stateKey] || ''}
                                             editable={!isDoneSet}
-                                            onFocus={() => scrollToCard(ex.id)}
+                                            ref={ref => { inputRefs.current[stateKey + '_kg'] = ref; }}
+                                            onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_kg'] })}
                                             onChangeText={val => {
                                               const updated = { ...localSetWeights, [stateKey]: val };
                                               setLocalSetWeights(updated); setWorkoutSetWeights(updated);
@@ -4822,7 +5089,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                     </View>
 
                                     {isDoneSet
-                                      ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={30} color={C.green} /></View>
+                                      ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={22} color={C.green} /></View>
                                       : <TouchableOpacity
                                           style={[lv.completeSetBtn, isCurrent && lv.completeSetBtnActive]}
                                           onPress={() => { markSetDone(ex.id, setNo, ex.rest, totalSets); triggerWkFlash(stateKey); }}
@@ -5064,8 +5331,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 // ═══════════════════════════════════════════════════════════════════════════════
 const useWkStyles = makeStyles((t) => StyleSheet.create({
   /* ── Header ──────────────────────────────────────────────────── */
-  headerRow:         { flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8, paddingBottom: 12, marginBottom: 4 },
+  headerRow:         { flexDirection: 'row', alignItems: 'center', paddingTop: 8, paddingBottom: 10, marginBottom: 4 },
   headerTitle:       { fontSize: t.fontSize['3xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5 },
+  headerTitleLogging: { fontSize: t.fontSize.xl, fontWeight: '700', color: t.text.primary, letterSpacing: -0.3, flex: 1 },
+  metaToggleBtn: { padding: 6, borderRadius: t.radius.sm },
   dayWorkoutTitle:   { fontSize: 28, fontWeight: '800', color: t.text.primary, letterSpacing: -0.6, marginBottom: 14, lineHeight: 34 },
   headerSub:         { fontSize: t.fontSize.sm, color: t.text.secondary, marginTop: 6, lineHeight: 20, letterSpacing: 0 },
 
