@@ -2888,10 +2888,12 @@ function WorkoutHeroHeader({
   allDone,
   isPaused,
   elapsedColor,
+  isLogging,
   C,
   t,
   onPauseToggle,
   onFinish,
+  onContinue,      // enters / returns to the inline logging view
 }) {
   const progress = totalExercises > 0 ? doneCount / totalExercises : 0;
 
@@ -2909,10 +2911,12 @@ function WorkoutHeroHeader({
     <View style={wkh.container}>
       {/* ── Row 1: Workout name + controls ─────────────────────── */}
       <View style={wkh.topRow}>
-        <Text style={wkh.workoutName} numberOfLines={1}>
+        {/* workoutName uses C.dark (reactive) not the frozen theme.text.primary */}
+        <Text style={[wkh.workoutName, { color: C.dark }]} numberOfLines={1}>
           {workoutName || 'Workout Log'}
         </Text>
         <View style={wkh.controls}>
+          {/* Pause / Resume — always visible during active workout */}
           <TouchableOpacity
             onPress={onPauseToggle}
             style={wkh.controlBtn}
@@ -2924,14 +2928,29 @@ function WorkoutHeroHeader({
               color={C.primary}
             />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onFinish}
-            style={[wkh.controlBtn, wkh.finishBtn]}
-            hitSlop={8}
-          >
-            <Ionicons name="checkmark-done" size={15} color="#fff" />
-            <Text style={wkh.finishBtnTxt}>Finish</Text>
-          </TouchableOpacity>
+
+          {/* Continue → enters / re-enters the logging exercise list
+              Only shown when NOT already in logging view               */}
+          {!isLogging && onContinue && !allDone && (
+            <TouchableOpacity
+              onPress={onContinue}
+              style={[wkh.controlBtn, { borderColor: C.primary + '40' }]}
+              hitSlop={8}
+            >
+              <Ionicons name="list-outline" size={18} color={C.primary} />
+            </TouchableOpacity>
+          )}
+
+          {/* Complete / Finish — icon-only, no text */}
+          {!allDone && (
+            <TouchableOpacity
+              onPress={onFinish}
+              style={[wkh.controlBtn, wkh.finishBtnIcon]}
+              hitSlop={8}
+            >
+              <Ionicons name="checkmark-done" size={18} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -2954,7 +2973,7 @@ function WorkoutHeroHeader({
                 {formatElapsed(elapsed)}
               </Text>
             )}
-            <Text style={wkh.timerLabel}>
+            <Text style={[wkh.timerLabel, { color: C.muted }]}>
               {allDone ? 'DONE' : isPaused ? 'PAUSED' : 'ELAPSED'}
             </Text>
           </View>
@@ -2967,7 +2986,7 @@ function WorkoutHeroHeader({
             <Text style={[wkh.exDone, { color: ringColor }]}>
               {doneCount}
             </Text>
-            <Text style={wkh.exTotal}> of {totalExercises} exercises</Text>
+            <Text style={[wkh.exTotal, { color: C.mid }]}> of {totalExercises} exercises</Text>
           </View>
 
           {/* Exercise dot indicators (max 8 shown) */}
@@ -2984,13 +3003,13 @@ function WorkoutHeroHeader({
               />
             ))}
             {totalExercises > 8 && (
-              <Text style={wkh.dotsOverflow}>+{totalExercises - 8}</Text>
+              <Text style={[wkh.dotsOverflow, { color: C.muted }]}>+{totalExercises - 8}</Text>
             )}
           </View>
 
           {/* Sets fraction */}
           {totalSets > 0 && (
-            <Text style={wkh.setsFraction}>
+            <Text style={[wkh.setsFraction, { color: C.muted }]}>
               {totalDoneSets}/{totalSets} sets logged
             </Text>
           )}
@@ -3002,8 +3021,8 @@ function WorkoutHeroHeader({
         <View style={wkh.currentRow}>
           <View style={[wkh.currentAccent, { backgroundColor: ringColor }]} />
           <Ionicons name="barbell-outline" size={12} color={C.mid} />
-          <Text style={wkh.currentLabel}>NOW  </Text>
-          <Text style={wkh.currentName} numberOfLines={1}>{currentExName}</Text>
+          <Text style={[wkh.currentLabel, { color: C.muted }]}>NOW  </Text>
+          <Text style={[wkh.currentName, { color: C.dark }]} numberOfLines={1}>{currentExName}</Text>
         </View>
       )}
       {allDone && (
@@ -3073,6 +3092,11 @@ const wkh = StyleSheet.create({
     flexDirection: 'row', gap: 5,
     width: 'auto', paddingHorizontal: 14,
     borderRadius: 18,
+    backgroundColor: '#16a34a',
+    borderColor: '#15803d',
+  },
+  // Icon-only finish button (no text label)
+  finishBtnIcon: {
     backgroundColor: '#16a34a',
     borderColor: '#15803d',
   },
@@ -3742,21 +3766,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   //   32px breathing room, and fires scrollRef.scrollTo.
   //   This fixes the bug where cardLayoutY was relative to the logging
   //   section View (not the ScrollView root) causing wrong offsets.
-  const scrollToInput = (inputRef) => {
-    setTimeout(() => {
-      if (!inputRef?.current || !scrollRef.current) return;
-      inputRef.current.measureInWindow((fx, fy, width, height) => {
-        const kbdH    = keyboardHeight.current || 320;
-        const screenH = Dimensions.get('window').height;
-        const inputBottom   = fy + height;
-        const visibleBottom = screenH - kbdH - 32;
-        if (inputBottom > visibleBottom) {
-          const overflow = inputBottom - visibleBottom;
-          const targetY  = Math.max(0, currentScrollY.current + overflow);
-          scrollRef.current.scrollTo({ y: targetY, animated: true });
-        }
-      });
-    }, 400);
+  // scrollToInput — called on weight/reps TextInput focus.
+  // On Android, `adjustResize` in AndroidManifest shrinks the window so the
+  // scroll area naturally exposes the focused field — no programmatic scroll
+  // needed and attempting one can steal focus and break text entry.
+  // On iOS, KeyboardAvoidingView behavior="padding" handles avoidance.
+  // We keep the function as a no-op so call sites don't need changing; if
+  // iOS needs fine-tuning in future, add: `if (Platform.OS === 'ios') { ... }`
+  const scrollToInput = (_inputRef) => {
+    // Intentionally empty — native keyboard avoidance (adjustResize + KAV)
+    // handles scrolling. Programmatic scroll was causing keyboard to dismiss
+    // on Android by stealing focus from the TextInput.
   };
 
   // ── Flash animation + quick-action helpers for inline workout logging ─────
@@ -4209,14 +4229,27 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     setWorkoutDoneSets(newDone);
     vibratedRef.current = {};
     setRestEndTimes({});
-    // Trigger RPE picker — auto-dismisses after 4 s if ignored
+
+    // ── RPE picker timing ─────────────────────────────────────────────────
+    // Clear previous set's picker/timer immediately (tapping next set dismisses it)
     if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
-    setPendingRpeKey(stateKey);
-    rpeTimerRef.current = setTimeout(() => setPendingRpeKey(null), 4000);
+    rpeTimerRef.current = null;
+    setPendingRpeKey(null);
 
     const allSetsOfThisExDone = Array.from(
       { length: totalSets }, (_, i) => `${exId}_${i + 1}`
     ).every(k => newDone[k]);
+
+    // Show RPE picker after a short delay (let the flash animation play first)
+    setTimeout(() => {
+      setPendingRpeKey(stateKey);
+      if (allSetsOfThisExDone) {
+        // Last set of this exercise: auto-dismiss after 60 s if not answered
+        rpeTimerRef.current = setTimeout(() => setPendingRpeKey(null), 60000);
+      }
+      // Non-last sets: NO timer — picker stays visible until the user taps
+      // the NEXT set's ✓, which calls markSetDone again and clears it above.
+    }, 350);
     if (!allSetsOfThisExDone) startRestTimer(stateKey, defaultRest || 60);
 
     const isAllDone = logExercises.every(ex =>
@@ -4329,8 +4362,11 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      {/* ── Hero workout header — replaces the old minimal sticky bar ── */}
-      {isLogging && (
+      {/* ── Hero workout header ──────────────────────────────────────────
+          Show whenever the timer is running OR completed (not just isLogging)
+          so the user can see the elapsed time and access Continue / Complete
+          even from the overview tab without re-entering the logging view.   */}
+      {(isLogging || workoutTimer?.running || workoutTimer?.completed) && logExercises.length > 0 && (
         <View style={[wk.heroHeader, {
           backgroundColor: C.card,
           borderBottomColor: C.border,
@@ -4346,10 +4382,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             allDone={allDone}
             isPaused={isPaused}
             elapsedColor={elapsedColor}
+            isLogging={isLogging}
             C={C}
             t={theme}
             onPauseToggle={handlePauseToggle}
             onFinish={() => { setCompleteMinutes(''); setShowCompleteModal(true); }}
+            onContinue={() => {
+              if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+              setIsLogging(true);
+            }}
           />
         </View>
       )}
@@ -4368,55 +4409,43 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         scrollEventThrottle={16}
       >
         {/* ═══ HEADER ROW ═══
-            When logging: shows workout name + collapse toggle only.
-            When not logging: shows "Workouts" title + history button.
-            The collapse toggle (chevron) is always present when a plan
-            exists so the user can show/hide the week strip at will.      */}
-        <View style={wk.headerRow}>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {isLogging ? (
-              // While logging: show current workout name (not generic "Workouts")
-              // so the top of the scroll area confirms which session is active.
-              <>
-                <Text style={wk.headerTitleLogging} numberOfLines={1}>
-                  {activeWorkout?.dayLabel || activeWorkout?.name || 'Workout'}
-                </Text>
-              </>
-            ) : (
+            Hidden when logging — the hero header above the scroll already
+            shows the workout name, timer, and all controls. Showing it
+            again in the scroll creates the "duplicate name" the user reported.
+            When NOT logging: show "Workouts" title + History button + collapse
+            chevron for the day-strip metadata section.                       */}
+        {!isLogging && (
+          <View style={wk.headerRow}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={wk.headerTitle}>Workouts</Text>
-            )}
-            {/* Collapse toggle — shown whenever metadata section exists */}
-            {(planWeek || assignment?.weekPlan) && (
-              <TouchableOpacity
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setMetaCollapsed(v => !v);
-                }}
-                hitSlop={10}
-                style={wk.metaToggleBtn}
-              >
-                <Ionicons
-                  name={metaCollapsed ? 'chevron-down' : 'chevron-up'}
-                  size={16}
-                  color={C.muted}
-                />
-              </TouchableOpacity>
-            )}
+              {/* Collapse toggle — shown whenever metadata section exists */}
+              {(planWeek || assignment?.weekPlan) && (
+                <TouchableOpacity
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setMetaCollapsed(v => !v);
+                  }}
+                  hitSlop={10}
+                  style={wk.metaToggleBtn}
+                >
+                  <Ionicons
+                    name={metaCollapsed ? 'chevron-down' : 'chevron-up'}
+                    size={16}
+                    color={C.muted}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
+              {onViewHistory && (
+                <TouchableOpacity onPress={onViewHistory} style={wk.historyBtn}>
+                  <Ionicons name="time-outline" size={14} color={C.deepBlue} />
+                  <Text style={wk.historyTxt}>History</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-          <View style={{ marginLeft: 12, alignItems: 'flex-end', paddingTop: 2 }}>
-            {isLogging && !scrolledPastHeader && (workoutTimer?.running || workoutTimer?.completed) ? (
-              <View style={wk.timerPill}>
-                <View style={[wk.timerDot, workoutTimer?.completed && { backgroundColor: C.green }]} />
-                <Text style={[wk.timerVal, workoutTimer?.completed && { color: C.green }]}>{formatElapsed(elapsed)}</Text>
-              </View>
-            ) : onViewHistory && !isLogging && !scrolledPastHeader ? (
-              <TouchableOpacity onPress={onViewHistory} style={wk.historyBtn}>
-                <Ionicons name="time-outline" size={14} color={C.deepBlue} />
-                <Text style={wk.historyTxt}>History</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        </View>
+        )}
 
         {/* ── Collapsible metadata: day pills + workout name ─────────────
             Hidden by default when isLogging (auto-collapses on start).
@@ -4769,38 +4798,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   );
                 })}
 
-                {/* Start / Complete — always visible for today */}
-                <View style={wk.btnRow}>
+                {/* Start button — only shown before workout is running.
+                    Once running, Continue + Complete are in the hero header
+                    as icon buttons, so we don't duplicate them here.       */}
+                {!workoutTimer?.running && !workoutTimer?.completed && (
                   <TouchableOpacity
-                    style={[wk.startBtn, { flex: 1 }, workoutTimer?.completed && { backgroundColor: C.green }]}
+                    style={[wk.startBtn, { alignSelf: 'stretch' }]}
                     onPress={() => {
-                      if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
+                      startWorkoutTimer();
                       setIsLogging(true);
                     }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons
-                        name={workoutTimer?.completed ? 'checkmark-circle-outline' : workoutTimer?.running ? 'time-outline' : 'play'}
-                        size={16} color="#fff"
-                      />
-                      <Text style={wk.startBtnTxt}>
-                        {workoutTimer?.completed ? 'Completed' : workoutTimer?.running ? 'Continue' : 'Start'}
-                      </Text>
+                      <Ionicons name="play" size={16} color="#fff" />
+                      <Text style={wk.startBtnTxt}>Start Workout</Text>
                     </View>
                   </TouchableOpacity>
-                  {!workoutTimer?.completed && (
-                    <TouchableOpacity
-                      style={[wk.startBtn, { flex: 1, backgroundColor: C.green, marginLeft: 8 }]}
-                      onPress={() => {
-                        setCompleteMinutes('');
-                        setShowCompleteModal(true);
-                      }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="checkmark-done" size={16} color="#fff" />
-                        <Text style={wk.startBtnTxt}>Complete</Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                )}
               </>
             ) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]) ? (
               <View style={wk.emptyState}>
