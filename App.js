@@ -2684,6 +2684,17 @@ const bt = StyleSheet.create({
   resetBtn: { padding: 6 },
 });
 
+// Break Timer Modal styles — used inline (colours passed via C prop)
+const breakModalSheet = {
+  borderTopLeftRadius: 24, borderTopRightRadius: 24,
+  borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+  padding: 20, paddingTop: 12,
+};
+const breakModalHandle = {
+  width: 36, height: 4, borderRadius: 2, backgroundColor: '#d4d4d4',
+  alignSelf: 'center', marginBottom: 16,
+};
+
 function RPEPickerRow({ onSelect, onSkip, C, t }) {
   const rpeZone = (n) => {
     if (n <= 3) return t.success[600];
@@ -2894,6 +2905,7 @@ function WorkoutHeroHeader({
   onPauseToggle,
   onFinish,
   onContinue,      // enters / returns to the inline logging view
+  onOpenTimer,     // opens the ManualBreakTimer modal
 }) {
   const progress = totalExercises > 0 ? doneCount / totalExercises : 0;
 
@@ -2928,6 +2940,17 @@ function WorkoutHeroHeader({
               color={C.primary}
             />
           </TouchableOpacity>
+
+          {/* Break timer — small clock icon, opens ManualBreakTimer modal */}
+          {onOpenTimer && (
+            <TouchableOpacity
+              onPress={onOpenTimer}
+              style={wkh.controlBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="timer-outline" size={18} color={C.primary} />
+            </TouchableOpacity>
+          )}
 
           {/* Continue → enters / re-enters the logging exercise list
               Only shown when NOT already in logging view               */}
@@ -3285,7 +3308,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   exCard: {
     backgroundColor: t.surface.default,
     borderRadius: t.radius.xl,
-    marginBottom: 14,
+    marginBottom: 8,    // ↓ was 14
     overflow: 'hidden',
     borderWidth: 1, borderColor: t.border.default,
     ...t.shadow.card,
@@ -3306,8 +3329,8 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 16, paddingRight: 14,
-    paddingVertical: 16,
-    minHeight: 72,
+    paddingVertical: 12,   // ↓ was 16
+    minHeight: 60,          // ↓ was 72
   },
   exStatusChip: {
     width: 40, height: 40,
@@ -3480,6 +3503,19 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   /* ── Exercise state labels (active logging right-side badges) ────────────
      Each encodes status without relying on color alone (accessibility).
      DONE: success-tinted · UP NEXT: neutral · X/Y: brand · SKIP: muted  */
+  /* ── Set count adjuster (±) — compact inline buttons in exercise header */
+  setAdjRow:   { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  setAdjBtn:   {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: t.surface.sunken,
+    borderWidth: 1, borderColor: t.border.default,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  setAdjCount: {
+    fontSize: 12, fontWeight: '700', color: t.text.secondary,
+    minWidth: 18, textAlign: 'center', fontVariant: ['tabular-nums'],
+  },
+
   exStateLabelBase: {
     borderRadius: t.radius.full,
     paddingHorizontal: 7, paddingVertical: 2,
@@ -3666,7 +3702,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   exCheck:        { width: 44, height: 44, borderRadius: t.radius.md, borderWidth: 2, borderColor: t.border.strong, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface.default },
   exCheckDone:    { backgroundColor: t.success[600], borderColor: t.success[700], ...t.shadow.success },
   exCheckActive:  { backgroundColor: t.brand[600], borderColor: t.brand[700] },
-  exercisesLabel: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 20, marginBottom: 14 },
+  exercisesLabel: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 8, marginBottom: 8 },
   repsInput:      { fontSize: 18, fontWeight: '800', color: t.text.primary, textAlign: 'center', paddingVertical: 4, fontVariant: ['tabular-nums'] },
   weightInputDone:{ color: t.success[700], opacity: 0.85 },
   doneBtn:        { width: 38, height: 38, borderRadius: t.radius.md, backgroundColor: t.success[600], borderWidth: 1, borderColor: t.success[700], alignItems: 'center', justifyContent: 'center', ...t.shadow.success },
@@ -3685,6 +3721,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   useEffect(() => {
     if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
   }, []);
+
+  // ── Break timer modal — ManualBreakTimer accessed via icon in hero header ──
+  const [showBreakModal, setShowBreakModal] = useState(false);
 
   // ── Collapsible metadata section (day pills + workout title) ──────────────
   // Collapses automatically when logging starts so the hero header + exercises
@@ -4391,6 +4430,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
               setIsLogging(true);
             }}
+            onOpenTimer={() => setShowBreakModal(true)}
           />
         </View>
       )}
@@ -4838,12 +4878,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         {/* ── Inline workout logging cards ─────────────────────────────────── */}
         {isLogging && selectedDayIdx === null && (
           <View>
-            {/* ── Manual break timer — user-controlled set break countdown.
-                Always visible at the top of the exercise list so the user
-                can start a timed break at any point without hunting for it.
-                Separate from the auto-rest timer (which fires per-set).   */}
-            <ManualBreakTimer C={C} t={theme} />
-
             <Text style={lv.exercisesLabel}>EXERCISES</Text>
             {logExercises.map((ex) => {
               const isOpen        = expanded === ex.id;
@@ -4909,9 +4943,40 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       )}
                     </View>
 
-                    {/* Right-side status indicator — text label encodes state
-                        at a glance without requiring the card to be expanded */}
-                    <View style={{ alignItems: 'flex-end', gap: 4, marginLeft: 8 }}>
+                    {/* Right column: ± set adjusters + state label + chevron
+                        The ± buttons are nested TouchableOpacity elements inside
+                        the outer TouchableOpacity header. In React Native, a
+                        nested Touchable captures its own touch — the outer one
+                        does NOT fire — so expand/collapse is not triggered.   */}
+                    <View style={{ alignItems: 'flex-end', gap: 3, marginLeft: 8 }}>
+                      {/* ± Set count buttons — compact, always visible */}
+                      {!isDone && !skipped && (
+                        <View style={lv.setAdjRow}>
+                          <TouchableOpacity
+                            style={lv.setAdjBtn}
+                            hitSlop={8}
+                            onPress={() => {
+                              if (totalSets <= 1) return;
+                              const key = `${ex.id}_${totalSets}`;
+                              if (workoutDoneSets[key]) setWorkoutDoneSets(prev => { const n = {...prev}; delete n[key]; return n; });
+                              if (localSetWeights[key]) setLocalSetWeights(prev => { const n = {...prev}; delete n[key]; return n; });
+                              setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) - 1 }));
+                            }}
+                          >
+                            <Ionicons name="remove" size={13} color={C.muted} />
+                          </TouchableOpacity>
+                          <Text style={lv.setAdjCount}>{totalSets}</Text>
+                          <TouchableOpacity
+                            style={lv.setAdjBtn}
+                            hitSlop={8}
+                            onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}
+                          >
+                            <Ionicons name="add" size={13} color={C.muted} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+
+                      {/* State label */}
                       {isDone && !skipped ? (
                         <View style={lv.exStateLabelDone}>
                           <Text style={lv.exStateLabelTxtDone}>DONE</Text>
@@ -5165,26 +5230,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             );
                           })}
 
-                          {/* Add / Remove set */}
-                          <View style={lv.setActions}>
-                            <TouchableOpacity style={lv.addSetBtn} activeOpacity={0.7}
-                              onPress={() => setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) + 1 }))}>
-                              <Ionicons name="add-circle-outline" size={15} color={C.primary} />
-                              <Text style={lv.addSetTxt}>Add Set</Text>
-                            </TouchableOpacity>
-                            {totalSets > 0 && (
-                              <TouchableOpacity style={lv.removeSetBtn} activeOpacity={0.7}
-                                onPress={() => {
-                                  const key = `${ex.id}_${totalSets}`;
-                                  if (workoutDoneSets[key]) setWorkoutDoneSets(prev => { const n = { ...prev }; delete n[key]; return n; });
-                                  if (localSetWeights[key]) setLocalSetWeights(prev => { const n = { ...prev }; delete n[key]; return n; });
-                                  setExtraSets(prev => ({ ...prev, [ex.id]: (prev[ex.id] || 0) - 1 }));
-                                }}>
-                                <Ionicons name="remove-circle-outline" size={15} color={C.red} />
-                                <Text style={lv.removeSetTxt}>Remove Set</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                          {/* Add/Remove set buttons moved to header ± icons */}
 
                           {ex.note ? (
                             <View style={lv.trainerNoteRow}>
@@ -5204,6 +5250,30 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
         <View style={{ height: 60 }} />
       </ScrollView>
+
+      {/* ── Break Timer Modal ──────────────────────────────────────────────
+          ManualBreakTimer moved from inline exercise list to a modal so
+          it doesn't consume vertical space when not in use. Opened via
+          the timer icon in the WorkoutHeroHeader.                        */}
+      <Modal
+        visible={showBreakModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBreakModal(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={[breakModalSheet, { backgroundColor: C.card, borderColor: C.border }]}>
+            <View style={breakModalHandle} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: C.dark, letterSpacing: -0.2 }}>Break Timer</Text>
+              <TouchableOpacity onPress={() => setShowBreakModal(false)} hitSlop={12}>
+                <Ionicons name="close" size={22} color={C.muted} />
+              </TouchableOpacity>
+            </View>
+            <ManualBreakTimer C={C} t={theme} />
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Floating draggable rest timer ─────────────────────────────── */}
       {isLogging && activeRestLeft !== undefined && activeRestLeft > 0 && (
@@ -9384,10 +9454,21 @@ function AppBody() {
 
 // ThemedSafeArea — pulls bg color from the active theme so the safe-area
 // insets match the dark surface instead of bleeding the old light C.bg color.
+// ThemedSafeArea — global status-bar + safe-area handler.
+//
+//   iOS: SafeAreaView handles the notch/status-bar inset automatically.
+//   Android: SafeAreaView from react-native does NOT add status-bar padding
+//   unless the Activity theme sets windowTranslucentStatus. We add it
+//   manually via StatusBar.currentHeight (available on Android only).
+//   This keeps the fix in ONE place so every screen benefits without
+//   individual SafeAreaView usage needing to change.
 function ThemedSafeArea({ children }) {
   const { theme } = useTheme();
+  // Android needs explicit status-bar padding; iOS SafeAreaView handles it.
+  const statusBarPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface.raised }}>
+      {statusBarPad > 0 && <View style={{ height: statusBarPad, backgroundColor: theme.surface.raised }} />}
       {children}
     </SafeAreaView>
   );
