@@ -5229,7 +5229,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       <Modal visible={showCompleteModal} transparent animationType="fade" onRequestClose={() => setShowCompleteModal(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, marginBottom: 4 }}>Mark Workout Complete</Text>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: C.dark, marginBottom: 4 }}>Mark Workout Complete</Text>
             <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>How many minutes did this workout take? (Optional)</Text>
             <TextInput
               style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
