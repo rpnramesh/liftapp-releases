@@ -27,6 +27,7 @@ import {
   UIManager,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
