@@ -3302,7 +3302,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   /* ── Scroll container ────────────────────────────────────────── */
   scrollContent: {
     padding: 16,
-    paddingBottom: 320,  // room for keyboard
+    paddingBottom: 120,  // keyboard handled by adjustResize + KAV; was 320
   },
 
   /* ── Exercise card ───────────────────────────────────────────── */
@@ -3436,7 +3436,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 3,        // ↓ was 6
     paddingHorizontal: 2,
-    minWidth: 38, minHeight: 32,  // ↓ was 44/40
+    minWidth: 40, minHeight: 40,  // 40pt min (Apple guideline) for reliable touch
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
   },
@@ -4428,6 +4428,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             onPauseToggle={handlePauseToggle}
             onFinish={() => { setCompleteMinutes(''); setShowCompleteModal(true); }}
             onContinue={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setMetaCollapsed(true);
               if (!workoutTimer?.running && !workoutTimer?.completed) startWorkoutTimer();
               setIsLogging(true);
             }}
@@ -4439,7 +4441,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       <ScrollView
         ref={scrollRef}
         style={g.screen}
-        contentContainerStyle={{ paddingBottom: 300 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -4655,6 +4657,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       });
                       loggingDayIdxRef.current = selectedDayIdx; // Capture the plan day being started (null=today)
                       setSelectedDayIdx(null);
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setMetaCollapsed(true);
                       startWorkoutTimer();
                       setIsLogging(true);
                     }}>
@@ -4846,6 +4850,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   <TouchableOpacity
                     style={[wk.startBtn, { alignSelf: 'stretch' }]}
                     onPress={() => {
+                      // Immediately collapse day chips + workout name — no useEffect delay
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setMetaCollapsed(true);
                       startWorkoutTimer();
                       setIsLogging(true);
                     }}>
@@ -5045,6 +5052,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                           value={String(customReps[stateKey] ?? ex.reps)}
                                           onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                           selectTextOnFocus
+                                          autoCorrect={false}
                                         />}
                                   </View>
                                   <View style={lv.weightCol}>
@@ -5133,6 +5141,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                             value={String(customReps[stateKey] ?? ex.reps)}
                                             onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                             selectTextOnFocus
+                                            autoCorrect={false}
                                           />}
                                     </View>
 
@@ -5249,7 +5258,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </View>
         )}
 
-        <View style={{ height: 60 }} />
+        <View style={{ height: 16 }} />
       </ScrollView>
 
       {/* ── Break Timer Modal ──────────────────────────────────────────────
@@ -5509,7 +5518,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     ...t.shadow.success,
   },
 
-  exName:     { fontSize: t.fontSize.xl, fontWeight: '700', color: t.text.primary, letterSpacing: -0.3 },
+  exName:     { fontSize: t.fontSize.base, fontWeight: '600', color: t.text.primary, letterSpacing: -0.2 },  // ↓ xl(18)→base(14) matches lv.exName
   exNameDone: { color: t.neutral[400], textDecorationLine: 'line-through', textDecorationColor: t.neutral[300] },
   exMeta:     { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 4, letterSpacing: 0 },
 

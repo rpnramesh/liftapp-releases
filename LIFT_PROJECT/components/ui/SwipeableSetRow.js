@@ -51,11 +51,18 @@ export default function SwipeableSetRow({
 
   const pan = useRef(
     PanResponder.create({
-      // Only activate for clearly horizontal right-swipes; vertical scrolls
-      // bubble up to the parent ScrollView.
-      onStartShouldSetPanResponder: () => false,
+      // ── Touch responder rules ─────────────────────────────────────────
+      // Never claim the touch on START — this is the critical fix that
+      // lets TextInput fields inside the row receive focus when tapped.
+      // The capture variants (run before bubbling) are also false so the
+      // panHandler never intercepts touches meant for child inputs.
+      onStartShouldSetPanResponder:        () => false,
+      onStartShouldSetPanResponderCapture: () => false,  // ← prevents keyboard block
+      // Only claim on MOVE if it's a clear rightward horizontal swipe.
+      // The capture variant stays false so TextInput drag-to-select works.
       onMoveShouldSetPanResponder: (_, g) =>
         enabled && !done && g.dx > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.8,
+      onMoveShouldSetPanResponderCapture: () => false,   // ← preserves text selection
 
       onPanResponderGrant: () => {
         fired.current = false;
