@@ -3918,24 +3918,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   //   iOS: KeyboardAvoidingView behavior="padding" handles the container
   //   shrink, but doesn't auto-scroll to the focused input. We do that with
   //   measureInWindow + scrollTo, waiting 350ms for the keyboard animation.
-  const scrollToInput = (inputRef) => {
-    if (Platform.OS !== 'ios') return;  // Android: adjustResize + kbPadding handle it
-    setTimeout(() => {
-      if (!inputRef?.current || !scrollRef.current) return;
-      inputRef.current.measureInWindow((fx, fy, width, height) => {
-        const screenH = Dimensions.get('window').height;
-        const kbH = keyboardHeight.current || 320;
-        const inputBottom = fy + height;
-        const visibleBottom = screenH - kbH - 24;
-        if (inputBottom > visibleBottom) {
-          const overflow = inputBottom - visibleBottom;
-          scrollRef.current.scrollTo({
-            y: Math.max(0, currentScrollY.current + overflow),
-            animated: true,
-          });
-        }
-      });
-    }, 350);
+  // scrollToInput — intentionally a no-op.
+  // Keyboard avoidance is handled entirely by:
+  //   Android: adjustResize (AndroidManifest) + kbPadding Keyboard.addListener
+  //   iOS: KeyboardAvoidingView behavior='padding' + kbPadding expansion
+  // Previous measureInWindow + scrollRef.scrollTo was REMOVING FOCUS from the
+  // TextInput on some devices (programmatic scroll competed with the native
+  // focus animation), which was the primary cause of the keyboard not appearing.
+  const scrollToInput = (_inputRef) => {
+    // Intentionally empty — see comment above.
   };
 
   // ── Flash animation + quick-action helpers for inline workout logging ─────
@@ -5175,11 +5166,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                       ? <Text style={lv.fieldValueDone}>{customReps[stateKey] ?? ex.reps}</Text>
                                       : <TextInput
                                           style={[lv.fieldInput, isCurrent && lv.fieldInputActive]}
-                                          keyboardType="number-pad" maxLength={3}
+                                          keyboardType="number-pad"
+                                          returnKeyType="done"
+                                          blurOnSubmit={false}
+                                          maxLength={3}
                                           value={String(customReps[stateKey] ?? ex.reps)}
                                           onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                           selectTextOnFocus
                                           autoCorrect={false}
+                                          autoCapitalize="none"
                                         />}
                                   </View>
                                   <View style={lv.weightCol}>
@@ -5189,16 +5184,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                       : <TextInput
                                           style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
                                           keyboardType="decimal-pad"
+                                          returnKeyType="done"
+                                          blurOnSubmit={false}
                                           placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                           value={localSetWeights[stateKey] || ''}
-                                          editable={!isDoneSet}
-                                          ref={ref => { inputRefs.current[stateKey + '_w'] = ref; }}
-                                          onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_w'] })}
                                           onChangeText={val => {
                                             const updated = { ...localSetWeights, [stateKey]: val };
                                             setLocalSetWeights(updated); setWorkoutSetWeights(updated);
                                           }}
                                           selectTextOnFocus
+                                          autoCorrect={false}
+                                          autoCapitalize="none"
                                         />}
                                   </View>
                                   {isDoneSet
@@ -5264,11 +5260,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                         ? <Text style={lv.fieldValueDone}>{customReps[stateKey] ?? ex.reps}</Text>
                                         : <TextInput
                                             style={[lv.fieldInput, isCurrent && lv.fieldInputActive]}
-                                            keyboardType="number-pad" maxLength={3}
+                                            keyboardType="number-pad"
+                                            returnKeyType="next"
+                                            blurOnSubmit={false}
+                                            maxLength={3}
                                             value={String(customReps[stateKey] ?? ex.reps)}
                                             onChangeText={val => setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))}
                                             selectTextOnFocus
                                             autoCorrect={false}
+                                            autoCapitalize="none"
                                           />}
                                     </View>
 
@@ -5289,16 +5289,17 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                           <TextInput
                                             style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
                                             keyboardType="decimal-pad"
+                                            returnKeyType="done"
+                                            blurOnSubmit={false}
                                             placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                             value={localSetWeights[stateKey] || ''}
-                                            editable={!isDoneSet}
-                                            ref={ref => { inputRefs.current[stateKey + '_kg'] = ref; }}
-                                            onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_kg'] })}
                                             onChangeText={val => {
                                               const updated = { ...localSetWeights, [stateKey]: val };
                                               setLocalSetWeights(updated); setWorkoutSetWeights(updated);
                                             }}
                                             selectTextOnFocus
+                                            autoCorrect={false}
+                                            autoCapitalize="none"
                                           />
                                         )}
                                     </View>
