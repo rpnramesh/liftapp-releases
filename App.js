@@ -3925,8 +3925,32 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   // Previous measureInWindow + scrollRef.scrollTo was REMOVING FOCUS from the
   // TextInput on some devices (programmatic scroll competed with the native
   // focus animation), which was the primary cause of the keyboard not appearing.
-  const scrollToInput = (_inputRef) => {
-    // Intentionally empty — see comment above.
+  // scrollToInput — scroll so the focused TextInput is above the keyboard.
+  // Uses measureLayout(scrollRef.current, ...) — gives Y relative to the
+  // ScrollView content, which is exactly what scrollTo(y) needs.
+  // Called from onFocus with a 350ms delay so the keyboard has started
+  // animating in (kbPadding has expanded) before we attempt to scroll.
+  const scrollToInput = (inputRef) => {
+    if (!inputRef?.current || !scrollRef.current) return;
+    setTimeout(() => {
+      if (!inputRef.current || !scrollRef.current) return;
+      inputRef.current.measureLayout(
+        scrollRef.current,
+        (x, y, width, height) => {
+          const kbH = keyboardHeight.current || 300;
+          const screenH = Dimensions.get('window').height;
+          const heroH = 180;   // approx sticky hero header height
+          const visibleH = screenH - kbH - heroH;
+          if (y + height > visibleH) {
+            scrollRef.current.scrollTo({
+              y: Math.max(0, y - (visibleH - height - 32)),
+              animated: true,
+            });
+          }
+        },
+        () => {}
+      );
+    }, 350);
   };
 
   // ── Flash animation + quick-action helpers for inline workout logging ─────
@@ -5182,12 +5206,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                     {isDoneSet
                                       ? <Text style={lv.fieldValueDone}>{localSetWeights[stateKey] || lastW || '—'}</Text>
                                       : <TextInput
+                                          ref={ref => { inputRefs.current[stateKey + '_w'] = ref; }}
                                           style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
                                           keyboardType="decimal-pad"
                                           returnKeyType="done"
                                           blurOnSubmit={false}
                                           placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                           value={localSetWeights[stateKey] || ''}
+                                          onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_w'] })}
                                           onChangeText={val => {
                                             const updated = { ...localSetWeights, [stateKey]: val };
                                             setLocalSetWeights(updated); setWorkoutSetWeights(updated);
@@ -5287,12 +5313,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                                           </View>
                                         ) : (
                                           <TextInput
+                                            ref={ref => { inputRefs.current[stateKey + '_kg'] = ref; }}
                                             style={[lv.fieldInput, lv.fieldInputWide, isCurrent && lv.fieldInputActive]}
                                             keyboardType="decimal-pad"
                                             returnKeyType="done"
                                             blurOnSubmit={false}
                                             placeholder={lastW || '0'} placeholderTextColor={C.muted}
                                             value={localSetWeights[stateKey] || ''}
+                                            onFocus={() => scrollToInput({ current: inputRefs.current[stateKey + '_kg'] })}
                                             onChangeText={val => {
                                               const updated = { ...localSetWeights, [stateKey]: val };
                                               setLocalSetWeights(updated); setWorkoutSetWeights(updated);
@@ -6591,6 +6619,42 @@ function ProgressScreen({ member, gymId, memberId }) {
   const [saving, setSaving] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState([]);
 
+  // ── Refs for keyboard-aware scroll ────────────────────────────────────────
+  // progressScrollRef: the root ScrollView — lets us call scrollTo() from the
+  //   keyboard listener so the weight input is always above the keyboard.
+  // weightInputRef: the weight TextInput — measureLayout() against the
+  //   ScrollView gives its Y offset *within* the scroll content (not the screen),
+  //   which is exactly what scrollTo(y) expects.
+  const progressScrollRef = useRef(null);
+  const weightInputRef    = useRef(null);
+
+  // When the keyboard fully appears (keyboardDidShow), scroll so the weight
+  // input sits comfortably above the keyboard top edge.
+  // We use measureLayout (relative to ScrollView) instead of measureInWindow
+  // (screen coords) to avoid the "programmatic scroll dismisses keyboard" bug.
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (!weightFocused) return;
+      const kbTop = e.endCoordinates.y;          // keyboard top from screen top
+      if (!weightInputRef.current || !progressScrollRef.current) return;
+      weightInputRef.current.measureLayout(
+        progressScrollRef.current,               // measure relative to scroll content
+        (x, y, w, h) => {
+          const inputBottom = y + h;
+          const margin = 24;                     // breathing room above keyboard
+          if (inputBottom + margin > kbTop) {
+            progressScrollRef.current.scrollTo({
+              y: inputBottom + margin - kbTop,
+              animated: true,
+            });
+          }
+        },
+        () => {}
+      );
+    });
+    return () => sub.remove();
+  }, [weightFocused]);
+
   useEffect(() => {
     // Fix: use gymId OR trainerId as namespace for freelance members
     const ns = gymId || (member && (member.trainerId || member.id));
@@ -6644,7 +6708,12 @@ function ProgressScreen({ member, gymId, memberId }) {
     : null;
 
   return (
-    <ScrollView style={g.screen} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={progressScrollRef}
+      style={g.screen}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive">
       <Text style={pr.pageTitle}>Progress</Text>
       <Text style={pr.pageSub}>Track your body, workouts and photos — stay on the wave.</Text>
 
@@ -6757,10 +6826,14 @@ function ProgressScreen({ member, gymId, memberId }) {
             <View style={[pr.logInputWrap, weightFocused && pr.logInputWrapFocus]}>
               <Ionicons name="scale-outline" size={18} color={theme.text.tertiary} />
               <TextInput
+                ref={weightInputRef}
                 style={pr.logInput}
                 placeholder="Enter weight"
-                placeholderTextColor={theme.text.tertiary}
+                placeholderTextColor={C.muted}
                 keyboardType="decimal-pad"
+                returnKeyType="done"
+                blurOnSubmit={true}
+                autoCorrect={false}
                 value={weightInput}
                 onChangeText={setWeightInput}
                 onFocus={() => setWeightFocused(true)}
