@@ -1380,8 +1380,10 @@ const useHmStyles = makeStyles((t) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: t.brand[50],
-    borderWidth: 1, borderColor: t.brand[100],
+    // brand[50] is too light in dark mode; use transparent brand tint instead
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
+    borderWidth: 1,
+    borderColor: t.mode === 'dark' ? 'rgba(99,102,241,0.28)' : t.brand[100],
     borderRadius: t.radius.xl,
     padding: 16,
     marginBottom: t.spacing.section,
@@ -1391,7 +1393,8 @@ const useHmStyles = makeStyles((t) => StyleSheet.create({
     borderRadius: t.radius.md,
     backgroundColor: t.surface.default,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: t.brand[100],
+    borderWidth: 1,
+    borderColor: t.mode === 'dark' ? 'rgba(99,102,241,0.28)' : t.brand[100],
   },
   emptyHeroTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary },
   emptyHeroSub:   { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 2 },
@@ -1491,7 +1494,7 @@ const useHmStyles = makeStyles((t) => StyleSheet.create({
   memberIconWrap: {
     width: 40, height: 40,
     borderRadius: t.radius.md,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50],
     alignItems: 'center', justifyContent: 'center',
   },
   memberTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
@@ -1513,7 +1516,7 @@ const useHmStyles = makeStyles((t) => StyleSheet.create({
   trainerIconWrap: {
     width: 44, height: 44,
     borderRadius: t.radius.md,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50],
     alignItems: 'center', justifyContent: 'center',
   },
   trainerTitle: { fontSize: t.fontSize.md, fontWeight: '700', color: t.text.primary, letterSpacing: -0.1 },
@@ -5482,7 +5485,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 16, paddingVertical: 9,
     borderRadius: t.radius.full,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
     borderWidth: 1.5, borderColor: t.brand[200],
   },
   historyTxt: { fontSize: 13, fontWeight: '700', color: t.brand[700], letterSpacing: -0.1 },
@@ -5636,7 +5639,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   /* ── Trainer notification — web .info-card-brand ─────────────── */
   trainerNotif: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
     borderRadius: t.radius.xl,
     padding: 16,
     marginBottom: 16,
@@ -5659,7 +5662,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: t.radius.full,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
     minHeight: 36,
   },
   backBtnTxt:  { fontSize: 13, fontWeight: '700', color: t.brand[700] },
@@ -5678,7 +5681,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: 56, paddingHorizontal: 24 },
   emptyIconCircle: {
     width: 80, height: 80, borderRadius: 40,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.10)' : t.brand[50],
     borderWidth: 1, borderColor: t.brand[100],
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 18,
@@ -5844,6 +5847,8 @@ const pp = StyleSheet.create({
 
 // ── MeasurementLogger — lets member log body measurements ────────────────────
 function MeasurementLogger({ member, gymId, memberId, measurements }) {
+  // Dark-mode: C is reactive via usePalette(), not the frozen module-level C
+  const C = usePalette();
   const TYPES = ['Chest', 'Waist', 'Hips', 'Bicep', 'Thigh', 'Shoulder', 'Calf'];
   const [editing, setEditing] = React.useState(null);
   const [inputVal, setInputVal] = React.useState('');
@@ -5932,6 +5937,9 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
 // weightLog entries: { weight, loggedAt }  (from subscribeToWeightLog)
 // memberHeight: cm (from member.height)
 function MemberBMIZoneChart({ weightLog, memberHeight }) {
+  // Dark-mode: C reactive so card bg, text, axis labels adapt to theme
+  const C  = usePalette();
+  const t  = C._theme;
   const [chartW, setChartW] = useState(0);
   const CHART_H = 200;
   const PADDING_L = 40;
@@ -6045,14 +6053,14 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
               const y = clamp(toY(w));
               return (
                 <View key={i} style={{ position: 'absolute', left: 0, right: 0, top: y }}>
-                  <Text style={{ position: 'absolute', left: 0, top: -7, fontSize: 8, color: '#9CA3AF', width: PADDING_L - 4, textAlign: 'right' }}>{w}</Text>
-                  <View style={{ position: 'absolute', left: PADDING_L, right: 0, height: 1, backgroundColor: '#F3F4F6' }} />
+                  <Text style={{ position: 'absolute', left: 0, top: -7, fontSize: 8, color: t.text.tertiary, width: PADDING_L - 4, textAlign: 'right' }}>{w}</Text>
+                  <View style={{ position: 'absolute', left: PADDING_L, right: 0, height: 1, backgroundColor: t.border.subtle }} />
                 </View>
               );
             })}
 
             {/* Y-axis line */}
-            <View style={{ position: 'absolute', left: PADDING_L - 1, top: 0, width: 1, height: CHART_H, backgroundColor: '#E5E7EB' }} />
+            <View style={{ position: 'absolute', left: PADDING_L - 1, top: 0, width: 1, height: CHART_H, backgroundColor: t.border.default }} />
 
             {/* Line segments between dots */}
             {points.slice(0, -1).map((p, i) => {
@@ -6068,7 +6076,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
                   position: 'absolute',
                   left: cx - length / 2, top: cy - 1,
                   width: length, height: 2,
-                  backgroundColor: '#CBD5E1',
+                  backgroundColor: t.mode === 'dark' ? t.neutral[700] : t.neutral[300],
                   transform: [{ rotate: `${angle}deg` }],
                 }} />
               );
@@ -6081,7 +6089,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
                 left: p.x - 5, top: p.y - 5,
                 width: 10, height: 10, borderRadius: 5,
                 backgroundColor: getDotColor(p.bmi),
-                borderWidth: 1.5, borderColor: '#FFFFFF',
+                borderWidth: 1.5, borderColor: t.surface.default,
                 elevation: 3, zIndex: 10,
               }} />
             ))}
@@ -6092,15 +6100,15 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
       {/* X-axis date labels — first / middle / last */}
       {points.length > 0 && (
         <View style={{ flexDirection: 'row', marginLeft: PADDING_L, marginTop: 4 }}>
-          <Text style={{ fontSize: 9, color: '#9CA3AF', flex: 1, textAlign: 'left' }}>
+          <Text style={{ fontSize: 9, color: t.text.tertiary, flex: 1, textAlign: 'left' }}>
             {formatDate(points[0].loggedAt)}
           </Text>
           {points.length > 2 && (
-            <Text style={{ fontSize: 9, color: '#9CA3AF', flex: 1, textAlign: 'center' }}>
+            <Text style={{ fontSize: 9, color: t.text.tertiary, flex: 1, textAlign: 'center' }}>
               {formatDate(points[Math.floor(points.length / 2)].loggedAt)}
             </Text>
           )}
-          <Text style={{ fontSize: 9, color: '#9CA3AF', flex: 1, textAlign: 'right' }}>
+          <Text style={{ fontSize: 9, color: t.text.tertiary, flex: 1, textAlign: 'right' }}>
             {formatDate(points[points.length - 1].loggedAt)}
           </Text>
         </View>
@@ -6663,7 +6671,7 @@ const usePrStyles = makeStyles((t) => StyleSheet.create({
 
   /* ── Goal-progress panel — web .info-card-brand ───────────────────── */
   goalPanel: {
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
     borderWidth: 1, borderColor: t.brand[100],
     borderRadius: t.radius.xl,
     padding: 16,
@@ -6921,7 +6929,7 @@ const usePrStyles = makeStyles((t) => StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40, paddingHorizontal: 24,
-    backgroundColor: t.brand[50],
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.10)' : t.brand[50],
     borderWidth: 1, borderColor: t.brand[100],
     borderRadius: t.radius.xl,
     marginTop: 8,
@@ -7451,7 +7459,7 @@ function NotificationsScreen({ onBack, memberId }) {
       <View style={nt.header}>
         {/* Back chevron matches web modal-back pattern — 36×36 tap zone */}
         <TouchableOpacity onPress={onBack} hitSlop={8} style={nt.backChip}>
-          <Ionicons name="chevron-back" size={22} color={theme.text.primary} />
+          <Ionicons name="chevron-back" size={22} color={C.dark} />
         </TouchableOpacity>
         <Text style={nt.title}>Notifications</Text>
         <TouchableOpacity onPress={handleMarkAll} hitSlop={8}>
@@ -8140,9 +8148,9 @@ const usePfStyles = makeStyles((t) => StyleSheet.create({
   trainerChatCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: t.border.default, marginBottom: 8 },
   trainerChatTitle: { fontSize: 15, fontWeight: '700', color: t.text.primary },
   trainerChatSub: { fontSize: 12, color: t.text.secondary, marginTop: 3 },
-  onlineBadge: { backgroundColor: t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  onlineBadge: { backgroundColor: t.mode === 'dark' ? 'rgba(34,197,94,0.18)' : t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   onlineTxt: { color: t.success[600], fontSize: 12, fontWeight: '700' },
-  removeTrainerBtn: { backgroundColor: t.danger[50], borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 4 },
+  removeTrainerBtn: { backgroundColor: t.mode === 'dark' ? 'rgba(244,63,94,0.12)' : t.danger[50], borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 4 },
   removeTrainerTxt: { color: t.danger[600], fontWeight: '600', fontSize: 14 },
   noTrainerCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 24, alignItems: 'center', gap: 8, borderWidth: 1, borderColor: t.border.default },
   noTrainerTitle: { fontSize: 16, fontWeight: '700', color: t.text.primary },
@@ -8152,20 +8160,20 @@ const usePfStyles = makeStyles((t) => StyleSheet.create({
   trainerModalAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   trainerModalAvatarText: { color: '#fff', fontWeight: '800', fontSize: 32 },
   trainerModalName: { fontSize: 22, fontWeight: '800', color: t.text.primary },
-  verifiedBadge: { backgroundColor: t.success[50], borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
+  verifiedBadge: { backgroundColor: t.mode === 'dark' ? 'rgba(34,197,94,0.18)' : t.success[50], borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginTop: 6 },
   verifiedText: { color: t.success[600], fontSize: 12, fontWeight: '700' },
   modalRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: t.surface.default, padding: 14, marginBottom: 1, borderRadius: 2 },
   modalRowKey: { fontSize: 14, color: t.text.secondary },
   modalRowVal: { fontSize: 14, fontWeight: '600', color: t.text.primary },
   modalSectionTitle: { fontSize: 13, fontWeight: '700', color: t.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  specChip: { backgroundColor: t.brand[50], paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  specChip: { backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50], paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
   specChipText: { color: t.brand[600], fontSize: 13, fontWeight: '600' },
   modalBio: { fontSize: 14, color: t.text.primary, lineHeight: 22, marginTop: 8 },
   header: { alignItems: 'center', paddingVertical: 24 },
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   avatarTxt: { fontSize: 34, fontWeight: '800', color: '#fff' },
   name: { fontSize: 22, fontWeight: '800', color: t.text.primary },
-  memberTag: { backgroundColor: t.brand[50], borderRadius: 20, paddingHorizontal: 14, paddingVertical: 4, marginTop: 6 },
+  memberTag: { backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.18)' : t.brand[50], borderRadius: 20, paddingHorizontal: 14, paddingVertical: 4, marginTop: 6 },
   memberTagTxt: { color: t.brand[600], fontSize: 12, fontWeight: '600' },
   row: { backgroundColor: t.surface.default, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 1, borderRadius: 2 },
   rowKey: { fontSize: 14, color: t.text.secondary, flex: 1 },
@@ -8177,12 +8185,12 @@ const usePfStyles = makeStyles((t) => StyleSheet.create({
   trainerChatCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, flexDirection: 'row', alignItems: 'center', elevation: 1, borderWidth: 1, borderColor: t.border.default },
   trainerChatTitle: { fontSize: 15, fontWeight: '700', color: t.text.primary },
   trainerChatSub: { fontSize: 12, color: t.text.secondary, marginTop: 3 },
-  onlineBadge: { backgroundColor: t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  onlineBadge: { backgroundColor: t.mode === 'dark' ? 'rgba(34,197,94,0.18)' : t.success[50], borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   onlineTxt: { color: t.success[600], fontSize: 12, fontWeight: '700' },
   memberCard: { backgroundColor: t.surface.default, borderRadius: 14, padding: 18, elevation: 1 },
   planName: { fontSize: 17, fontWeight: '700', color: t.text.primary },
   planSub: { fontSize: 13, color: t.text.secondary, marginTop: 4 },
-  logoutBtn: { backgroundColor: t.danger[50], borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 24 },
+  logoutBtn: { backgroundColor: t.mode === 'dark' ? 'rgba(244,63,94,0.12)' : t.danger[50], borderRadius: 14, padding: 17, alignItems: 'center', marginTop: 24 },
   logoutTxt: { color: t.danger[600], fontWeight: '700', fontSize: 16 },
 }));
 
