@@ -410,6 +410,11 @@ function OtpLoginScreen({ onSuccess }) {
 }
 
 function ProfileRegisterModal({ visible, onClose, onRegistered }) {
+  // Dark mode: usePalette() gives reactive C.* values so the sheet, inputs,
+  // and buttons all switch automatically with the system/app theme toggle.
+  const C = usePalette();
+  const t = C._theme;
+  const prg = usePrgStyles();  // themed registration modal styles
   const phoneAuthRef = useRef(null);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -575,11 +580,17 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={prg.backdrop}>
+        {/* Sheet uses t.surface.default so it's #fff in light, #111 in dark */}
         <SafeAreaView style={prg.sheet}>
           <PhoneAuthWebView ref={phoneAuthRef} />
+          {/* Handle bar — visual affordance for the bottom sheet */}
+          <View style={prg.handleBar} />
+
           <View style={prg.header}>
-            <Text style={prg.title}>{step === 'phone' ? 'Register With Phone & OTP' : 'Enter OTP'}</Text>
-            <TouchableOpacity onPress={onClose}>
+            <Text style={prg.title}>
+              {step === 'phone' ? 'Register With Phone & OTP' : 'Enter OTP'}
+            </Text>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Text style={prg.closeTxt}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -591,56 +602,71 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
           </Text>
 
           {precheckUnavailable && step === 'phone' && (
-            <Text style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>
               Existing-number pre-check is unavailable before verification. Continue with OTP and we will sync after verify.
             </Text>
           )}
 
           {step === 'phone' ? (
             <>
-              <View style={ot.phoneRow}>
-                <View style={ot.countryCode}><Text style={ot.countryCodeTxt}>🇮🇳 +91</Text></View>
+              {/* Phone row — uses prg.* themed inputs (not frozen ot.*) */}
+              <View style={prg.phoneRow}>
+                <View style={prg.countryChip}>
+                  <Text style={prg.countryChipTxt}>🇮🇳 +91</Text>
+                </View>
                 <TextInput
-                  style={ot.phoneInput}
+                  style={prg.phoneInput}
                   placeholder="Mobile number"
-                  placeholderTextColor={C.mid}
+                  placeholderTextColor={C.muted}
                   keyboardType="phone-pad"
                   maxLength={10}
                   value={phone}
-                  onChangeText={t => { setPhone(t); setError(''); }}
+                  onChangeText={val => { setPhone(val); setError(''); }}
+                  autoCorrect={false}
                 />
               </View>
-              {!!error && <Text style={ot.error}>{error}</Text>}
+              {!!error && <Text style={prg.error}>{error}</Text>}
               <TouchableOpacity
-                style={[ot.btn, (normalizePhone(phone).length < 10 || loading) && ot.btnDisabled]}
+                style={[prg.btn, (normalizePhone(phone).length < 10 || loading) && prg.btnDisabled]}
                 disabled={normalizePhone(phone).length < 10 || loading}
                 onPress={() => sendOtp(false)}
+                activeOpacity={0.85}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Receive OTP</Text>}
+                {loading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={prg.btnTxt}>Receive OTP</Text>}
               </TouchableOpacity>
             </>
           ) : (
             <>
+              {/* OTP input — full-width, themed */}
               <TextInput
-                style={ot.otpInput}
+                style={prg.otpInput}
                 placeholder="Enter 6-digit OTP"
-                placeholderTextColor={C.mid}
+                placeholderTextColor={C.muted}
                 keyboardType="number-pad"
                 maxLength={6}
                 value={otp}
-                onChangeText={t => { setOtp(t); setError(''); }}
+                onChangeText={val => { setOtp(val); setError(''); }}
                 autoFocus
+                autoCorrect={false}
               />
-              {!!error && <Text style={ot.error}>{error}</Text>}
+              {!!error && <Text style={prg.error}>{error}</Text>}
               <TouchableOpacity
-                style={[ot.btn, (otp.length !== 6 || loading) && ot.btnDisabled]}
+                style={[prg.btn, (otp.length !== 6 || loading) && prg.btnDisabled]}
                 disabled={otp.length !== 6 || loading}
                 onPress={verifyOtp}
+                activeOpacity={0.85}
               >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={ot.btnTxt}>Verify & Sync</Text>}
+                {loading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={prg.btnTxt}>Verify & Sync</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={ot.resend} onPress={() => { setStep('phone'); setOtp(''); setError(''); }}>
-                <Text style={ot.resendTxt}>← Change number</Text>
+              <TouchableOpacity
+                style={prg.resend}
+                onPress={() => { setStep('phone'); setOtp(''); setError(''); }}
+              >
+                <Text style={prg.resendTxt}>← Change number</Text>
               </TouchableOpacity>
             </>
           )}
@@ -650,22 +676,68 @@ function ProfileRegisterModal({ visible, onClose, onRegistered }) {
   );
 }
 
-const prg = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+// prg: registration modal styles — makeStyles so dark mode works.
+// Uses t.* tokens so sheet bg, text and borders switch with the theme.
+const usePrgStyles = makeStyles((t) => StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 20,
+    backgroundColor: t.surface.default,        // white in light, #111 in dark
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: t.border.default,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 24,
     minHeight: '62%',
   },
+  handleBar: { width: 40, height: 4, borderRadius: 2, backgroundColor: t.border.strong, alignSelf: 'center', marginBottom: 16 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  title: { fontSize: 18, fontWeight: '800', color: C.dark },
-  closeTxt: { fontSize: 14, color: C.primary, fontWeight: '700' },
-  sub: { fontSize: 13, color: C.mid, marginBottom: 14 },
-});
+  title: { fontSize: 18, fontWeight: '800', color: t.text.primary, letterSpacing: -0.2 },
+  closeTxt: { fontSize: 14, color: t.brand[600], fontWeight: '700' },
+  sub: { fontSize: 13, color: t.text.secondary, marginBottom: 14, lineHeight: 18 },
+  // Phone/OTP input styles — token-driven for dark mode
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  countryChip: {
+    backgroundColor: t.surface.sunken,
+    borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: t.border.default,
+  },
+  countryChipTxt: { fontSize: 15, fontWeight: '600', color: t.text.primary },
+  phoneInput: {
+    flex: 1, backgroundColor: t.surface.default,
+    borderRadius: 12, padding: 14,
+    fontSize: 18, color: t.text.primary,
+    borderWidth: 1.5, borderColor: t.border.default,
+    letterSpacing: 1,
+  },
+  otpInput: {
+    backgroundColor: t.surface.default,
+    borderRadius: 12, padding: 18,
+    fontSize: 24, color: t.text.primary,
+    borderWidth: 1.5, borderColor: t.border.default,
+    textAlign: 'center', letterSpacing: 8,
+  },
+  inputFocused: { borderColor: t.brand[500] },
+  error: { color: t.danger[500], fontSize: 13, marginTop: 10, fontWeight: '500' },
+  btn: {
+    backgroundColor: t.brand[600],
+    borderWidth: 1, borderColor: t.brand[700],
+    borderRadius: 14, padding: 16,
+    alignItems: 'center', marginTop: 20,
+    ...t.shadow.brand,
+  },
+  btnDisabled: {
+    backgroundColor: t.surface.sunken,
+    borderColor: t.border.default,
+    shadowOpacity: 0,
+  },
+  btnTxt: { color: '#ffffff', fontWeight: '700', fontSize: 16 },
+  resend: { alignItems: 'center', marginTop: 16 },
+  resendTxt: { color: t.brand[600], fontSize: 14, fontWeight: '600' },
+}));
 
 // ── MEMBERSHIP DETAIL MODAL ──────────────────────────────────────────────────
 const formatFullDate = (ts) => {
@@ -1532,7 +1604,9 @@ function ExerciseVideoModal({ visible, exerciseName, videoUrl, onClose }) {
   const fallbackUrl = `https://m.youtube.com/results?search_query=${searchQuery}`;
   const uri = videoUrl || fallbackUrl;
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      {/* No statusBarTranslucent — let the OS handle status bar so SafeAreaView
+          correctly insets the content and no overlap occurs on Android.        */}
       <SafeAreaView style={[ev.modalContainer, isMaximized && { paddingTop: 0 }]}>
         <View style={ev.toolbar}>
           <TouchableOpacity style={ev.toolBtn} onPress={onClose} activeOpacity={0.7}>
@@ -3800,15 +3874,21 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   // cardLayoutY: records the Y offset of each exercise card inside the ScrollView.
   // Populated by onLayout on each exercise card View.
   const cardLayoutY = useRef({});
-  // Real keyboard height — populated by Keyboard.addListener so we scroll
-  // exactly the right amount, not a hardcoded guess.
   const keyboardHeight = useRef(0);
+
+  // kbPadding: dynamic paddingBottom for the main ScrollView.
+  // Expands to keyboard height + 16px when keyboard shows so inputs always
+  // have scroll room. Resets to 24px when keyboard hides — no dead space.
+  const [kbPadding, setKbPadding] = useState(24);
+
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', e => {
       keyboardHeight.current = e.endCoordinates.height;
+      setKbPadding(e.endCoordinates.height + 16);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       keyboardHeight.current = 0;
+      setKbPadding(24);
     });
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
@@ -3827,10 +3907,35 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   // On iOS, KeyboardAvoidingView behavior="padding" handles avoidance.
   // We keep the function as a no-op so call sites don't need changing; if
   // iOS needs fine-tuning in future, add: `if (Platform.OS === 'ios') { ... }`
-  const scrollToInput = (_inputRef) => {
-    // Intentionally empty — native keyboard avoidance (adjustResize + KAV)
-    // handles scrolling. Programmatic scroll was causing keyboard to dismiss
-    // on Android by stealing focus from the TextInput.
+  // scrollToInput — scroll the active input above the keyboard.
+  //
+  //   Android: adjustResize in AndroidManifest shrinks the window — the
+  //   kbPadding state expansion (via Keyboard.addListener above) combined
+  //   with the existing scrollRef gives the user enough scroll room without
+  //   any programmatic scroll needed.  Programmatic scroll was previously
+  //   causing focus loss on Android, so we skip it there.
+  //
+  //   iOS: KeyboardAvoidingView behavior="padding" handles the container
+  //   shrink, but doesn't auto-scroll to the focused input. We do that with
+  //   measureInWindow + scrollTo, waiting 350ms for the keyboard animation.
+  const scrollToInput = (inputRef) => {
+    if (Platform.OS !== 'ios') return;  // Android: adjustResize + kbPadding handle it
+    setTimeout(() => {
+      if (!inputRef?.current || !scrollRef.current) return;
+      inputRef.current.measureInWindow((fx, fy, width, height) => {
+        const screenH = Dimensions.get('window').height;
+        const kbH = keyboardHeight.current || 320;
+        const inputBottom = fy + height;
+        const visibleBottom = screenH - kbH - 24;
+        if (inputBottom > visibleBottom) {
+          const overflow = inputBottom - visibleBottom;
+          scrollRef.current.scrollTo({
+            y: Math.max(0, currentScrollY.current + overflow),
+            animated: true,
+          });
+        }
+      });
+    }, 350);
   };
 
   // ── Flash animation + quick-action helpers for inline workout logging ─────
@@ -4461,7 +4566,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       <ScrollView
         ref={scrollRef}
         style={g.screen}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: kbPadding }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -4576,8 +4681,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </View>
         )}
 
-        {/* Selected day view (non-today) */}
-        {selectedDayIdx !== null && selectedDay ? (
+        {/* Selected day view + today view — hidden entirely when actively logging.
+            When isLogging, only the exercise cards section below renders.
+            This prevents Rest Day / empty state from showing below the hero. */}
+        {!isLogging && selectedDayIdx !== null && selectedDay ? (
           <>
             <View style={wk.selectedDayHeader}>
               <TouchableOpacity onPress={() => setSelectedDayIdx(null)} style={wk.backBtn} activeOpacity={0.7}>
@@ -5278,7 +5385,6 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           </View>
         )}
 
-        <View style={{ height: 16 }} />
       </ScrollView>
 
       {/* ── Break Timer Modal ──────────────────────────────────────────────
@@ -5659,7 +5765,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   headerTitle:       { fontSize: t.fontSize['3xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5 },
   headerTitleLogging: { fontSize: t.fontSize.xl, fontWeight: '700', color: t.text.primary, letterSpacing: -0.3, flex: 1 },
   metaToggleBtn: { padding: 6, borderRadius: t.radius.sm },
-  dayWorkoutTitle:   { fontSize: 28, fontWeight: '800', color: t.text.primary, letterSpacing: -0.6, marginBottom: 14, lineHeight: 34 },
+  dayWorkoutTitle:   { fontSize: t.fontSize['3xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5, marginBottom: 10, lineHeight: 32 }, // ↓ 28→24, matches header
   headerSub:         { fontSize: t.fontSize.sm, color: t.text.secondary, marginTop: 6, lineHeight: 20, letterSpacing: 0 },
 
   /* Live timer pill — displays during active session */
