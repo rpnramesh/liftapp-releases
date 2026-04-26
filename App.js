@@ -3780,6 +3780,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [editDurationMinutes, setEditDurationMinutes] = useState('');
   const [videoExName, setVideoExName] = useState(null);
 
+  // ── Custom modal state replacing Alert.alert calls ───────────────────────────
+  // dayOptionsModal: long-press on a day chip → shows "Mark Rest / Postpone"
+  const [dayOptionsModal, setDayOptionsModal] = useState(null);
+  // restAssignModal: during postpone, if next slot is a rest day
+  const [restAssignModal, setRestAssignModal] = useState(null);
+  // postponeSuccessModal: after successful postpone
+  const [postponeSuccessModal, setPostponeSuccessModal] = useState(false);
+
   // ── Refs ────────────────────────────────────────────────────────────────────
   const tickRef = useRef(null);
   const vibratedRef = useRef({});
@@ -4094,25 +4102,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     const dayIdx = item.planIdx ?? displayIdx;
     const FULL_DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const dayName = FULL_DAY_NAMES[(dayIdx + 1) % 7];
-
-    Alert.alert(
-      `${dayName} Options`,
-      item.rest || restDays?.[dayIdx] ? 'This is a rest day' : 'Choose an action',
-      [
-        {
-          text: item.rest || restDays?.[dayIdx] ? 'Mark as Workout Day' : 'Mark as Rest Day',
-          onPress: () => handleToggleRestDay(displayIdx),
-        },
-        !item.rest && !restDays?.[dayIdx] && item.exerciseCount > 0 ? {
-          text: 'Postpone Workout',
-          onPress: () => handlePostpone(dayIdx),
-        } : null,
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ].filter(Boolean)
-    );
+    const isRest = item.rest || restDays?.[dayIdx];
+    // Open the custom day-options modal instead of system Alert.alert
+    setDayOptionsModal({
+      dayName,
+      displayIdx,
+      dayIdx,
+      isRest,
+      canPostpone: !isRest && item.exerciseCount > 0,
+    });
   };
 
   // ── Postpone handler ─────────────────────────────────────────────────────────
@@ -4158,7 +4156,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       const planRef = doc(db, 'gyms', gymId, 'clientPlans', assignment.planId);
       updateDoc(planRef, { days: newDays, postponedDayIdx: dayPlanIdx, postponedOn: todayDateStr })
         .catch(e => console.log('Postpone rotation error:', e));
-      Alert.alert('Workout Postponed ✓', 'Your cycle has been rotated. The updated schedule takes effect from next week.');
+      // Replace system Alert with custom success modal
+      setPostponeSuccessModal(true);
     };
 
     const assignToRestDay = (restDayIdx) => {
@@ -4180,14 +4179,13 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       if (!isNextDayRest) { performRotation(); return; }
       const restDate = getDateForPlanIdx(nextIdx);
       const restDayName = planIdxToName(nextIdx);
-      Alert.alert(
-        'Rest Day',
-        `${restDayName}, ${formatDateLocal(restDate)} is a rest day.\nAssign your workout here or skip to rotate the cycle?`,
-        [
-          { text: `Assign to ${restDayName}`, onPress: () => assignToRestDay(nextIdx) },
-          { text: 'Skip (Rotate Cycle)', style: 'cancel', onPress: () => checkPath(nextIdx, depth + 1) },
-        ]
-      );
+      // Replace system Alert with custom rest-assignment modal
+      setRestAssignModal({
+        restDayName,
+        restDateLabel: formatDateLocal(restDate),
+        onAssign: () => { setRestAssignModal(null); assignToRestDay(nextIdx); },
+        onSkip:   () => { setRestAssignModal(null); checkPath(nextIdx, depth + 1); },
+      });
     };
 
     checkPath(dayPlanIdx);
@@ -5446,6 +5444,201 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         </View>
       </Modal>
       <ExerciseVideoModal visible={!!videoExName} exerciseName={videoExName?.name || videoExName} videoUrl={videoExName?.videoUrl} onClose={() => setVideoExName(null)} />
+
+      {/* ── Day Options Modal ────────────────────────────────────────────────
+          Replaces: Alert.alert(`${dayName} Options`, ...) from handleDayLongPress.
+          Shows on long-press of a day chip. Offers "Mark as Rest Day" /
+          "Mark as Workout Day" and, when applicable, "Postpone Workout".
+          Design: lv.modalBackdrop/Sheet pattern, warning-tinted postpone,
+          danger-tinted rest-toggle, ghost cancel — all dark-mode aware.    */}
+      <Modal
+        visible={!!dayOptionsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDayOptionsModal(null)}
+      >
+        <View style={wkModal.backdrop}>
+          <View style={[wkModal.sheet, { backgroundColor: C.card, borderColor: C.border }]}>
+            {/* Header */}
+            <View style={wkModal.titleRow}>
+              <View style={wkModal.titleIcon}>
+                <Ionicons name="calendar-outline" size={20} color={C.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[wkModal.title, { color: C.dark }]}>
+                  {dayOptionsModal?.dayName}
+                </Text>
+                <Text style={[wkModal.sub, { color: C.mid }]}>
+                  {dayOptionsModal?.isRest ? 'Currently a rest day' : 'Choose an action'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Option buttons — full-width, vertically stacked */}
+            <View style={wkModal.optionList}>
+              {/* Toggle Rest Day / Workout Day */}
+              <TouchableOpacity
+                style={[wkModal.optionBtn, {
+                  backgroundColor: dayOptionsModal?.isRest
+                    ? (C._dark ? 'rgba(99,102,241,0.14)' : C.blue2)
+                    : (C._dark ? 'rgba(244,63,94,0.12)' : C.redSoft || 'rgba(244,63,94,0.08)'),
+                  borderColor: dayOptionsModal?.isRest ? C.primary + '40' : C.red + '40',
+                }]}
+                onPress={() => {
+                  setDayOptionsModal(null);
+                  handleToggleRestDay(dayOptionsModal.displayIdx);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={dayOptionsModal?.isRest ? 'barbell-outline' : 'moon-outline'}
+                  size={18}
+                  color={dayOptionsModal?.isRest ? C.primary : C.red}
+                />
+                <Text style={[wkModal.optionTxt, {
+                  color: dayOptionsModal?.isRest ? C.primary : C.red,
+                }]}>
+                  {dayOptionsModal?.isRest ? 'Mark as Workout Day' : 'Mark as Rest Day'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Postpone Workout — only when workout day with exercises */}
+              {dayOptionsModal?.canPostpone && (
+                <TouchableOpacity
+                  style={[wkModal.optionBtn, {
+                    backgroundColor: C._dark ? 'rgba(234,179,8,0.12)' : C.amberSoft || 'rgba(234,179,8,0.08)',
+                    borderColor: C.amber + '40',
+                  }]}
+                  onPress={() => {
+                    setDayOptionsModal(null);
+                    handlePostpone(dayOptionsModal.dayIdx);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="arrow-forward-circle-outline" size={18} color={C.amber} />
+                  <Text style={[wkModal.optionTxt, { color: C.amber }]}>
+                    Postpone Workout
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Cancel — ghost button */}
+            <TouchableOpacity
+              style={[wkModal.cancelBtn, { backgroundColor: C.sunken, borderColor: C.border }]}
+              onPress={() => setDayOptionsModal(null)}
+              activeOpacity={0.75}
+            >
+              <Text style={[wkModal.cancelTxt, { color: C.mid }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Rest Day Assignment Modal ─────────────────────────────────────────
+          Replaces: Alert.alert('Rest Day', `${restDayName} is a rest day...`)
+          from the checkPath() function during postpone flow.
+          Offers: "Assign to [Day]" (primary action) or "Skip — Rotate Cycle"
+          (secondary ghost). Shows the specific date so user can decide.       */}
+      <Modal
+        visible={!!restAssignModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRestAssignModal(null)}
+      >
+        <View style={wkModal.backdrop}>
+          <View style={[wkModal.sheet, { backgroundColor: C.card, borderColor: C.border }]}>
+            <View style={wkModal.titleRow}>
+              <View style={[wkModal.titleIcon, {
+                backgroundColor: C._dark ? 'rgba(234,179,8,0.14)' : C.amberSoft || 'rgba(234,179,8,0.10)',
+              }]}>
+                <Ionicons name="moon-outline" size={20} color={C.amber} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[wkModal.title, { color: C.dark }]}>Rest Day Conflict</Text>
+                <Text style={[wkModal.sub, { color: C.mid }]}>
+                  {restAssignModal?.restDayName}
+                  {restAssignModal?.restDateLabel ? `, ${restAssignModal.restDateLabel}` : ''} is a rest day
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[wkModal.bodyText, { color: C.mid }]}>
+              Would you like to assign your postponed workout to this rest day, or skip it and rotate your weekly cycle instead?
+            </Text>
+
+            <View style={wkModal.optionList}>
+              {/* Primary: assign to rest day */}
+              <TouchableOpacity
+                style={[wkModal.optionBtn, {
+                  backgroundColor: C._dark ? 'rgba(99,102,241,0.14)' : C.blue2,
+                  borderColor: C.primary + '40',
+                }]}
+                onPress={restAssignModal?.onAssign}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="calendar-outline" size={18} color={C.primary} />
+                <Text style={[wkModal.optionTxt, { color: C.primary }]}>
+                  Assign to {restAssignModal?.restDayName}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Secondary: rotate cycle */}
+              <TouchableOpacity
+                style={[wkModal.optionBtn, { backgroundColor: C.sunken, borderColor: C.border }]}
+                onPress={restAssignModal?.onSkip}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="refresh-outline" size={18} color={C.mid} />
+                <Text style={[wkModal.optionTxt, { color: C.mid }]}>
+                  Skip — Rotate Cycle
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[wkModal.cancelBtn, { backgroundColor: C.sunken, borderColor: C.border }]}
+              onPress={() => setRestAssignModal(null)}
+              activeOpacity={0.75}
+            >
+              <Text style={[wkModal.cancelTxt, { color: C.mid }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Postpone Success Modal ────────────────────────────────────────────
+          Replaces: Alert.alert('Workout Postponed ✓', '...')
+          Clean confirmation with success-tinted icon and single dismiss CTA. */}
+      <Modal
+        visible={postponeSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPostponeSuccessModal(false)}
+      >
+        <View style={wkModal.backdrop}>
+          <View style={[wkModal.sheet, { backgroundColor: C.card, borderColor: C.border, alignItems: 'center' }]}>
+            <View style={[wkModal.successIcon, {
+              backgroundColor: C._dark ? 'rgba(34,197,94,0.14)' : C.greenSoft || 'rgba(22,163,74,0.10)',
+            }]}>
+              <Ionicons name="checkmark-circle" size={36} color={C.green} />
+            </View>
+            <Text style={[wkModal.title, { color: C.dark, textAlign: 'center', marginTop: 16 }]}>
+              Workout Postponed
+            </Text>
+            <Text style={[wkModal.bodyText, { color: C.mid, textAlign: 'center', marginTop: 8 }]}>
+              Your weekly cycle has been rotated. The updated schedule takes effect from next week.
+            </Text>
+            <TouchableOpacity
+              style={[wkModal.primaryBtn, { backgroundColor: C.green, borderColor: C.green, marginTop: 24 }]}
+              onPress={() => setPostponeSuccessModal(false)}
+              activeOpacity={0.85}
+            >
+              <Text style={wkModal.primaryBtnTxt}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -5708,6 +5901,124 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     borderWidth: 1, borderColor: t.border.default,
   },
 }));
+
+// ── wkModal — shared styles for the three custom day-action modals ────────────
+// These modals replace the system Alert.alert sheets with a consistent design
+// that matches the rest of the app: surface-default card, border-default edge,
+// radius-2xl, shadow-modal, usePalette() colors for dark mode parity.
+//
+// Colour values use C.* (from usePalette() in WorkoutsScreen) so they switch
+// automatically when the user toggles dark/light in the Profile screen.
+// The stylesheet itself is plain (not makeStyles) because the colours are
+// applied inline via C.* — the layout geometry is theme-independent.
+const wkModal = StyleSheet.create({
+  // Full-screen semi-transparent backdrop — same as lv.modalBackdrop
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  // Card shell — radius-2xl, shadow-modal, max 360 pt wide
+  sheet: {
+    borderRadius: 24,
+    padding: 22,
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    // Shadow applied inline via t.shadow.modal or C._theme.shadow.modal
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.22,
+    shadowRadius: 32,
+    elevation: 16,
+  },
+  // Header row: coloured icon chip + title + subtitle
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    marginBottom: 18,
+  },
+  titleIcon: {
+    width: 40, height: 40,
+    borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(99,102,241,0.12)',  // overridden inline per-modal
+  },
+  // Success circle used in the postpone-confirmed modal
+  successIcon: {
+    width: 68, height: 68,
+    borderRadius: 34,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  sub: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  // Body paragraph (used in multi-line explanation)
+  bodyText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  // Vertical list of action options
+  optionList: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  // Single option row — icon + label, tinted by action type
+  optionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 52,
+  },
+  optionTxt: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    flex: 1,
+  },
+  // Ghost cancel button — sits below the option list
+  cancelBtn: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  cancelTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Success-modal primary CTA — matches .btn-success anatomy
+  primaryBtn: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    width: '100%',
+    minHeight: 50,
+  },
+  primaryBtnTxt: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.1,
+  },
+});
 
 // ── PROGRESS SCREEN ───────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
