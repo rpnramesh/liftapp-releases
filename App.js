@@ -1576,6 +1576,31 @@ const ev = StyleSheet.create({
   thumbTxt: { fontSize: 13, fontWeight: '600', color: C.primary },
 });
 
+// ── buildWorkoutFinishData — module-level helper ──────────────────────────────
+// Extracted from LoggingView (where it was a local closure) to module scope so
+// WorkoutsScreen can call it too. Previously WorkoutsScreen referenced it at
+// line 4631 but it was out of scope → ReferenceError crash on tap.
+function buildWorkoutFinishData({ dayLabel, planName, durationSeconds, exercises, actualResolver }) {
+  return {
+    planName: planName || '',
+    dayLabel: dayLabel || '',
+    durationSeconds: Math.max(0, durationSeconds || 0),
+    exerciseCount: exercises?.length || 0,
+    exercises: (exercises || []).map((ex, index) => {
+      const actual = actualResolver ? actualResolver(ex, index) : null;
+      return {
+        exerciseName: ex.exerciseName || ex.name,
+        muscleGroup: ex.muscleGroup || '',
+        targetSets: ex.targetSets || ex.sets || ex.mainSets || 0,
+        targetReps: ex.targetReps || ex.reps || ex.mainReps || 0,
+        actualSets: actual?.actualSets ?? ex.actualSets ?? ex.targetSets ?? ex.sets ?? ex.mainSets ?? 0,
+        actualReps: actual?.actualReps ?? ex.actualReps ?? ex.targetReps ?? ex.reps ?? ex.mainReps ?? 0,
+        weight: actual?.weight ?? ex.weight ?? 0,
+      };
+    }),
+  };
+}
+
 // ── WORKOUT LOGGING VIEW ──────────────────────────────────────────────────────
 function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutTimer, gymId, memberId, workoutId, workoutName, todayWorkout, doneSets: doneSetsExternal, setDoneSetsExternal, setWeightsExternal, setSetWeightsExternal, restEndTimes, setRestEndTimes, activeWorkoutLogId }) {
   const C = usePalette();
@@ -1752,30 +1777,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
 
   const formatRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
-  const buildWorkoutFinishData = ({
-    dayLabel,
-    planName,
-    durationSeconds,
-    exercises,
-    actualResolver,
-  }) => ({
-    planName: planName || '',
-    dayLabel: dayLabel || '',
-    durationSeconds: Math.max(0, durationSeconds || 0),
-    exerciseCount: exercises?.length || 0,
-    exercises: (exercises || []).map((ex, index) => {
-      const actual = actualResolver ? actualResolver(ex, index) : null;
-      return {
-        exerciseName: ex.exerciseName || ex.name,
-        muscleGroup: ex.muscleGroup || '',
-        targetSets: ex.targetSets || ex.sets || ex.mainSets || 0,
-        targetReps: ex.targetReps || ex.reps || ex.mainReps || 0,
-        actualSets: actual?.actualSets ?? ex.actualSets ?? ex.targetSets ?? ex.sets ?? ex.mainSets ?? 0,
-        actualReps: actual?.actualReps ?? ex.actualReps ?? ex.targetReps ?? ex.reps ?? ex.mainReps ?? 0,
-        weight: actual?.weight ?? ex.weight ?? 0,
-      };
-    }),
-  });
+  // buildWorkoutFinishData is now module-level (extracted to fix ReferenceError crash)
 
   // Only one timer ever active — replaces any existing timer
   const startRestTimer = (stateKey, secs) => {
@@ -4387,6 +4389,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: Date.now() }).catch(() => {});
         } catch (e) { console.log('Workout complete write error:', e); }
       }
+
+      // Navigate to finish summary AFTER writes (or immediately if no gym).
+      // setIsLogging(false) clears the logging state so the hero header
+      // and exercise list don't remain visible behind the finish screen.
+      setIsLogging(false);
+      onWorkoutFinish?.(buildWorkoutFinishData({
+        dayLabel:        activeWorkout?.dayLabel || '',
+        planName:        activeWorkout?.name || '',
+        durationSeconds: curElapsed,
+        exercises:       logExercises,
+        actualResolver:  (ex) => ({
+          actualSets: getTotalSets(ex),
+          actualReps: parseInt(customReps[`${ex.id}_1`] ?? ex.reps, 10),
+          weight:     parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
+        }),
+      }));
     }
   };
 
@@ -5400,6 +5418,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: Date.now() }).catch(() => {});
                   } catch (e) { console.log('Manual complete write error:', e); }
                 }
+
+                // Navigate to finish summary after all writes complete.
+                // setIsLogging(false) prevents the logging UI from flashing
+                // behind the WorkoutFinishScreen transition.
+                setIsLogging(false);
+                onWorkoutFinish?.(buildWorkoutFinishData({
+                  dayLabel:        activeWorkout?.dayLabel || '',
+                  planName:        activeWorkout?.name || '',
+                  durationSeconds: overrideSeconds,
+                  exercises:       logExercises,
+                  actualResolver:  (ex) => ({
+                    actualSets: getTotalSets(ex),
+                    actualReps: parseInt(customReps[`${ex.id}_1`] ?? ex.reps, 10),
+                    weight:     parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
+                  }),
+                }));
               }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Complete</Text>
               </TouchableOpacity>
@@ -9349,7 +9383,7 @@ function AppBody() {
       data={workoutFinishData}
       member={member}
       memberName={member?.name || 'there'}
-      onBack={() => { setScreen('main'); setTab('Workouts'); }}
+      onBack={() => { setScreen('main'); setTab('Workouts'); setWorkoutTimer({ running: false, elapsed: 0, completed: false }); setWorkoutDoneSets({}); setWorkoutSetWeights({}); }}
       onViewHistory={() => setScreen('workoutHistory')}
       onViewProgress={() => { setScreen('main'); setTab('Progress'); }}
     />
