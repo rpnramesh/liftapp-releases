@@ -20,6 +20,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   LayoutAnimation,
+  BackHandler,
   PanResponder,
   Platform,
   Pressable,
@@ -8216,6 +8217,107 @@ const g = StyleSheet.create({
   sec:         { fontSize: 11, fontWeight: '700', color: theme.text.tertiary, marginTop: theme.spacing[5], marginBottom: theme.spacing[3], letterSpacing: 1.2, textTransform: 'uppercase' },
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SwipeBackScreen — left-edge swipe gesture to navigate back.
+//
+//   Matches the native iOS/Android back-swipe interaction:
+//   • Touch must START within the first EDGE_PX (28 px) from the left edge.
+//     This prevents conflicts with ScrollViews, TextInputs, and inner pickers.
+//   • Movement must be primarily rightward (|dx|>|dy|×1.5) and at least 6 px.
+//   • Release past THRESHOLD (38% of width) OR with velocity > 0.5 → navigate.
+//   • Otherwise spring back to center.
+//
+//   Uses useNativeDriver:true for 60fps transform — no JS thread involvement
+//   during the drag. The parent View's background shows through as the screen
+//   slides right, giving a natural depth cue without rendering a fake backdrop.
+//
+//   Wraps only the "child" screens that have an onBack:
+//     notifications / trainerChat / workoutFinish / workoutHistory
+//   The main tab view is NOT wrapped (no back action + SwipeableSetRow conflict).
+// ─────────────────────────────────────────────────────────────────────────────
+function SwipeBackScreen({ children, onBack, enabled = true }) {
+  const SCREEN_W  = Dimensions.get('window').width;
+  const EDGE_PX   = 28;               // px from LEFT edge that activates gesture
+  const THRESHOLD = SCREEN_W * 0.38;  // drag this far → commit navigation
+
+  const translateX = useRef(new Animated.Value(0)).current;
+  const startX     = useRef(0);       // touch-start X, sampled on every touch-down
+
+  const pan = useRef(PanResponder.create({
+    // ── Touch START — record position but do NOT claim the touch. ─────────────
+    // Returning false lets child components (buttons, inputs, lists) receive
+    // the tap normally. We only record startX so the MOVE phase can check it.
+    onStartShouldSetPanResponder: (e) => {
+      startX.current = e.nativeEvent.pageX;
+      return false;
+    },
+    onStartShouldSetPanResponderCapture: () => false,
+
+    // ── Touch MOVE — claim the gesture iff three conditions are met: ──────────
+    //   1. Touch started within the left-edge zone
+    //   2. Moving rightward (dx > 0) by at least 6 px
+    //   3. Mostly horizontal (not a vertical scroll)
+    onMoveShouldSetPanResponder: (_, g) =>
+      enabled                               &&
+      startX.current <= EDGE_PX             &&
+      g.dx > 6                              &&
+      Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+
+    // Never capture — inner PanResponders (SwipeableSetRow) are unaffected
+    onMoveShouldSetPanResponderCapture: () => false,
+
+    // ── Track finger position — only allow rightward movement ─────────────────
+    onPanResponderMove: (_, g) => {
+      translateX.setValue(Math.max(0, g.dx));
+    },
+
+    // ── Release — decide: commit navigation or snap back ─────────────────────
+    onPanResponderRelease: (_, g) => {
+      if (g.dx >= THRESHOLD || g.vx > 0.5) {
+        // Fast flick or dragged far enough → fly off screen then navigate
+        Animated.timing(translateX, {
+          toValue: SCREEN_W,
+          duration: 180,
+          useNativeDriver: true,
+        }).start(() => {
+          translateX.setValue(0); // reset so next visit starts at 0
+          onBack?.();
+        });
+      } else {
+        // Not far/fast enough → spring back to resting position
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 180,
+          friction: 12,
+        }).start();
+      }
+    },
+
+    // Gesture cancelled externally (e.g. phone call, another modal) → reset
+    onPanResponderTerminate: () => {
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+      }).start();
+    },
+  })).current;
+
+  return (
+    // The parent View's bg (#000) is briefly visible as the screen slides away —
+    // this gives a natural "depth" illusion without needing to render the
+    // previous screen (which isn't in the React tree at this point).
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <Animated.View
+        {...pan.panHandlers}
+        style={{ flex: 1, transform: [{ translateX }] }}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
 // ── WORKOUT FINISH SCREEN ─────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 // ConfettiLayer — pure-RN particle celebration, no external library.
@@ -8979,6 +9081,22 @@ function AppBody() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
+  // ── Android hardware back button ───────────────────────────────────────────
+  // Mirrors the SwipeBackScreen gesture: on any non-main screen, pressing the
+  // Android back button returns to main instead of exiting the app.
+  // On the main screen, we return false so Android handles it (minimize/exit).
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      const childScreens = ['notifications', 'trainerChat', 'workoutFinish', 'workoutHistory'];
+      if (childScreens.includes(screen)) {
+        setScreen('main');
+        return true; // consumed — prevent default (exit)
+      }
+      return false;  // not consumed — let Android minimize/exit
+    });
+    return () => sub.remove();
+  }, [screen]);
+
   // Real data from Firestore
   const [member, setMember] = useState(null);
   const [assignment, setAssignment] = useState(null);
@@ -9381,27 +9499,36 @@ function AppBody() {
   }
 
   if (screen === 'notifications') return (
-    <NotificationsScreen onBack={() => setScreen('main')} memberId={uid} />
+    // SwipeBackScreen: left-edge swipe navigates back, hardware back button handled globally
+    <SwipeBackScreen onBack={() => setScreen('main')}>
+      <NotificationsScreen onBack={() => setScreen('main')} memberId={uid} />
+    </SwipeBackScreen>
   );
   if (screen === 'trainerChat') return (
-    <TrainerChatScreen member={member} onBack={() => setScreen('main')} />
+    <SwipeBackScreen onBack={() => setScreen('main')}>
+      <TrainerChatScreen member={member} onBack={() => setScreen('main')} />
+    </SwipeBackScreen>
   );
   if (screen === 'workoutFinish') return (
-    <WorkoutFinishScreen
-      data={workoutFinishData}
-      member={member}
-      memberName={member?.name || 'there'}
-      onBack={() => { setScreen('main'); setTab('Workouts'); setWorkoutTimer({ running: false, elapsed: 0, completed: false }); setWorkoutDoneSets({}); setWorkoutSetWeights({}); }}
-      onViewHistory={() => setScreen('workoutHistory')}
-      onViewProgress={() => { setScreen('main'); setTab('Progress'); }}
-    />
+    <SwipeBackScreen onBack={() => { setScreen('main'); setTab('Workouts'); setWorkoutTimer({ running: false, elapsed: 0, completed: false }); setWorkoutDoneSets({}); setWorkoutSetWeights({}); }}>
+      <WorkoutFinishScreen
+        data={workoutFinishData}
+        member={member}
+        memberName={member?.name || 'there'}
+        onBack={() => { setScreen('main'); setTab('Workouts'); setWorkoutTimer({ running: false, elapsed: 0, completed: false }); setWorkoutDoneSets({}); setWorkoutSetWeights({}); }}
+        onViewHistory={() => setScreen('workoutHistory')}
+        onViewProgress={() => { setScreen('main'); setTab('Progress'); }}
+      />
+    </SwipeBackScreen>
   );
   if (screen === 'workoutHistory') return (
-    <WorkoutHistoryScreen
-      member={member}
-      memberId={uid}
-      onBack={() => setScreen('main')}
-    />
+    <SwipeBackScreen onBack={() => setScreen('main')}>
+      <WorkoutHistoryScreen
+        member={member}
+        memberId={uid}
+        onBack={() => setScreen('main')}
+      />
+    </SwipeBackScreen>
   );
 
   const tabs = [
