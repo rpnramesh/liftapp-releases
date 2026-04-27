@@ -4001,17 +4001,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
     }
   };
 
-  // ── Floating rest timer (draggable) ─────────────────────────────────────────
-  const floatPan = useRef(new Animated.ValueXY({ x: width - 200, y: 100 })).current;
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5 || Math.abs(g.dy) > 5,
-      onPanResponderGrant: () => { floatPan.extractOffset(); },
-      onPanResponderMove: Animated.event([null, { dx: floatPan.x, dy: floatPan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: () => { floatPan.flattenOffset(); },
-    })
-  ).current;
+  // Floating rest timer removed — auto-rest now uses the unified bottom sheet.
 
   // ── Day helpers ─────────────────────────────────────────────────────────────
   const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -4354,6 +4344,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   const startRestTimer = (stateKey, secs) => {
     setRestEndTimes({ [stateKey]: Date.now() + secs * 1000 });
+    setShowBreakModal(true); // unified sheet: auto-open on every set completion
   };
 
   const adjustRest = (stateKey, delta) => {
@@ -5454,10 +5445,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
       </ScrollView>
 
-      {/* ── Break Timer Modal ──────────────────────────────────────────────
-          ManualBreakTimer moved from inline exercise list to a modal so
-          it doesn't consume vertical space when not in use. Opened via
-          the timer icon in the WorkoutHeroHeader.                        */}
+      {/* ── Unified Timer Bottom Sheet ─────────────────────────────────────
+          Opens automatically when a set is completed (startRestTimer calls
+          setShowBreakModal). Also opens manually via the clock icon in the
+          hero header. Content switches based on active state:
+            • Auto-rest active  → countdown + Skip/±10s controls
+            • No active rest    → ManualBreakTimer (unchanged component)   */}
       <Modal
         visible={showBreakModal}
         transparent
@@ -5467,38 +5460,68 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <View style={[breakModalSheet, { backgroundColor: C.card, borderColor: C.border }]}>
             <View style={breakModalHandle} />
+
+            {/* ── Mode label + close ── */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: C.dark, letterSpacing: -0.2 }}>Break Timer</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: C.dark, letterSpacing: -0.2 }}>
+                {activeRestLeft !== undefined && activeRestLeft > 0 ? 'Rest Timer' : 'Break Timer'}
+              </Text>
               <TouchableOpacity onPress={() => setShowBreakModal(false)} hitSlop={12}>
                 <Ionicons name="close" size={22} color={C.muted} />
               </TouchableOpacity>
             </View>
-            <ManualBreakTimer C={C} t={theme} />
+
+            {/* ── Auto-rest mode: driven by restEndTimes ── */}
+            {activeRestLeft !== undefined && activeRestLeft > 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                {/* Big countdown — colour shifts amber→red as time runs out */}
+                <Text style={{
+                  fontSize: 56, fontWeight: '800', letterSpacing: -1,
+                  fontVariant: ['tabular-nums'],
+                  color: activeRestLeft < 10 ? C.red : activeRestLeft < 20 ? C.amber : C.green,
+                }}>
+                  {formatRest(activeRestLeft)}
+                </Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: C.muted, letterSpacing: 1.2, marginTop: 4, textTransform: 'uppercase' }}>
+                  Rest · {activeRestKey ? (() => { const m = activeRestKey.match(/_(\d+)$/); return m ? `Set ${m[1]}` : ''; })() : ''}
+                </Text>
+
+                {/* Controls row: −10s · Skip · +10s */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24 }}>
+                  <TouchableOpacity
+                    style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => adjustRest(activeRestKey, -10)}
+                    hitSlop={6} activeOpacity={0.75}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: C.mid }}>−10s</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{ flex: 1, height: 52, borderRadius: 14, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => { setRestEndTimes({}); setRestTimers({}); setShowBreakModal(false); }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Skip Rest</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
+                    onPress={() => adjustRest(activeRestKey, 10)}
+                    hitSlop={6} activeOpacity={0.75}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: C.mid }}>+10s</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              /* ── Manual mode: unchanged ManualBreakTimer component ── */
+              <ManualBreakTimer C={C} t={theme} />
+            )}
           </View>
         </View>
       </Modal>
 
-      {/* ── Floating draggable rest timer ─────────────────────────────── */}
-      {isLogging && activeRestLeft !== undefined && activeRestLeft > 0 && (
-        <Animated.View
-          style={[wk.floatRest, { transform: floatPan.getTranslateTransform(), backgroundColor: activeRestColor + '14', borderColor: activeRestColor + '40' }]}
-          {...panResponder.panHandlers}
-        >
-          <View style={[wk.floatRestInner, { backgroundColor: activeRestColor }]}>
-            <Ionicons name="hourglass-outline" size={16} color="#fff" />
-          </View>
-          <Text style={[wk.floatRestTime, { color: activeRestColor }]}>{formatRest(activeRestLeft)}</Text>
-          <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, -10)}>
-            <Ionicons name="remove" size={14} color={C.dark} />
-          </TouchableOpacity>
-          <TouchableOpacity style={wk.floatRestAdj} activeOpacity={0.7} onPress={() => adjustRest(activeRestKey, 10)}>
-            <Ionicons name="add" size={14} color={C.dark} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[wk.floatRestAdj, { backgroundColor: activeRestColor }]} activeOpacity={0.7} onPress={() => { setRestEndTimes({}); setRestTimers({}); }}>
-            <Ionicons name="close" size={14} color="#fff" />
-          </TouchableOpacity>
-        </Animated.View>
-      )}
+      {/* Floating timer removed — auto-rest appears in the unified bottom sheet */}
       <Modal visible={showCompleteModal} transparent animationType="fade" onRequestClose={() => setShowCompleteModal(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
           <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
@@ -5925,9 +5948,10 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   // YouTube chip — replaces the seq-number/green-tick icon chip.
   // Transparent red tint background keeps the icon visible on dark cards
   // without being harsh. Touch target is 40×40 + hitSlop:6 = ~52px effective.
+  // Icon sits directly on the card — no tinted square behind it
   ytChip: {
     width: 40, height: 40, borderRadius: t.radius.md,
-    backgroundColor: t.mode === 'dark' ? 'rgba(255,0,0,0.13)' : 'rgba(255,0,0,0.07)',
+    backgroundColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
 
@@ -6086,23 +6110,7 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   emptyTitle: { fontSize: t.fontSize['2xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.4 },
   emptySub:   { fontSize: t.fontSize.base, color: t.text.secondary, marginTop: 8, textAlign: 'center', lineHeight: 22 },
 
-  /* ── Floating rest timer (draggable pill) ────────────────────── */
-  floatRest: {
-    position: 'absolute',
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: t.radius.full,
-    paddingVertical: 8, paddingHorizontal: 12,
-    borderWidth: 1.5,
-    ...t.shadow.float,
-  },
-  floatRestInner: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  floatRestTime:  { fontSize: t.fontSize['2xl'], fontWeight: '800', letterSpacing: 0.3, fontVariant: ['tabular-nums'] },
-  floatRestAdj: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: t.surface.default,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: t.border.default,
-  },
+  // floatRest* styles removed — auto-rest uses the unified bottom sheet
 }));
 
 // ── wkModal — shared styles for the three custom day-action modals ────────────
@@ -10226,9 +10234,10 @@ const useWfStyles = makeStyles((t) => StyleSheet.create({
   },
   // YouTube chip for post-workout review.
   // Slightly smaller than the pre-workout chip to suit the tighter summary list.
+  // Icon floats directly on the summary card — no background
   ytChip: {
     width: 36, height: 36, borderRadius: t.radius.sm,
-    backgroundColor: t.mode === 'dark' ? 'rgba(255,0,0,0.13)' : 'rgba(255,0,0,0.07)',
+    backgroundColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
   // Fallback for exercises with no stored videoUrl.
