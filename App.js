@@ -6480,7 +6480,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
   // ── Layout ────────────────────────────────────────────────────────────────
   const [chartW, setChartW] = useState(0);
   const CHART_H  = 220;
-  const PADDING_L = 40;
+  const PADDING_L = 30;  // reduced 40→30: gains 10 px of plot width
   const TT_W     = 140; // tooltip width
 
   // ── Interaction state ─────────────────────────────────────────────────────
@@ -6594,7 +6594,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
     : 0;
 
   return (
-    <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginVertical: 16, elevation: 1 }}>
+    <View style={{ backgroundColor: C.card, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 14, marginVertical: 12, elevation: 1 }}>
 
       {/* Header */}
       <Text style={{ fontSize: 15, fontWeight: '700', color: C.dark }}>⚖️ Weight Progress</Text>
@@ -7855,27 +7855,66 @@ async function cancelSupplementNotif(suppId) {
 }
 
 // ─── SuppFormModal — shared Add / Edit sheet ─────────────────────────────────
+//
+//  Layout architecture (why each piece exists):
+//
+//  Modal
+//    Pressable overlay (flex:1, dismiss on tap-outside)
+//      Pressable sheet (stops propagation, maxHeight = screenH - kbH)
+//        ┌─ Fixed header ─────────────────────────────────────────────┐
+//        │  handle bar + title — never scrolls away                   │
+//        └────────────────────────────────────────────────────────────┘
+//        ┌─ ScrollView (flex:1) ──────────────────────────────────────┐
+//        │  All form content. flex:1 fills the space between the      │
+//        │  fixed header and fixed footer. Scrollable when content     │
+//        │  is taller than the available gap.                         │
+//        └────────────────────────────────────────────────────────────┘
+//        ┌─ Fixed footer (buttons) ───────────────────────────────────┐
+//        │  Cancel + Add/Save. OUTSIDE the ScrollView so they are     │
+//        │  always visible and never scroll off screen.               │
+//        └────────────────────────────────────────────────────────────┘
+//
+//  Keyboard handling (NO KeyboardAvoidingView needed):
+//    We track keyboard height via Keyboard.addListener and subtract it
+//    from the sheet's maxHeight. When the keyboard opens, the sheet
+//    shrinks from the top — ScrollView compresses, form stays scrollable,
+//    buttons remain anchored at the bottom. Works identically on iOS and
+//    Android because Modal does NOT receive adjustResize from the manifest.
+//
 function SuppFormModal({ visible, initial, onSave, onClose }) {
-  const C   = usePalette();
-  const sp  = useSpStyles();
+  const C  = usePalette();
+  const sp = useSpStyles();
 
   const blank = { name: '', dose: '', frequency: 'Daily', timesPerDay: 1, reminderEnabled: false, reminderHour: 8, reminderMinute: 0, weekday: 2, monthDay: 1 };
   const seed  = initial ?? blank;
 
-  const [name,       setName]       = useState(seed.name);
-  const [dose,       setDose]       = useState(seed.dose);
-  const [freq,       setFreq]       = useState(seed.frequency   ?? 'Daily');
-  const [timesDay,   setTimesDay]   = useState(seed.timesPerDay ?? 1);
-  const [hour,       setHour]       = useState(seed.reminderHour   ?? 8);
-  const [minute,     setMinute]     = useState(seed.reminderMinute ?? 0);
-  const [weekday,    setWeekday]    = useState(seed.weekday  ?? 2);
-  const [monthDay,   setMonthDay]   = useState(seed.monthDay ?? 1);
+  const [name,        setName]       = useState(seed.name);
+  const [dose,        setDose]       = useState(seed.dose);
+  const [freq,        setFreq]       = useState(seed.frequency    ?? 'Daily');
+  const [timesDay,    setTimesDay]   = useState(seed.timesPerDay  ?? 1);
+  const [hour,        setHour]       = useState(seed.reminderHour   ?? 8);
+  const [minute,      setMinute]     = useState(seed.reminderMinute ?? 0);
+  const [weekday,     setWeekday]    = useState(seed.weekday  ?? 2);
+  const [monthDay,    setMonthDay]   = useState(seed.monthDay ?? 1);
   const [showPresets, setShowPresets] = useState(!initial);
-  const [saving,     setSaving]     = useState(false);
+  const [saving,      setSaving]     = useState(false);
 
-  // Reset form whenever seed changes (open for different supplement)
+  // ── Keyboard height tracking ────────────────────────────────────────────────
+  // We listen for keyboard events inside the modal itself. When the keyboard
+  // shows, we shrink maxHeight so the sheet fits above the keyboard.
+  const [kbH, setKbH] = useState(0);
   useEffect(() => {
-    setName(seed.name);  setDose(seed.dose);
+    const show = Keyboard.addListener('keyboardDidShow', e => setKbH(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKbH(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
+  // Reset keyboard height when modal closes
+  useEffect(() => { if (!visible) setKbH(0); }, [visible]);
+
+  // ── Form reset on open ──────────────────────────────────────────────────────
+  useEffect(() => {
+    setName(seed.name);      setDose(seed.dose);
     setFreq(seed.frequency   ?? 'Daily');
     setTimesDay(seed.timesPerDay ?? 1);
     setHour(seed.reminderHour   ?? 8);
@@ -7895,159 +7934,247 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
     setSaving(false);
   };
 
+  // ── Sheet height computation ────────────────────────────────────────────────
+  // maxHeight = min(90% screen, screen - keyboard - statusBar - safe margin).
+  // This is computed fresh on every render so it reacts to keyboard changes
+  // without needing any animation or ref updates.
+  const screenH   = Dimensions.get('window').height;
+  const statusBar = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
+  const sheetMaxH = Math.min(
+    screenH * 0.90,
+    screenH - kbH - statusBar - 16,  // 16 px safe margin from top
+  );
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={sp.modalOverlay} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
-          <Pressable style={[sp.modalSheet, { maxHeight: '90%' }]} onPress={e => e.stopPropagation()}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <View style={sp.modalHandle} />
-              <Text style={sp.modalTitle}>{initial ? 'Edit Supplement' : 'Add Supplement'}</Text>
 
-              {/* ── Presets (add mode only) ───────────── */}
-              {!initial && (
-                <>
-                  <TouchableOpacity style={sp.presetsToggle} onPress={() => setShowPresets(p => !p)}>
-                    <Text style={sp.presetsToggleTxt}>{showPresets ? 'Hide presets' : 'Choose from presets'}</Text>
-                    <Ionicons name={showPresets ? 'chevron-up' : 'chevron-down'} size={14} color={C.primary} />
-                  </TouchableOpacity>
-                  {showPresets && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={sp.presetScroll} contentContainerStyle={{ gap: 8 }}>
-                      {SUPP_PRESETS.map(p => (
-                        <TouchableOpacity key={p.name} style={sp.presetChip}
-                          onPress={() => { setName(p.name); setDose(p.dose); setShowPresets(false); }}
-                          activeOpacity={0.75}>
-                          <Ionicons name={p.icon} size={14} color={C.primary} />
-                          <Text style={sp.presetChipTxt}>{p.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  )}
-                </>
-              )}
+      {/* ── Full-screen overlay — tap to dismiss ────────────────────────────── */}
+      <Pressable
+        style={sp.modalOverlay}
+        onPress={onClose}
+      >
 
-              {/* ── Name + Dose ───────────────────────── */}
-              <Text style={sp.inputLabel}>Supplement Name</Text>
-              <TextInput style={sp.input} placeholder="e.g. Vitamin B12" placeholderTextColor={C.muted}
-                value={name} onChangeText={setName} returnKeyType="next" autoCorrect={false} />
-              <Text style={sp.inputLabel}>Dose (optional)</Text>
-              <TextInput style={sp.input} placeholder="e.g. 1000mcg" placeholderTextColor={C.muted}
-                value={dose} onChangeText={setDose} returnKeyType="done" autoCorrect={false} />
+        {/* ── Sheet — stops tap propagation so overlay doesn't close ────────── */}
+        <Pressable
+          style={[sp.modalSheet, { maxHeight: sheetMaxH }]}
+          onPress={e => e.stopPropagation()}
+        >
 
-              {/* ── Frequency ────────────────────────── */}
-              <Text style={sp.inputLabel}>Reminder Frequency</Text>
-              <View style={sp.segRow}>
-                {SUPP_FREQ.map(f => (
-                  <TouchableOpacity key={f} style={[sp.segBtn, freq === f && sp.segBtnActive]}
-                    onPress={() => setFreq(f)} activeOpacity={0.75}>
-                    <Text style={[sp.segTxt, freq === f && sp.segTxtActive]}>{f}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+          {/* ── FIXED HEADER ───────────────────────────────────────────────── */}
+          <View style={sp.modalHandle} />
+          <Text style={sp.modalTitle}>{initial ? 'Edit Supplement' : 'Add Supplement'}</Text>
 
-              {/* Weekly: day picker */}
-              {freq === 'Weekly' && (
-                <>
-                  <Text style={sp.inputLabel}>Day of Week</Text>
-                  <View style={sp.segRow}>
-                    {SUPP_DAYS.map((d, i) => (
-                      <TouchableOpacity key={d} style={[sp.segBtn, weekday === i + 1 && sp.segBtnActive]}
-                        onPress={() => setWeekday(i + 1)} activeOpacity={0.75}>
-                        <Text style={[sp.segTxt, weekday === i + 1 && sp.segTxtActive]}>{d}</Text>
+          {/* ── SCROLLABLE BODY ─────────────────────────────────────────────
+              flex:1 fills all available space between the fixed header and
+              the fixed footer. React Native's flex algorithm will give this
+              ScrollView exactly (sheetMaxH - headerHeight - footerHeight)
+              pixels of visible height. Content that exceeds this scrolls.  */}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={sp.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bounces={true}
+          >
+            {/* ── Presets (add mode only) ──────────────────────────────── */}
+            {!initial && (
+              <>
+                <TouchableOpacity
+                  style={sp.presetsToggle}
+                  onPress={() => setShowPresets(p => !p)}
+                >
+                  <Text style={sp.presetsToggleTxt}>
+                    {showPresets ? 'Hide presets' : 'Choose from presets'}
+                  </Text>
+                  <Ionicons name={showPresets ? 'chevron-up' : 'chevron-down'} size={14} color={C.primary} />
+                </TouchableOpacity>
+                {showPresets && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={sp.presetScroll}
+                    contentContainerStyle={{ gap: 8 }}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {SUPP_PRESETS.map(p => (
+                      <TouchableOpacity
+                        key={p.name}
+                        style={sp.presetChip}
+                        onPress={() => { setName(p.name); setDose(p.dose); setShowPresets(false); }}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name={p.icon} size={14} color={C.primary} />
+                        <Text style={sp.presetChipTxt}>{p.name}</Text>
                       </TouchableOpacity>
                     ))}
-                  </View>
-                </>
-              )}
+                  </ScrollView>
+                )}
+              </>
+            )}
 
-              {/* Monthly/Quarterly: day-of-month */}
-              {(freq === 'Monthly' || freq === 'Quarterly') && (
-                <>
-                  <Text style={sp.inputLabel}>{freq === 'Quarterly' ? 'Day of each quarter month' : 'Day of month'}</Text>
-                  <View style={sp.dayNumRow}>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.max(1, d - 1))}>
-                      <Ionicons name="remove-circle-outline" size={24} color={C.primary} />
-                    </TouchableOpacity>
-                    <Text style={sp.dayNumVal}>{monthDay}</Text>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.min(28, d + 1))}>
-                      <Ionicons name="add-circle-outline" size={24} color={C.primary} />
-                    </TouchableOpacity>
-                    <Text style={sp.dayNumUnit}>of the month</Text>
-                  </View>
-                  {freq === 'Quarterly' && (
-                    <Text style={sp.inputHint}>Fires on Jan {monthDay}, Apr {monthDay}, Jul {monthDay}, Oct {monthDay}</Text>
-                  )}
-                </>
-              )}
+            {/* ── Name ────────────────────────────────────────────────── */}
+            <Text style={sp.inputLabel}>Supplement Name</Text>
+            <TextInput
+              style={sp.input}
+              placeholder="e.g. Vitamin B12"
+              placeholderTextColor={C.muted}
+              value={name}
+              onChangeText={setName}
+              returnKeyType="next"
+              autoCorrect={false}
+            />
 
-              {/* Times per day */}
-              <Text style={sp.inputLabel}>Times Per Day</Text>
-              <View style={sp.segRow}>
-                {[1, 2, 3].map(n => (
-                  <TouchableOpacity key={n} style={[sp.segBtn, timesDay === n && sp.segBtnActive]}
-                    onPress={() => setTimesDay(n)} activeOpacity={0.75}>
-                    <Text style={[sp.segTxt, timesDay === n && sp.segTxtActive]}>{n}×</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            {/* ── Dose ────────────────────────────────────────────────── */}
+            <Text style={sp.inputLabel}>Dose (optional)</Text>
+            <TextInput
+              style={sp.input}
+              placeholder="e.g. 1000mcg"
+              placeholderTextColor={C.muted}
+              value={dose}
+              onChangeText={setDose}
+              returnKeyType="done"
+              autoCorrect={false}
+            />
 
-              {/* Time picker */}
-              <Text style={sp.inputLabel}>First reminder time</Text>
-              <View style={sp.timePicker}>
-                <View style={sp.timePickerRow}>
-                  <View style={sp.timeUnit}>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 1) % 24)}>
-                      <Ionicons name="chevron-up" size={20} color={C.primary} />
+            {/* ── Frequency ───────────────────────────────────────────── */}
+            <Text style={sp.inputLabel}>Reminder Frequency</Text>
+            <View style={sp.segRow}>
+              {SUPP_FREQ.map(f => (
+                <TouchableOpacity
+                  key={f}
+                  style={[sp.segBtn, freq === f && sp.segBtnActive]}
+                  onPress={() => setFreq(f)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[sp.segTxt, freq === f && sp.segTxtActive]}>{f}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* ── Weekly day picker ───────────────────────────────────── */}
+            {freq === 'Weekly' && (
+              <>
+                <Text style={sp.inputLabel}>Day of Week</Text>
+                <View style={sp.segRow}>
+                  {SUPP_DAYS.map((d, i) => (
+                    <TouchableOpacity
+                      key={d}
+                      style={[sp.segBtn, weekday === i + 1 && sp.segBtnActive]}
+                      onPress={() => setWeekday(i + 1)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[sp.segTxt, weekday === i + 1 && sp.segTxtActive]}>{d}</Text>
                     </TouchableOpacity>
-                    <Text style={sp.timeVal}>{hh}</Text>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 23) % 24)}>
-                      <Ionicons name="chevron-down" size={20} color={C.primary} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={sp.timeSep}>:</Text>
-                  <View style={sp.timeUnit}>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 5) % 60)}>
-                      <Ionicons name="chevron-up" size={20} color={C.primary} />
-                    </TouchableOpacity>
-                    <Text style={sp.timeVal}>{mm}</Text>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 55) % 60)}>
-                      <Ionicons name="chevron-down" size={20} color={C.primary} />
-                    </TouchableOpacity>
-                  </View>
+                  ))}
                 </View>
-                {timesDay > 1 && (
-                  <Text style={[sp.inputHint, { marginTop: 8 }]}>
-                    {timesDay === 2
-                      ? `Also at ${String((hour + 8) % 24).padStart(2, '0')}:${mm}`
-                      : `Also at ${String((hour + 6) % 24).padStart(2, '0')}:${mm} and ${String((hour + 12) % 24).padStart(2, '0')}:${mm}`}
+              </>
+            )}
+
+            {/* ── Monthly / Quarterly day-of-month picker ─────────────── */}
+            {(freq === 'Monthly' || freq === 'Quarterly') && (
+              <>
+                <Text style={sp.inputLabel}>
+                  {freq === 'Quarterly' ? 'Day of each quarter month' : 'Day of month'}
+                </Text>
+                <View style={sp.dayNumRow}>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.max(1, d - 1))}>
+                    <Ionicons name="remove-circle-outline" size={24} color={C.primary} />
+                  </TouchableOpacity>
+                  <Text style={sp.dayNumVal}>{monthDay}</Text>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.min(28, d + 1))}>
+                    <Ionicons name="add-circle-outline" size={24} color={C.primary} />
+                  </TouchableOpacity>
+                  <Text style={sp.dayNumUnit}>of the month</Text>
+                </View>
+                {freq === 'Quarterly' && (
+                  <Text style={sp.inputHint}>
+                    Fires on Jan {monthDay}, Apr {monthDay}, Jul {monthDay}, Oct {monthDay}
                   </Text>
                 )}
-              </View>
+              </>
+            )}
 
-              {/* Actions */}
-              <View style={sp.modalActions}>
-                {/* Dismiss — ghost square, icon only */}
-                <TouchableOpacity style={sp.modalCancelBtn} onPress={onClose} hitSlop={4} activeOpacity={0.7}>
-                  <Ionicons name="close" size={20} color="#9ca3af" />
-                </TouchableOpacity>
-                {/* Confirm — icon + compact label, full flex */}
+            {/* ── Times per day ───────────────────────────────────────── */}
+            <Text style={sp.inputLabel}>Times Per Day</Text>
+            <View style={sp.segRow}>
+              {[1, 2, 3].map(n => (
                 <TouchableOpacity
-                  style={[sp.modalAddBtn, (!name.trim() || saving) && sp.modalAddBtnOff]}
-                  onPress={handleSave}
-                  disabled={!name.trim() || saving}
-                  activeOpacity={0.85}>
-                  {saving
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <View style={sp.modalAddInner}>
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                        <Text style={sp.modalAddTxt}>{initial ? 'Save' : 'Add'}</Text>
-                      </View>
-                  }
+                  key={n}
+                  style={[sp.segBtn, timesDay === n && sp.segBtnActive]}
+                  onPress={() => setTimesDay(n)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[sp.segTxt, timesDay === n && sp.segTxtActive]}>{n}×</Text>
                 </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* ── Time picker ─────────────────────────────────────────── */}
+            <Text style={sp.inputLabel}>First reminder time</Text>
+            <View style={sp.timePicker}>
+              <View style={sp.timePickerRow}>
+                <View style={sp.timeUnit}>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 1) % 24)}>
+                    <Ionicons name="chevron-up" size={20} color={C.primary} />
+                  </TouchableOpacity>
+                  <Text style={sp.timeVal}>{hh}</Text>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 23) % 24)}>
+                    <Ionicons name="chevron-down" size={20} color={C.primary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={sp.timeSep}>:</Text>
+                <View style={sp.timeUnit}>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 5) % 60)}>
+                    <Ionicons name="chevron-up" size={20} color={C.primary} />
+                  </TouchableOpacity>
+                  <Text style={sp.timeVal}>{mm}</Text>
+                  <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 55) % 60)}>
+                    <Ionicons name="chevron-down" size={20} color={C.primary} />
+                  </TouchableOpacity>
+                </View>
               </View>
-            </ScrollView>
-          </Pressable>
-        </KeyboardAvoidingView>
+              {timesDay > 1 && (
+                <Text style={[sp.inputHint, { marginTop: 8 }]}>
+                  {timesDay === 2
+                    ? `Also at ${String((hour + 8) % 24).padStart(2, '0')}:${mm}`
+                    : `Also at ${String((hour + 6) % 24).padStart(2, '0')}:${mm} and ${String((hour + 12) % 24).padStart(2, '0')}:${mm}`}
+                </Text>
+              )}
+            </View>
+          </ScrollView>
+
+          {/* ── FIXED FOOTER — buttons always visible ───────────────────────
+              Sits outside the ScrollView. Anchored to the sheet bottom.
+              When keyboard is open, sheetMaxH shrinks → sheet is shorter →
+              ScrollView compresses → these buttons remain right here.      */}
+          <View style={sp.modalActions}>
+            {/* Cancel — ghost square, icon only */}
+            <TouchableOpacity
+              style={sp.modalCancelBtn}
+              onPress={onClose}
+              hitSlop={4}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+            {/* Confirm — icon + label, full flex */}
+            <TouchableOpacity
+              style={[sp.modalAddBtn, (!name.trim() || saving) && sp.modalAddBtnOff]}
+              onPress={handleSave}
+              disabled={!name.trim() || saving}
+              activeOpacity={0.85}
+            >
+              {saving
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <View style={sp.modalAddInner}>
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                    <Text style={sp.modalAddTxt}>{initial ? 'Save' : 'Add'}</Text>
+                  </View>
+              }
+            </TouchableOpacity>
+          </View>
+
+        </Pressable>
       </Pressable>
     </Modal>
   );
@@ -8264,11 +8391,33 @@ const useSpStyles = makeStyles((t) => StyleSheet.create({
   addBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: t.brand[600], borderRadius: 12, paddingVertical: 13, marginTop: 8 },
   addBtnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  // Modal sheet
+  // ── Modal styles ──────────────────────────────────────────────────────────
+  // Overlay: full-screen semi-transparent backdrop, sheet anchored at bottom
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalSheet:   { backgroundColor: t.surface.default, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, paddingBottom: 36 },
-  modalHandle:  { width: 36, height: 4, borderRadius: 2, backgroundColor: t.border.default, alignSelf: 'center', marginBottom: 16 },
-  modalTitle:   { fontSize: 18, fontWeight: '800', color: t.text.primary, marginBottom: 14 },
+
+  // Sheet: maxHeight is set inline (computed from screen - keyboard).
+  // flexDirection:'column' so header, ScrollView, and footer stack vertically.
+  // paddingBottom covers device safe area + gives footer breathing room.
+  modalSheet: {
+    backgroundColor: t.surface.default,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    flexDirection: 'column',
+  },
+
+  modalHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: t.border.default,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: t.text.primary, marginBottom: 14 },
+
+  // Content inside the scrollable body (the flex:1 ScrollView)
+  modalScrollContent: { paddingBottom: 4 },
 
   presetsToggle:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
   presetsToggleTxt: { fontSize: 13, fontWeight: '600', color: t.brand[600] },
@@ -8300,7 +8449,14 @@ const useSpStyles = makeStyles((t) => StyleSheet.create({
   dayNumVal:  { fontSize: 28, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 44, textAlign: 'center' },
   dayNumUnit: { fontSize: 13, color: t.text.secondary },
 
-  modalActions: { flexDirection: 'row', gap: 10, marginTop: 24, alignItems: 'center' },
+  // Footer: always visible below the ScrollView
+  modalActions: {
+    flexDirection: 'row', gap: 10,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: t.border.subtle,
+    alignItems: 'center',
+  },
 
   // Ghost dismiss — square, icon-only, sits left at fixed width
   modalCancelBtn: {
