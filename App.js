@@ -3187,9 +3187,9 @@ const wkh = StyleSheet.create({
   },
   workoutName: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: -0.2,
+    letterSpacing: -0.1,
     marginRight: 10,
     color: theme.text.primary,
   },
@@ -3797,7 +3797,7 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   exCheck:        { width: 44, height: 44, borderRadius: t.radius.md, borderWidth: 2, borderColor: t.border.strong, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface.default },
   exCheckDone:    { backgroundColor: t.success[600], borderColor: t.success[700], ...t.shadow.success },
   exCheckActive:  { backgroundColor: t.brand[600], borderColor: t.brand[700] },
-  exercisesLabel: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 8, marginBottom: 8 },
+  exercisesLabel: { fontSize: 11, fontWeight: '700', color: t.text.tertiary, letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 4, marginBottom: 6 },
   repsInput:      { fontSize: 18, fontWeight: '800', color: t.text.primary, textAlign: 'center', paddingVertical: 4, fontVariant: ['tabular-nums'] },
   weightInputDone:{ color: t.success[700], opacity: 0.85 },
   doneBtn:        { width: 38, height: 38, borderRadius: t.radius.md, backgroundColor: t.success[600], borderWidth: 1, borderColor: t.success[700], alignItems: 'center', justifyContent: 'center', ...t.shadow.success },
@@ -3893,16 +3893,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   // kbPadding: dynamic paddingBottom for the main ScrollView.
   // Expands to keyboard height + 16px when keyboard shows so inputs always
   // have scroll room. Resets to 24px when keyboard hides — no dead space.
-  const [kbPadding, setKbPadding] = useState(24);
+  const [kbPadding, setKbPadding] = useState(0);
 
   useEffect(() => {
     const showSub = Keyboard.addListener('keyboardDidShow', e => {
       keyboardHeight.current = e.endCoordinates.height;
-      setKbPadding(e.endCoordinates.height + 16);
+      setKbPadding(e.endCoordinates.height + 24);
     });
     const hideSub = Keyboard.addListener('keyboardDidHide', () => {
       keyboardHeight.current = 0;
-      setKbPadding(24);
+      setKbPadding(0);  // zero phantom space when keyboard hides
     });
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
@@ -4592,7 +4592,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
       <ScrollView
         ref={scrollRef}
-        style={g.screen}
+        style={[g.screen, isLogging && { paddingTop: 0 }]}
         contentContainerStyle={{ paddingBottom: kbPadding }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -6343,12 +6343,12 @@ const pp = StyleSheet.create({
 
 // ── MeasurementLogger — lets member log body measurements ────────────────────
 function MeasurementLogger({ member, gymId, memberId, measurements }) {
-  // Dark-mode: C is reactive via usePalette(), not the frozen module-level C
-  const C = usePalette();
+  const C  = usePalette();
+  const ml = useMlStyles();
   const TYPES = ['Chest', 'Waist', 'Hips', 'Bicep', 'Thigh', 'Shoulder', 'Calf'];
-  const [editing, setEditing] = React.useState(null);
+  const [editing,  setEditing]  = React.useState(null);
   const [inputVal, setInputVal] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
+  const [saving,   setSaving]   = React.useState(false);
 
   const getLatest = (type) => {
     const entries = (measurements || []).filter(m => m.type === type);
@@ -6363,16 +6363,8 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
     if (!ns || !memberId) { Alert.alert('Error', 'Cannot save. Try again.'); return; }
     setSaving(true);
     try {
-      // Use top-level imports — inline require() can fail in production builds
       const ref = doc(collection(db, 'gyms', ns, 'measurements'));
-      await setDoc(ref, {
-        id: ref.id,
-        memberId,
-        gymId: gymId || null,
-        type,
-        value: val,
-        loggedAt: Date.now(),
-      });
+      await setDoc(ref, { id: ref.id, memberId, gymId: gymId || null, type, value: val, loggedAt: Date.now() });
       setEditing(null);
       setInputVal('');
     } catch (e) {
@@ -6382,42 +6374,44 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
   };
 
   return (
-    <View style={{ marginTop: 8 }}>
+    <View style={ml.container}>
       {TYPES.map(type => {
-        const latest = getLatest(type);
+        const latest    = getLatest(type);
         const isEditing = editing === type;
         return (
-          <View key={type} style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: isEditing ? C.primary : C.light }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: C.dark }}>{type}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {latest && <Text style={{ fontSize: 14, fontWeight: '600', color: C.primary }}>{latest.value} cm</Text>}
+          <View key={type} style={[ml.row, isEditing && ml.rowActive]}>
+            <View style={ml.rowHeader}>
+              <Text style={ml.typeName}>{type}</Text>
+              <View style={ml.rowRight}>
+                {latest && <Text style={ml.latestVal}>{latest.value} cm</Text>}
                 <TouchableOpacity
-                  style={{ backgroundColor: isEditing ? C.light : C.blue2, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}
+                  style={[ml.actionChip, isEditing && ml.actionChipCancel]}
                   onPress={() => { setEditing(isEditing ? null : type); setInputVal(''); }}>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: isEditing ? C.mid : C.primary }}>
+                  <Text style={[ml.actionChipTxt, isEditing && ml.actionChipCancelTxt]}>
                     {isEditing ? 'Cancel' : latest ? 'Update' : '+ Add'}
                   </Text>
                 </TouchableOpacity>
               </View>
             </View>
-            {!latest && !isEditing && <Text style={{ fontSize: 12, color: C.mid, marginTop: 4 }}>Not logged yet</Text>}
+            {!latest && !isEditing && <Text style={ml.notLogged}>Not logged yet</Text>}
             {isEditing && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <View style={ml.inputRow}>
                 <TextInput
-                  style={{ flex: 1, backgroundColor: C.bg, borderRadius: 10, padding: 10, fontSize: 16, color: C.dark, borderWidth: 1, borderColor: C.primary }}
+                  style={ml.input}
                   placeholder={'Enter ' + type + ' in cm'}
-                  placeholderTextColor={C.mid}
+                  placeholderTextColor={C.muted}
                   keyboardType="decimal-pad"
+                  returnKeyType="done"
                   value={inputVal}
                   onChangeText={setInputVal}
                   autoFocus
+                  autoCorrect={false}
                 />
                 <TouchableOpacity
-                  style={{ backgroundColor: C.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, opacity: (!inputVal || saving) ? 0.5 : 1 }}
+                  style={[ml.saveBtn, (!inputVal || saving) && ml.saveBtnOff]}
                   onPress={() => handleSave(type)}
                   disabled={!inputVal || saving}>
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{saving ? '…' : 'Save'}</Text>
+                  <Text style={ml.saveBtnTxt}>{saving ? '…' : 'Save'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -6427,6 +6421,26 @@ function MeasurementLogger({ member, gymId, memberId, measurements }) {
     </View>
   );
 }
+
+const useMlStyles = makeStyles((t) => StyleSheet.create({
+  container:          { marginTop: 8 },
+  row:                { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: t.border.default },
+  rowActive:          { borderColor: t.brand[500] },
+  rowHeader:          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  typeName:           { fontSize: 15, fontWeight: '700', color: t.text.primary },
+  rowRight:           { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  latestVal:          { fontSize: 14, fontWeight: '700', color: t.brand[600] },
+  actionChip:         { backgroundColor: t.brand[50], borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: t.brand[200] },
+  actionChipCancel:   { backgroundColor: t.surface.sunken, borderColor: t.border.default },
+  actionChipTxt:      { fontSize: 12, fontWeight: '600', color: t.brand[600] },
+  actionChipCancelTxt:{ color: t.text.secondary },
+  notLogged:          { fontSize: 12, color: t.text.tertiary, marginTop: 4 },
+  inputRow:           { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  input:              { flex: 1, backgroundColor: t.surface.sunken, borderRadius: 10, padding: 12, fontSize: 16, color: t.text.primary, borderWidth: 1.5, borderColor: t.brand[500] },
+  saveBtn:            { backgroundColor: t.brand[600], borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12 },
+  saveBtnOff:         { opacity: 0.45 },
+  saveBtnTxt:         { color: '#fff', fontWeight: '700', fontSize: 14 },
+}));
 
 // ─── BMI Zone Chart (Weight tab) ─────────────────────────────────────────────
 // Matches the trainer app's WeightBMIScreen chart exactly.
@@ -6668,8 +6682,8 @@ function ProgressScreen({ member, gymId, memberId }) {
   const [saving, setSaving] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState([]);
 
-  const progressScrollRef = useRef(null);
-  const weightInputRef    = useRef(null);
+  const { scrollRef: progressScrollRef, kbPadding: progressKbPad, scrollToInput: progressScrollToInput, onScroll: progressOnScroll } = useKeyboardScroll();
+  const weightInputRef = useRef(null);
 
   useEffect(() => {
     // Fix: use gymId OR trainerId as namespace for freelance members
@@ -6728,8 +6742,11 @@ function ProgressScreen({ member, gymId, memberId }) {
     <ScrollView
       ref={progressScrollRef}
       style={g.screen}
+      contentContainerStyle={{ paddingBottom: progressKbPad }}
       showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled">
+      keyboardShouldPersistTaps="handled"
+      onScroll={progressOnScroll}
+      scrollEventThrottle={16}>
       <Text style={pr.pageTitle}>Progress</Text>
       <Text style={pr.pageSub}>Track your body, workouts and photos — stay on the wave.</Text>
 
@@ -6852,6 +6869,7 @@ function ProgressScreen({ member, gymId, memberId }) {
                 autoCorrect={false}
                 value={weightInput}
                 onChangeText={setWeightInput}
+                onFocus={() => progressScrollToInput(weightInputRef)}
               />
               <Text style={pr.logUnit}>kg</Text>
             </View>
@@ -7480,6 +7498,116 @@ function buildMemberChatId(gymId, trainerId, memberId) {
 
 // ─── Supplements Screen ───────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// KeyboardAwareLayout — universal keyboard-safe scroll container.
+//
+//   Problem: Every screen had its own ad-hoc keyboard listener, kbPadding state,
+//   and scrollToInput function — all subtly broken in different ways (wrong
+//   coordinate spaces, missing cleanup, keyboardDismissMode side-effects).
+//
+//   Solution: One component + one hook that every screen can use:
+//     • ScrollView with keyboardShouldPersistTaps="handled" and NO
+//       keyboardDismissMode (never accidentally dismiss on layout shift).
+//     • KeyboardAvoidingView with behavior="padding" on iOS (adjustResize
+//       in AndroidManifest covers Android natively).
+//     • kbPadding: 0 when keyboard hidden → ZERO phantom bottom space.
+//       Grows to keyboardHeight+24 when shown → enough scroll room.
+//     • scrollToInput uses measureInWindow (screen coords) + tracked
+//       scrollY so the delta calculation is always in the same space.
+//     • 300 ms delay so keyboard animation is complete before measuring.
+//
+// Usage:
+//   <KeyboardAwareLayout scrollRef={ref}>
+//     <TextInput onFocus={() => scrollToInputRef.current?.(inputRef)} ... />
+//   </KeyboardAwareLayout>
+//
+//   Or via render-prop for scrollToInput access:
+//   <KeyboardAwareLayout>
+//     {({ scrollToInput }) => <TextInput onFocus={() => scrollToInput(inputRef)} />}
+//   </KeyboardAwareLayout>
+// ─────────────────────────────────────────────────────────────────────────────
+
+function useKeyboardScroll() {
+  const scrollRef    = useRef(null);
+  const scrollY      = useRef(0);
+  const kbHeightRef  = useRef(0);
+  const [kbPadding, setKbPadding] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', e => {
+      kbHeightRef.current = e.endCoordinates.height;
+      setKbPadding(e.endCoordinates.height + 24);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      kbHeightRef.current = 0;
+      setKbPadding(0);
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  // scrollToInput: call from onFocus of any TextInput.
+  // Uses measureInWindow (absolute screen coords) so it works regardless of
+  // scroll position. Waits 300ms for keyboard animation to finish.
+  const scrollToInput = (inputRef) => {
+    if (!inputRef?.current || !scrollRef.current) return;
+    setTimeout(() => {
+      if (!inputRef?.current) return;
+      inputRef.current.measureInWindow((_x, screenY, _w, h) => {
+        const kbH = kbHeightRef.current || 300;
+        const screenH = Dimensions.get('window').height;
+        const inputBottom = screenY + h;
+        const visibleBottom = screenH - kbH;
+        const margin = 32;
+        if (inputBottom + margin > visibleBottom) {
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, scrollY.current + (inputBottom + margin - visibleBottom)),
+            animated: true,
+          });
+        }
+      });
+    }, 300);
+  };
+
+  const onScroll = (e) => { scrollY.current = e.nativeEvent.contentOffset.y; };
+
+  return { scrollRef, kbPadding, scrollToInput, onScroll };
+}
+
+function KeyboardAwareLayout({
+  children,
+  style,
+  contentStyle,
+  scrollRef: externalRef,
+  noTopPad,
+}) {
+  const { scrollRef: internalRef, kbPadding, scrollToInput, onScroll } = useKeyboardScroll();
+  const ref = externalRef || internalRef;
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        ref={ref}
+        style={[{ flex: 1 }, style]}
+        contentContainerStyle={[
+          { paddingBottom: kbPadding, paddingHorizontal: 16, paddingTop: noTopPad ? 0 : 16 },
+          contentStyle,
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
+        {typeof children === 'function'
+          ? children({ scrollToInput })
+          : children}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
 // ─── Supplement constants ─────────────────────────────────────────────────────
 const SUPP_PRESETS = [
   { name: 'Whey Protein', dose: '30g',      icon: 'barbell-outline' },
@@ -7785,6 +7913,7 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
 // ─── SupplementsScreen ────────────────────────────────────────────────────────
 function SupplementsScreen({ memberId }) {
   const C  = usePalette();
+  const { theme } = useTheme();
   const sp = useSpStyles();
 
   const [supplements, setSupplements] = useState([]);
@@ -7864,7 +7993,7 @@ function SupplementsScreen({ memberId }) {
   };
 
   return (
-    <ScrollView style={sp.screen} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareLayout style={{ backgroundColor: theme.surface.raised }} contentStyle={{ paddingTop: 20 }}>
       <Text style={sp.pageTitle}>Supplements</Text>
       <Text style={sp.pageSub}>Track your supplements and never miss a dose.</Text>
 
@@ -7949,7 +8078,7 @@ function SupplementsScreen({ memberId }) {
         onSave={handleFormSave}
         onClose={() => setFormModal(null)}
       />
-    </ScrollView>
+    </KeyboardAwareLayout>
   );
 }
 
