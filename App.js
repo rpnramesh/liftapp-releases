@@ -6466,42 +6466,76 @@ const useMlStyles = makeStyles((t) => StyleSheet.create({
 // weightLog entries: { weight, loggedAt }  (from subscribeToWeightLog)
 // memberHeight: cm (from member.height)
 function MemberBMIZoneChart({ weightLog, memberHeight }) {
-  // Dark-mode: C reactive so card bg, text, axis labels adapt to theme
-  const C  = usePalette();
-  const t  = C._theme;
+  const C = usePalette();
+  const t = C._theme;
+
+  // ── Layout ────────────────────────────────────────────────────────────────
   const [chartW, setChartW] = useState(0);
-  const CHART_H = 200;
+  const CHART_H  = 220;
   const PADDING_L = 40;
+  const TT_W     = 140; // tooltip width
 
-  const BMI_COLORS = {
-    uw:     '#3B82F6',
-    normal: '#10B981',
-    ow:     '#F59E0B',
-    obese:  '#EF4444',
-  };
+  // ── Interaction state ─────────────────────────────────────────────────────
+  // selectedIdx: which data point is highlighted (null = none)
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const dismissTimer = useRef(null);   // auto-dismiss after 3 s of no touch
+  const pointsRef    = useRef([]);     // always holds the latest computed points
 
-  const getDotColor = (bmi) => {
-    if (bmi < 18.5) return BMI_COLORS.uw;
-    if (bmi < 25)   return BMI_COLORS.normal;
-    if (bmi < 30)   return BMI_COLORS.ow;
-    return BMI_COLORS.obese;
-  };
+  // ── BMI palette ───────────────────────────────────────────────────────────
+  const BMI_COLORS = { uw: '#3B82F6', normal: '#10B981', ow: '#F59E0B', obese: '#EF4444' };
+  const getDotColor  = (bmi) =>
+    bmi < 18.5 ? BMI_COLORS.uw : bmi < 25 ? BMI_COLORS.normal : bmi < 30 ? BMI_COLORS.ow : BMI_COLORS.obese;
+  const getZoneName  = (bmi) =>
+    bmi < 18.5 ? 'Underweight' : bmi < 25 ? 'Normal' : bmi < 30 ? 'Overweight' : 'Obese';
 
+  // ── PanResponder — stable ref, reads from pointsRef each gesture ──────────
+  // Created once so the chart view never remounts due to a changed handler ref.
+  const pan = useRef(
+    PanResponder.create({
+      // Capture the touch immediately so it doesn't scroll the parent ScrollView
+      onStartShouldSetPanResponder: () => pointsRef.current.length > 0,
+      onMoveShouldSetPanResponder:  () => pointsRef.current.length > 0,
+
+      onPanResponderGrant: (e) => {
+        clearTimeout(dismissTimer.current);
+        const tx  = e.nativeEvent.locationX;
+        const pts = pointsRef.current;
+        const idx = pts.reduce(
+          (best, p, i) => Math.abs(p.x - tx) < Math.abs(pts[best].x - tx) ? i : best, 0,
+        );
+        setSelectedIdx(idx);
+      },
+
+      onPanResponderMove: (e) => {
+        clearTimeout(dismissTimer.current);
+        const tx  = e.nativeEvent.locationX;
+        const pts = pointsRef.current;
+        const idx = pts.reduce(
+          (best, p, i) => Math.abs(p.x - tx) < Math.abs(pts[best].x - tx) ? i : best, 0,
+        );
+        setSelectedIdx(idx);
+      },
+
+      // Auto-dismiss selection 3 s after finger lifts
+      onPanResponderRelease: () => {
+        dismissTimer.current = setTimeout(() => setSelectedIdx(null), 3000);
+      },
+    }),
+  ).current;
+
+  // ── Guard — hooks above, early return below ───────────────────────────────
   if (!memberHeight || memberHeight <= 0 || weightLog.length === 0) return null;
 
   const heightM = memberHeight / 100;
 
-  // weightLog is newest-first; take last 12 and reverse so oldest is on left
+  // Newest-first log → take last 12 → reverse to oldest-left
   const chartData = [...weightLog].slice(0, 12).reverse();
-
-  // Compute BMI per entry
-  const entries = chartData.map(e => ({
-    weight: e.weight,
-    loggedAt: e.loggedAt,
-    bmi: parseFloat((e.weight / (heightM * heightM)).toFixed(1)),
+  const entries   = chartData.map(e => ({
+    weight:    e.weight,
+    loggedAt:  e.loggedAt,
+    bmi:       parseFloat((e.weight / (heightM * heightM)).toFixed(1)),
   }));
 
-  // Weight thresholds for each BMI boundary
   const thresholds = {
     uw:   18.5 * heightM * heightM,
     norm: 24.9 * heightM * heightM,
@@ -6509,27 +6543,30 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
   };
 
   const weights = entries.map(e => e.weight);
-  const allW = [...weights, thresholds.uw - 3, thresholds.ow + 3];
-  const minW = Math.max(0, Math.floor(Math.min(...allW) - 1));
-  const maxW = Math.ceil(Math.max(...allW) + 1);
-  const range = maxW - minW || 1;
+  const allW    = [...weights, thresholds.uw - 3, thresholds.ow + 3];
+  const minW    = Math.max(0, Math.floor(Math.min(...allW) - 1));
+  const maxW    = Math.ceil(Math.max(...allW) + 1);
+  const range   = maxW - minW || 1;
+  const innerW  = Math.max(0, chartW - PADDING_L);
 
-  const innerW = Math.max(0, chartW - PADDING_L);
-  const toY = (w) => CHART_H * (1 - (w - minW) / range);
-  const toX = (i) => PADDING_L + (entries.length > 1 ? (i / (entries.length - 1)) * innerW : innerW / 2);
-  const clamp = (y) => Math.max(0, Math.min(CHART_H, y));
+  const toY   = (w) => CHART_H * (1 - (w - minW) / range);
+  const toX   = (i) => PADDING_L + (entries.length > 1 ? (i / (entries.length - 1)) * innerW : innerW / 2);
+  const clamp = (v) => Math.max(0, Math.min(CHART_H, v));
 
   const points = entries.map((e, i) => ({
-    x: toX(i), y: clamp(toY(e.weight)), bmi: e.bmi, weight: e.weight, loggedAt: e.loggedAt,
+    x: toX(i), y: clamp(toY(e.weight)),
+    bmi: e.bmi, weight: e.weight, loggedAt: e.loggedAt,
   }));
 
-  // Zone counts across ALL entries (not just visible 12)
+  // Keep ref in sync — used by PanResponder closures
+  pointsRef.current = points;
+
   const counts = weightLog.reduce((acc, e) => {
     const b = e.weight / (heightM * heightM);
-    if (b < 18.5)     acc.uw++;
-    else if (b < 25)  acc.normal++;
-    else if (b < 30)  acc.ow++;
-    else              acc.obese++;
+    if (b < 18.5)    acc.uw++;
+    else if (b < 25) acc.normal++;
+    else if (b < 30) acc.ow++;
+    else             acc.obese++;
     return acc;
   }, { uw: 0, normal: 0, ow: 0, obese: 0 });
 
@@ -6537,30 +6574,44 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
   const yNorm = clamp(toY(thresholds.norm));
   const yUW   = clamp(toY(thresholds.uw));
 
+  // ── Tooltip geometry ──────────────────────────────────────────────────────
+  const sel      = selectedIdx !== null ? points[selectedIdx] : null;
+  const selColor = sel ? getDotColor(sel.bmi) : null;
+  const ttLeft   = sel
+    ? Math.max(PADDING_L, Math.min(chartW - TT_W - 4, sel.x - TT_W / 2))
+    : 0;
+  // Show tooltip above dot when dot is in lower half of chart, otherwise below
+  const ttTop    = sel
+    ? (sel.y > CHART_H / 2 ? sel.y - 82 : sel.y + 16)
+    : 0;
+
   return (
     <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginVertical: 16, elevation: 1 }}>
+
+      {/* Header */}
       <Text style={{ fontSize: 15, fontWeight: '700', color: C.dark }}>⚖️ Weight Progress</Text>
       <Text style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
         {weightLog.length > 12
-          ? `Showing last 12 of ${weightLog.length} entries`
-          : `${weightLog.length} ${weightLog.length === 1 ? 'entry' : 'entries'} total`}
+          ? `Showing last 12 of ${weightLog.length} entries · tap a point`
+          : `${weightLog.length} ${weightLog.length === 1 ? 'entry' : 'entries'} · tap a point`}
       </Text>
 
-      {/* Chart area */}
+      {/* ── Chart canvas ─────────────────────────────────────────────────── */}
       <View
         style={{ height: CHART_H, marginTop: 12 }}
         onLayout={ev => setChartW(ev.nativeEvent.layout.width)}
+        {...pan.panHandlers}
       >
         {chartW > 0 && (
-          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: CHART_H, overflow: 'hidden' }}>
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: CHART_H }}>
 
             {/* Zone background bands */}
-            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: 0, height: yOW, backgroundColor: 'rgba(239,68,68,0.09)' }} />
-            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yOW, height: Math.max(0, yNorm - yOW), backgroundColor: 'rgba(245,158,11,0.09)' }} />
-            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yNorm, height: Math.max(0, yUW - yNorm), backgroundColor: 'rgba(16,185,129,0.09)' }} />
-            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yUW, height: Math.max(0, CHART_H - yUW), backgroundColor: 'rgba(59,130,246,0.09)' }} />
+            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: 0,    height: yOW,                         backgroundColor: 'rgba(239,68,68,0.09)' }} />
+            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yOW,  height: Math.max(0, yNorm - yOW),    backgroundColor: 'rgba(245,158,11,0.09)' }} />
+            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yNorm, height: Math.max(0, yUW - yNorm),   backgroundColor: 'rgba(16,185,129,0.09)' }} />
+            <View style={{ position: 'absolute', left: PADDING_L, right: 0, top: yUW,  height: Math.max(0, CHART_H - yUW),  backgroundColor: 'rgba(59,130,246,0.09)' }} />
 
-            {/* Threshold reference lines + weight labels */}
+            {/* BMI threshold dashed lines + axis labels */}
             {[
               { y: yUW,   w: thresholds.uw,   color: BMI_COLORS.uw },
               { y: yNorm, w: thresholds.norm,  color: BMI_COLORS.ow },
@@ -6577,7 +6628,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
               );
             })}
 
-            {/* Y-axis grid lines + labels */}
+            {/* Y-axis grid lines */}
             {[minW, Math.round((minW + maxW) / 2), maxW].map((w, i) => {
               const y = clamp(toY(w));
               return (
@@ -6588,45 +6639,111 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
               );
             })}
 
-            {/* Y-axis line */}
+            {/* Y-axis spine */}
             <View style={{ position: 'absolute', left: PADDING_L - 1, top: 0, width: 1, height: CHART_H, backgroundColor: t.border.default }} />
 
-            {/* Line segments between dots */}
+            {/* Vertical crosshair on selected point */}
+            {sel && (
+              <View style={{
+                position: 'absolute',
+                left: sel.x - 0.5, top: 0,
+                width: 1, height: CHART_H,
+                backgroundColor: selColor,
+                opacity: 0.35,
+                zIndex: 5,
+              }} />
+            )}
+
+            {/* Connecting line segments */}
             {points.slice(0, -1).map((p, i) => {
-              const q = points[i + 1];
-              const dx = q.x - p.x;
-              const dy = q.y - p.y;
+              const q      = points[i + 1];
+              const dx     = q.x - p.x;
+              const dy     = q.y - p.y;
               const length = Math.sqrt(dx * dx + dy * dy);
-              const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-              const cx = (p.x + q.x) / 2;
-              const cy = (p.y + q.y) / 2;
+              const angle  = Math.atan2(dy, dx) * 180 / Math.PI;
+              const cx     = (p.x + q.x) / 2;
+              const cy     = (p.y + q.y) / 2;
+              // Highlight segment touching selected point
+              const isActive = selectedIdx !== null && (i === selectedIdx || i + 1 === selectedIdx);
               return (
                 <View key={i} style={{
                   position: 'absolute',
                   left: cx - length / 2, top: cy - 1,
-                  width: length, height: 2,
-                  backgroundColor: t.mode === 'dark' ? t.neutral[700] : t.neutral[300],
+                  width: length, height: isActive ? 2.5 : 1.5,
+                  backgroundColor: isActive
+                    ? (selColor || t.brand[500])
+                    : (t.mode === 'dark' ? t.neutral[600] : t.neutral[300]),
+                  opacity: isActive ? 1 : 0.7,
                   transform: [{ rotate: `${angle}deg` }],
+                  zIndex: isActive ? 8 : 3,
                 }} />
               );
             })}
 
-            {/* Data dots colored by BMI zone */}
-            {points.map((p, i) => (
-              <View key={i} style={{
+            {/* Data dots — selected dot grows and gets a ring */}
+            {points.map((p, i) => {
+              const isSelected = i === selectedIdx;
+              const dotColor   = getDotColor(p.bmi);
+              const size       = isSelected ? 14 : 9;
+              const offset     = size / 2;
+              return (
+                <View key={i} style={{
+                  position: 'absolute',
+                  left: p.x - offset, top: p.y - offset,
+                  width: size, height: size, borderRadius: size / 2,
+                  backgroundColor: dotColor,
+                  borderWidth: isSelected ? 2.5 : 1.5,
+                  borderColor: isSelected ? t.surface.default : t.surface.default,
+                  elevation: isSelected ? 6 : 2,
+                  zIndex: isSelected ? 15 : 10,
+                  // Outer glow ring on selected
+                  ...(isSelected && {
+                    shadowColor: dotColor,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.55,
+                    shadowRadius: 5,
+                  }),
+                }} />
+              );
+            })}
+
+            {/* ── Tooltip ─────────────────────────────────────────────────
+                Appears above dot in lower half, below in upper half.
+                Clamped horizontally so it never clips the card edge.      */}
+            {sel && (
+              <View style={{
                 position: 'absolute',
-                left: p.x - 5, top: p.y - 5,
-                width: 10, height: 10, borderRadius: 5,
-                backgroundColor: getDotColor(p.bmi),
-                borderWidth: 1.5, borderColor: t.surface.default,
-                elevation: 3, zIndex: 10,
-              }} />
-            ))}
+                left: ttLeft, top: ttTop,
+                width: TT_W,
+                backgroundColor: t.surface.default,
+                borderRadius: 10,
+                paddingHorizontal: 12, paddingVertical: 9,
+                borderWidth: 1.5, borderColor: selColor + '50',
+                elevation: 8,
+                shadowColor: selColor,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25, shadowRadius: 6,
+                zIndex: 30,
+              }}>
+                {/* Weight — largest, in zone colour */}
+                <Text style={{ fontSize: 18, fontWeight: '800', color: selColor, letterSpacing: -0.4, fontVariant: ['tabular-nums'] }}>
+                  {sel.weight} kg
+                </Text>
+                {/* BMI + zone name */}
+                <Text style={{ fontSize: 11, color: t.text.secondary, marginTop: 2, fontWeight: '600' }}>
+                  BMI {sel.bmi} · {getZoneName(sel.bmi)}
+                </Text>
+                {/* Date */}
+                <Text style={{ fontSize: 10, color: t.text.tertiary, marginTop: 2 }}>
+                  {formatDate(sel.loggedAt)}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
 
-      {/* X-axis date labels — first / middle / last */}
+      {/* X-axis date labels */}
       {points.length > 0 && (
         <View style={{ flexDirection: 'row', marginLeft: PADDING_L, marginTop: 4 }}>
           <Text style={{ fontSize: 9, color: t.text.tertiary, flex: 1, textAlign: 'left' }}>
@@ -6643,7 +6760,7 @@ function MemberBMIZoneChart({ weightLog, memberHeight }) {
         </View>
       )}
 
-      {/* Zone legend + occurrence counts */}
+      {/* Zone legend */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
         {[
           { color: BMI_COLORS.uw,     label: 'Underweight',  count: counts.uw },
