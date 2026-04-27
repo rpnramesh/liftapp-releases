@@ -68,6 +68,15 @@ import ThemeToggle from './LIFT_PROJECT/theme/ThemeToggle';
 
 const { width } = Dimensions.get('window');
 
+// Show notifications even when app is in foreground (lock screen always handled by OS)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge:  false,
+  }),
+});
+
 // ── Colors ────────────────────────────────────────────────────────────────────
 // Aliased to the shared design tokens so the 450+ existing C.* references now
 // render in the indigo-blue brand palette used by the web dashboard. Keys are
@@ -893,6 +902,7 @@ function MembershipDetailModal({ visible, onClose, member }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function HomeScreen({ onNavigate, member, workoutTimer, assignment, todayWorkout, fullPlan, unreadNotifCount, onStartWorkout }) {
   const C = usePalette();
+  const { theme } = useTheme();
   const g = useGlobalStyles();
   const hm = useHmStyles();
   const [showMembership, setShowMembership] = useState(false);
@@ -7470,68 +7480,316 @@ function buildMemberChatId(gymId, trainerId, memberId) {
 
 // ─── Supplements Screen ───────────────────────────────────────────────────────
 
+// ─── Supplement constants ─────────────────────────────────────────────────────
 const SUPP_PRESETS = [
-  { name: 'Whey Protein',  dose: '30g',      icon: 'barbell-outline' },
-  { name: 'Creatine',      dose: '5g',       icon: 'flash-outline' },
-  { name: 'Vitamin D',     dose: '2000 IU',  icon: 'sunny-outline' },
-  { name: 'Vitamin C',     dose: '500mg',    icon: 'leaf-outline' },
-  { name: 'Omega-3',       dose: '1000mg',   icon: 'water-outline' },
-  { name: 'Magnesium',     dose: '400mg',    icon: 'medical-outline' },
-  { name: 'Multivitamin',  dose: '1 tablet', icon: 'star-outline' },
-  { name: 'BCAA',          dose: '10g',      icon: 'fitness-outline' },
-  { name: 'Pre-workout',   dose: '1 scoop',  icon: 'thunderstorm-outline' },
-  { name: 'Zinc',          dose: '25mg',     icon: 'shield-outline' },
+  { name: 'Whey Protein', dose: '30g',      icon: 'barbell-outline' },
+  { name: 'Creatine',     dose: '5g',       icon: 'flash-outline' },
+  { name: 'Vitamin D',    dose: '2000 IU',  icon: 'sunny-outline' },
+  { name: 'Vitamin C',    dose: '500mg',    icon: 'leaf-outline' },
+  { name: 'Omega-3',      dose: '1000mg',   icon: 'water-outline' },
+  { name: 'Magnesium',    dose: '400mg',    icon: 'medical-outline' },
+  { name: 'Multivitamin', dose: '1 tablet', icon: 'star-outline' },
+  { name: 'BCAA',         dose: '10g',      icon: 'fitness-outline' },
+  { name: 'Pre-workout',  dose: '1 scoop',  icon: 'thunderstorm-outline' },
+  { name: 'Zinc',         dose: '25mg',     icon: 'shield-outline' },
 ];
+
+const SUPP_FREQ   = ['Daily', 'Weekly', 'Monthly', 'Quarterly'];
+const SUPP_DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const SUPP_STORAGE_KEY = (uid) => `LIFT_SUPPLEMENTS_${uid}`;
 const SUPP_TAKEN_KEY   = (uid) => {
   const d = new Date();
   return `LIFT_SUPPTAKEN_${uid}_${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 };
-const SUPP_NOTIF_KEY   = (id)  => `LIFT_SUPPNOTIF_${id}`;
+const SUPP_NOTIF_KEY = (id) => `LIFT_SUPPNOTIF2_${id}`;
+
+// Build all reminder times for a supplement (accounts for timesPerDay spacing)
+function suppReminderTimes(supp) {
+  const times = [];
+  const spacing = supp.timesPerDay === 3 ? 6 : supp.timesPerDay === 2 ? 8 : 0;
+  for (let i = 0; i < (supp.timesPerDay || 1); i++) {
+    times.push({
+      hour:   (supp.reminderHour + i * spacing) % 24,
+      minute: supp.reminderMinute,
+    });
+  }
+  return times;
+}
 
 async function scheduleSupplementNotif(supp) {
-  const prev = await AsyncStorage.getItem(SUPP_NOTIF_KEY(supp.id)).catch(() => null);
-  if (prev) await Notifications.cancelScheduledNotificationAsync(prev).catch(() => {});
-  const id = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '💊 Supplement Reminder',
-      body: `Time to take your ${supp.name}${supp.dose ? ` — ${supp.dose}` : ''}`,
-      sound: true,
-      channelId: 'supplements',
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: supp.reminderHour,
-      minute: supp.reminderMinute,
-      repeats: true,
-    },
-  });
-  await AsyncStorage.setItem(SUPP_NOTIF_KEY(supp.id), id).catch(() => {});
-  return id;
+  // Cancel all previous notifications for this supplement
+  await cancelSupplementNotif(supp.id);
+
+  const freq   = (supp.frequency || 'Daily').toLowerCase();
+  const times  = suppReminderTimes(supp);
+  const ids    = [];
+
+  const content = {
+    title: '💊 Supplement Reminder',
+    body: `Time to take your ${supp.name}${supp.dose ? ` — ${supp.dose}` : ''}`,
+    sound: true,
+    channelId: 'supplements',
+    priority: 'high',
+  };
+
+  for (const { hour, minute } of times) {
+    if (freq === 'daily') {
+      const id = await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute, repeats: true },
+      }).catch(() => null);
+      if (id) ids.push(id);
+
+    } else if (freq === 'weekly') {
+      // weekday: 1=Sun…7=Sat in expo-notifications
+      const weekday = (supp.weekday ?? 2); // default Monday (2)
+      const id = await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour, minute, repeats: true },
+      }).catch(() => null);
+      if (id) ids.push(id);
+
+    } else if (freq === 'monthly') {
+      const day = supp.monthDay ?? 1;
+      const id = await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.MONTHLY, day, hour, minute, repeats: true },
+      }).catch(() => null);
+      if (id) ids.push(id);
+
+    } else if (freq === 'quarterly') {
+      // 4 YEARLY triggers — Jan, Apr, Jul, Oct — on monthDay
+      const day = supp.monthDay ?? 1;
+      for (const month of [1, 4, 7, 10]) {
+        const id = await Notifications.scheduleNotificationAsync({
+          content,
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.YEARLY, month, day, hour, minute, repeats: true },
+        }).catch(() => null);
+        if (id) ids.push(id);
+      }
+    }
+  }
+
+  await AsyncStorage.setItem(SUPP_NOTIF_KEY(supp.id), JSON.stringify(ids)).catch(() => {});
 }
 
 async function cancelSupplementNotif(suppId) {
-  const id = await AsyncStorage.getItem(SUPP_NOTIF_KEY(suppId)).catch(() => null);
-  if (id) {
-    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  const raw = await AsyncStorage.getItem(SUPP_NOTIF_KEY(suppId)).catch(() => null);
+  if (raw) {
+    const ids = JSON.parse(raw);
+    await Promise.all(ids.map(id => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
     await AsyncStorage.removeItem(SUPP_NOTIF_KEY(suppId)).catch(() => {});
+  }
+  // Also clean up old single-id key from previous implementation
+  const oldRaw = await AsyncStorage.getItem(`LIFT_SUPPNOTIF_${suppId}`).catch(() => null);
+  if (oldRaw) {
+    await Notifications.cancelScheduledNotificationAsync(oldRaw).catch(() => {});
+    await AsyncStorage.removeItem(`LIFT_SUPPNOTIF_${suppId}`).catch(() => {});
   }
 }
 
-function SupplementsScreen({ memberId }) {
+// ─── SuppFormModal — shared Add / Edit sheet ─────────────────────────────────
+function SuppFormModal({ visible, initial, onSave, onClose }) {
   const C   = usePalette();
-  const { theme } = useTheme();
   const sp  = useSpStyles();
 
-  const [supplements,   setSupplements]   = useState([]);
-  const [takenToday,    setTakenToday]    = useState(new Set());
-  const [editingTime,   setEditingTime]   = useState(null); // supplement id whose time picker is open
-  const [showAdd,       setShowAdd]       = useState(false);
-  const [showPresets,   setShowPresets]   = useState(true);
-  const [newName,       setNewName]       = useState('');
-  const [newDose,       setNewDose]       = useState('');
-  const [saving,        setSaving]        = useState(false);
+  const blank = { name: '', dose: '', frequency: 'Daily', timesPerDay: 1, reminderEnabled: false, reminderHour: 8, reminderMinute: 0, weekday: 2, monthDay: 1 };
+  const seed  = initial ?? blank;
+
+  const [name,       setName]       = useState(seed.name);
+  const [dose,       setDose]       = useState(seed.dose);
+  const [freq,       setFreq]       = useState(seed.frequency   ?? 'Daily');
+  const [timesDay,   setTimesDay]   = useState(seed.timesPerDay ?? 1);
+  const [hour,       setHour]       = useState(seed.reminderHour   ?? 8);
+  const [minute,     setMinute]     = useState(seed.reminderMinute ?? 0);
+  const [weekday,    setWeekday]    = useState(seed.weekday  ?? 2);
+  const [monthDay,   setMonthDay]   = useState(seed.monthDay ?? 1);
+  const [showPresets, setShowPresets] = useState(!initial);
+  const [saving,     setSaving]     = useState(false);
+
+  // Reset form whenever seed changes (open for different supplement)
+  useEffect(() => {
+    setName(seed.name);  setDose(seed.dose);
+    setFreq(seed.frequency   ?? 'Daily');
+    setTimesDay(seed.timesPerDay ?? 1);
+    setHour(seed.reminderHour   ?? 8);
+    setMinute(seed.reminderMinute ?? 0);
+    setWeekday(seed.weekday  ?? 2);
+    setMonthDay(seed.monthDay ?? 1);
+    setShowPresets(!initial);
+  }, [visible]);
+
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setSaving(true);
+    await onSave({ name: name.trim(), dose: dose.trim(), frequency: freq, timesPerDay: timesDay, reminderHour: hour, reminderMinute: minute, weekday, monthDay });
+    setSaving(false);
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={sp.modalOverlay} onPress={onClose}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+          <Pressable style={[sp.modalSheet, { maxHeight: '90%' }]} onPress={e => e.stopPropagation()}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={sp.modalHandle} />
+              <Text style={sp.modalTitle}>{initial ? 'Edit Supplement' : 'Add Supplement'}</Text>
+
+              {/* ── Presets (add mode only) ───────────── */}
+              {!initial && (
+                <>
+                  <TouchableOpacity style={sp.presetsToggle} onPress={() => setShowPresets(p => !p)}>
+                    <Text style={sp.presetsToggleTxt}>{showPresets ? 'Hide presets' : 'Choose from presets'}</Text>
+                    <Ionicons name={showPresets ? 'chevron-up' : 'chevron-down'} size={14} color={C.primary} />
+                  </TouchableOpacity>
+                  {showPresets && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={sp.presetScroll} contentContainerStyle={{ gap: 8 }}>
+                      {SUPP_PRESETS.map(p => (
+                        <TouchableOpacity key={p.name} style={sp.presetChip}
+                          onPress={() => { setName(p.name); setDose(p.dose); setShowPresets(false); }}
+                          activeOpacity={0.75}>
+                          <Ionicons name={p.icon} size={14} color={C.primary} />
+                          <Text style={sp.presetChipTxt}>{p.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </>
+              )}
+
+              {/* ── Name + Dose ───────────────────────── */}
+              <Text style={sp.inputLabel}>Supplement Name</Text>
+              <TextInput style={sp.input} placeholder="e.g. Vitamin B12" placeholderTextColor={C.muted}
+                value={name} onChangeText={setName} returnKeyType="next" autoCorrect={false} />
+              <Text style={sp.inputLabel}>Dose (optional)</Text>
+              <TextInput style={sp.input} placeholder="e.g. 1000mcg" placeholderTextColor={C.muted}
+                value={dose} onChangeText={setDose} returnKeyType="done" autoCorrect={false} />
+
+              {/* ── Frequency ────────────────────────── */}
+              <Text style={sp.inputLabel}>Reminder Frequency</Text>
+              <View style={sp.segRow}>
+                {SUPP_FREQ.map(f => (
+                  <TouchableOpacity key={f} style={[sp.segBtn, freq === f && sp.segBtnActive]}
+                    onPress={() => setFreq(f)} activeOpacity={0.75}>
+                    <Text style={[sp.segTxt, freq === f && sp.segTxtActive]}>{f}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Weekly: day picker */}
+              {freq === 'Weekly' && (
+                <>
+                  <Text style={sp.inputLabel}>Day of Week</Text>
+                  <View style={sp.segRow}>
+                    {SUPP_DAYS.map((d, i) => (
+                      <TouchableOpacity key={d} style={[sp.segBtn, weekday === i + 1 && sp.segBtnActive]}
+                        onPress={() => setWeekday(i + 1)} activeOpacity={0.75}>
+                        <Text style={[sp.segTxt, weekday === i + 1 && sp.segTxtActive]}>{d}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* Monthly/Quarterly: day-of-month */}
+              {(freq === 'Monthly' || freq === 'Quarterly') && (
+                <>
+                  <Text style={sp.inputLabel}>{freq === 'Quarterly' ? 'Day of each quarter month' : 'Day of month'}</Text>
+                  <View style={sp.dayNumRow}>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.max(1, d - 1))}>
+                      <Ionicons name="remove-circle-outline" size={24} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.dayNumVal}>{monthDay}</Text>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMonthDay(d => Math.min(28, d + 1))}>
+                      <Ionicons name="add-circle-outline" size={24} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.dayNumUnit}>of the month</Text>
+                  </View>
+                  {freq === 'Quarterly' && (
+                    <Text style={sp.inputHint}>Fires on Jan {monthDay}, Apr {monthDay}, Jul {monthDay}, Oct {monthDay}</Text>
+                  )}
+                </>
+              )}
+
+              {/* Times per day */}
+              <Text style={sp.inputLabel}>Times Per Day</Text>
+              <View style={sp.segRow}>
+                {[1, 2, 3].map(n => (
+                  <TouchableOpacity key={n} style={[sp.segBtn, timesDay === n && sp.segBtnActive]}
+                    onPress={() => setTimesDay(n)} activeOpacity={0.75}>
+                    <Text style={[sp.segTxt, timesDay === n && sp.segTxtActive]}>{n}×</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Time picker */}
+              <Text style={sp.inputLabel}>First reminder time</Text>
+              <View style={sp.timePicker}>
+                <View style={sp.timePickerRow}>
+                  <View style={sp.timeUnit}>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 1) % 24)}>
+                      <Ionicons name="chevron-up" size={20} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.timeVal}>{hh}</Text>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setHour(h => (h + 23) % 24)}>
+                      <Ionicons name="chevron-down" size={20} color={C.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={sp.timeSep}>:</Text>
+                  <View style={sp.timeUnit}>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 5) % 60)}>
+                      <Ionicons name="chevron-up" size={20} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.timeVal}>{mm}</Text>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => setMinute(m => (m + 55) % 60)}>
+                      <Ionicons name="chevron-down" size={20} color={C.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {timesDay > 1 && (
+                  <Text style={[sp.inputHint, { marginTop: 8 }]}>
+                    {timesDay === 2
+                      ? `Also at ${String((hour + 8) % 24).padStart(2, '0')}:${mm}`
+                      : `Also at ${String((hour + 6) % 24).padStart(2, '0')}:${mm} and ${String((hour + 12) % 24).padStart(2, '0')}:${mm}`}
+                  </Text>
+                )}
+              </View>
+
+              {/* Actions */}
+              <View style={sp.modalActions}>
+                <TouchableOpacity style={sp.modalCancelBtn} onPress={onClose}>
+                  <Text style={sp.modalCancelTxt}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[sp.modalAddBtn, (!name.trim() || saving) && sp.modalAddBtnOff]}
+                  onPress={handleSave}
+                  disabled={!name.trim() || saving}>
+                  {saving
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={sp.modalAddTxt}>{initial ? 'Save' : 'Add'}</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── SupplementsScreen ────────────────────────────────────────────────────────
+function SupplementsScreen({ memberId }) {
+  const C  = usePalette();
+  const sp = useSpStyles();
+
+  const [supplements, setSupplements] = useState([]);
+  const [takenToday,  setTakenToday]  = useState(new Set());
+  const [formModal,   setFormModal]   = useState(null); // null | 'add' | {supplement object for edit}
 
   const storageKey = SUPP_STORAGE_KEY(memberId);
   const takenKey   = SUPP_TAKEN_KEY(memberId);
@@ -7542,12 +7800,8 @@ function SupplementsScreen({ memberId }) {
   };
 
   useEffect(() => {
-    AsyncStorage.getItem(storageKey).then(raw => {
-      if (raw) setSupplements(JSON.parse(raw));
-    }).catch(() => {});
-    AsyncStorage.getItem(takenKey).then(raw => {
-      if (raw) setTakenToday(new Set(JSON.parse(raw)));
-    }).catch(() => {});
+    AsyncStorage.getItem(storageKey).then(raw => { if (raw) setSupplements(JSON.parse(raw)); }).catch(() => {});
+    AsyncStorage.getItem(takenKey).then(raw => { if (raw) setTakenToday(new Set(JSON.parse(raw))); }).catch(() => {});
   }, [storageKey, takenKey]);
 
   const toggleTaken = async (id) => {
@@ -7568,70 +7822,57 @@ function SupplementsScreen({ memberId }) {
     await persist(list);
   };
 
-  const updateTime = async (id, hour, minute) => {
-    const list = supplements.map(s => {
-      if (s.id !== id) return s;
-      const updated = { ...s, reminderHour: hour, reminderMinute: minute };
-      if (updated.reminderEnabled) scheduleSupplementNotif(updated);
-      return updated;
-    });
-    await persist(list);
-  };
-
-  const addSupplement = async (name, dose) => {
-    if (!name.trim()) return;
-    setSaving(true);
-    const supp = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name: name.trim(),
-      dose: dose.trim(),
-      reminderEnabled: false,
-      reminderHour: 8,
-      reminderMinute: 0,
-      createdAt: Date.now(),
-    };
-    await persist([...supplements, supp]);
-    setShowAdd(false);
-    setNewName('');
-    setNewDose('');
-    setSaving(false);
+  const handleFormSave = async (fields) => {
+    if (formModal === 'add') {
+      const supp = {
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        ...fields,
+        reminderEnabled: false,
+        createdAt: Date.now(),
+      };
+      await persist([...supplements, supp]);
+    } else {
+      // edit
+      const list = supplements.map(s => {
+        if (s.id !== formModal.id) return s;
+        const updated = { ...s, ...fields };
+        if (updated.reminderEnabled) scheduleSupplementNotif(updated);
+        return updated;
+      });
+      await persist(list);
+    }
+    setFormModal(null);
   };
 
   const deleteSupplement = (id) => {
-    Alert.alert('Remove Supplement', 'Remove this supplement from your list?', [
+    Alert.alert('Remove Supplement', 'Remove this supplement?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove', style: 'destructive',
-        onPress: async () => {
-          cancelSupplementNotif(id);
-          await persist(supplements.filter(s => s.id !== id));
-          if (editingTime === id) setEditingTime(null);
-        },
-      },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        await cancelSupplementNotif(id);
+        await persist(supplements.filter(s => s.id !== id));
+      }},
     ]);
   };
 
   const takenCount = supplements.filter(s => takenToday.has(s.id)).length;
 
+  const freqLabel = (s) => {
+    const f = s.frequency ?? 'Daily';
+    if (f === 'Weekly') return `${f} · ${SUPP_DAYS[(s.weekday ?? 2) - 1]}`;
+    if (f === 'Monthly' || f === 'Quarterly') return `${f} · Day ${s.monthDay ?? 1}`;
+    return f;
+  };
+
   return (
-    <ScrollView
-      style={sp.screen}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled">
-
-      {/* Header */}
+    <ScrollView style={sp.screen} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <Text style={sp.pageTitle}>Supplements</Text>
-      <Text style={sp.pageSub}>Track your daily supplements and stay consistent.</Text>
+      <Text style={sp.pageSub}>Track your supplements and never miss a dose.</Text>
 
-      {/* Summary chip */}
       {supplements.length > 0 && (
         <View style={sp.summaryRow}>
           <View style={[sp.summaryChip, { backgroundColor: takenCount === supplements.length ? C.green + '22' : C.card }]}>
-            <Ionicons
-              name={takenCount === supplements.length ? 'checkmark-circle' : 'time-outline'}
-              size={15}
-              color={takenCount === supplements.length ? C.green : C.muted}
-            />
+            <Ionicons name={takenCount === supplements.length ? 'checkmark-circle' : 'time-outline'} size={15}
+              color={takenCount === supplements.length ? C.green : C.muted} />
             <Text style={[sp.summaryTxt, { color: takenCount === supplements.length ? C.green : C.muted }]}>
               {takenCount}/{supplements.length} taken today
             </Text>
@@ -7639,36 +7880,29 @@ function SupplementsScreen({ memberId }) {
         </View>
       )}
 
-      {/* Supplement cards */}
       {supplements.map(supp => {
         const taken = takenToday.has(supp.id);
-        const timeOpen = editingTime === supp.id;
-        const hh = String(supp.reminderHour).padStart(2, '0');
-        const mm = String(supp.reminderMinute).padStart(2, '0');
+        const hh = String(supp.reminderHour ?? 8).padStart(2, '0');
+        const mm = String(supp.reminderMinute ?? 0).padStart(2, '0');
+        const tpd = supp.timesPerDay ?? 1;
         return (
           <View key={supp.id} style={[sp.card, taken && sp.cardTaken]}>
             <View style={sp.cardTop}>
-              {/* Left: name + dose */}
               <View style={sp.cardLeft}>
                 <Text style={sp.cardName}>{supp.name}</Text>
                 {!!supp.dose && <Text style={sp.cardDose}>{supp.dose}</Text>}
               </View>
-              {/* Right: taken toggle + delete */}
               <View style={sp.cardActions}>
-                <TouchableOpacity
-                  style={[sp.takenBtn, taken && sp.takenBtnActive]}
-                  onPress={() => toggleTaken(supp.id)}
-                  activeOpacity={0.75}>
-                  <Ionicons
-                    name={taken ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                    size={18}
-                    color={taken ? '#fff' : C.muted}
-                  />
-                  <Text style={[sp.takenTxt, taken && sp.takenTxtActive]}>
-                    {taken ? 'Taken' : 'Take'}
-                  </Text>
+                <TouchableOpacity style={[sp.takenBtn, taken && sp.takenBtnActive]}
+                  onPress={() => toggleTaken(supp.id)} activeOpacity={0.75}>
+                  <Ionicons name={taken ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18}
+                    color={taken ? '#fff' : C.muted} />
+                  <Text style={[sp.takenTxt, taken && sp.takenTxtActive]}>{taken ? 'Taken' : 'Take'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={sp.deleteBtn} onPress={() => deleteSupplement(supp.id)} hitSlop={8}>
+                <TouchableOpacity style={sp.iconBtn} onPress={() => setFormModal(supp)} hitSlop={8}>
+                  <Ionicons name="pencil-outline" size={15} color={C.muted} />
+                </TouchableOpacity>
+                <TouchableOpacity style={sp.iconBtn} onPress={() => deleteSupplement(supp.id)} hitSlop={8}>
                   <Ionicons name="trash-outline" size={15} color={C.muted} />
                 </TouchableOpacity>
               </View>
@@ -7676,163 +7910,56 @@ function SupplementsScreen({ memberId }) {
 
             {/* Reminder row */}
             <View style={sp.reminderRow}>
-              <Ionicons name="alarm-outline" size={14} color={supp.reminderEnabled ? C.primary : C.muted} />
+              <Ionicons name="alarm-outline" size={13} color={supp.reminderEnabled ? C.primary : C.muted} />
               <Text style={[sp.reminderLabel, supp.reminderEnabled && { color: C.primary }]}>
-                Daily reminder
+                {supp.reminderEnabled
+                  ? `${freqLabel(supp)} · ${hh}:${mm}${tpd > 1 ? ` · ${tpd}×/day` : ''}`
+                  : 'No reminder'}
               </Text>
-              {supp.reminderEnabled && (
-                <TouchableOpacity
-                  style={sp.reminderTimeBadge}
-                  onPress={() => setEditingTime(timeOpen ? null : supp.id)}
-                  activeOpacity={0.7}>
-                  <Text style={sp.reminderTimeTxt}>{hh}:{mm}</Text>
-                  <Ionicons name={timeOpen ? 'chevron-up' : 'chevron-down'} size={11} color={C.primary} />
-                </TouchableOpacity>
-              )}
               <View style={{ flex: 1 }} />
-              <TouchableOpacity
-                onPress={() => toggleReminder(supp.id)}
-                hitSlop={8}
+              <TouchableOpacity onPress={() => toggleReminder(supp.id)} hitSlop={8}
                 style={[sp.toggle, supp.reminderEnabled && sp.toggleOn]}>
                 <View style={[sp.toggleThumb, supp.reminderEnabled && sp.toggleThumbOn]} />
               </TouchableOpacity>
             </View>
-
-            {/* Inline time picker */}
-            {timeOpen && (
-              <View style={sp.timePicker}>
-                <Text style={sp.timePickerLabel}>Set reminder time</Text>
-                <View style={sp.timePickerRow}>
-                  {/* Hour */}
-                  <View style={sp.timeUnit}>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, (supp.reminderHour + 1) % 24, supp.reminderMinute)}>
-                      <Ionicons name="chevron-up" size={18} color={C.primary} />
-                    </TouchableOpacity>
-                    <Text style={sp.timeVal}>{hh}</Text>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, (supp.reminderHour + 23) % 24, supp.reminderMinute)}>
-                      <Ionicons name="chevron-down" size={18} color={C.primary} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={sp.timeSep}>:</Text>
-                  {/* Minute */}
-                  <View style={sp.timeUnit}>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, supp.reminderHour, (supp.reminderMinute + 5) % 60)}>
-                      <Ionicons name="chevron-up" size={18} color={C.primary} />
-                    </TouchableOpacity>
-                    <Text style={sp.timeVal}>{mm}</Text>
-                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, supp.reminderHour, (supp.reminderMinute + 55) % 60)}>
-                      <Ionicons name="chevron-down" size={18} color={C.primary} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <TouchableOpacity style={sp.timeDoneBtn} onPress={() => setEditingTime(null)}>
-                  <Text style={sp.timeDoneTxt}>Done</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
         );
       })}
 
-      {/* Empty state */}
       {supplements.length === 0 && (
         <View style={sp.emptyState}>
           <View style={sp.emptyCircle}>
             <Ionicons name="flask-outline" size={28} color={C.primary} />
           </View>
           <Text style={sp.emptyTitle}>No supplements yet</Text>
-          <Text style={sp.emptySub}>Add the supplements you take daily and set reminders so you never miss a dose.</Text>
+          <Text style={sp.emptySub}>Add your supplements and set reminders so you never miss a dose.</Text>
         </View>
       )}
 
-      {/* Add button */}
-      <TouchableOpacity style={sp.addBtn} onPress={() => setShowAdd(true)} activeOpacity={0.85}>
+      <TouchableOpacity style={sp.addBtn} onPress={() => setFormModal('add')} activeOpacity={0.85}>
         <Ionicons name="add" size={18} color="#fff" />
         <Text style={sp.addBtnTxt}>Add Supplement</Text>
       </TouchableOpacity>
 
       <View style={{ height: 32 }} />
 
-      {/* Add Modal */}
-      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <Pressable style={sp.modalOverlay} onPress={() => setShowAdd(false)}>
-          <Pressable style={sp.modalSheet} onPress={e => e.stopPropagation()}>
-            <View style={sp.modalHandle} />
-            <Text style={sp.modalTitle}>Add Supplement</Text>
-
-            {/* Presets toggle */}
-            <TouchableOpacity style={sp.presetsToggle} onPress={() => setShowPresets(p => !p)}>
-              <Text style={sp.presetsToggleTxt}>{showPresets ? 'Hide presets' : 'Choose from presets'}</Text>
-              <Ionicons name={showPresets ? 'chevron-up' : 'chevron-down'} size={14} color={C.primary} />
-            </TouchableOpacity>
-
-            {/* Preset chips */}
-            {showPresets && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={sp.presetScroll} contentContainerStyle={{ gap: 8 }}>
-                {SUPP_PRESETS.map(p => (
-                  <TouchableOpacity
-                    key={p.name}
-                    style={sp.presetChip}
-                    onPress={() => { setNewName(p.name); setNewDose(p.dose); setShowPresets(false); }}
-                    activeOpacity={0.75}>
-                    <Ionicons name={p.icon} size={14} color={C.primary} />
-                    <Text style={sp.presetChipTxt}>{p.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-
-            {/* Custom inputs */}
-            <Text style={sp.inputLabel}>Name</Text>
-            <TextInput
-              style={sp.input}
-              placeholder="e.g. Vitamin B12"
-              placeholderTextColor={C.muted}
-              value={newName}
-              onChangeText={setNewName}
-              returnKeyType="next"
-              autoCorrect={false}
-            />
-            <Text style={sp.inputLabel}>Dose (optional)</Text>
-            <TextInput
-              style={sp.input}
-              placeholder="e.g. 1000mcg"
-              placeholderTextColor={C.muted}
-              value={newDose}
-              onChangeText={setNewDose}
-              returnKeyType="done"
-              autoCorrect={false}
-            />
-
-            <View style={sp.modalActions}>
-              <TouchableOpacity style={sp.modalCancelBtn} onPress={() => { setShowAdd(false); setNewName(''); setNewDose(''); }}>
-                <Text style={sp.modalCancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[sp.modalAddBtn, (!newName.trim() || saving) && sp.modalAddBtnOff]}
-                onPress={() => addSupplement(newName, newDose)}
-                disabled={!newName.trim() || saving}>
-                {saving
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={sp.modalAddTxt}>Add</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <SuppFormModal
+        visible={!!formModal}
+        initial={formModal === 'add' ? null : formModal}
+        onSave={handleFormSave}
+        onClose={() => setFormModal(null)}
+      />
     </ScrollView>
   );
 }
 
 const useSpStyles = makeStyles((t) => StyleSheet.create({
-  screen:      { flex: 1, backgroundColor: t.surface.raised, paddingHorizontal: 16, paddingTop: 20 },
-  pageTitle:   { fontSize: 26, fontWeight: '800', color: t.text.primary, letterSpacing: -0.5, marginBottom: 4 },
-  pageSub:     { fontSize: 14, color: t.text.secondary, marginBottom: 20 },
+  screen:    { flex: 1, backgroundColor: t.surface.raised, paddingHorizontal: 16, paddingTop: 20 },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: t.text.primary, letterSpacing: -0.5, marginBottom: 4 },
+  pageSub:   { fontSize: 14, color: t.text.secondary, marginBottom: 20 },
 
   summaryRow:  { marginBottom: 16 },
   summaryChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: t.border.default },
-
   summaryTxt:  { fontSize: 13, fontWeight: '600' },
 
   card:        { backgroundColor: t.surface.default, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: t.border.default },
@@ -7841,45 +7968,33 @@ const useSpStyles = makeStyles((t) => StyleSheet.create({
   cardLeft:    { flex: 1 },
   cardName:    { fontSize: 15, fontWeight: '700', color: t.text.primary, marginBottom: 2 },
   cardDose:    { fontSize: 12, color: t.text.secondary, fontWeight: '500' },
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
   takenBtn:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1, borderColor: t.border.default, backgroundColor: t.surface.sunken },
   takenBtnActive: { backgroundColor: t.success[600], borderColor: t.success[600] },
   takenTxt:       { fontSize: 12, fontWeight: '600', color: t.text.secondary },
   takenTxtActive: { color: '#fff' },
-  deleteBtn:      { padding: 4 },
+  iconBtn:        { padding: 4 },
 
-  reminderRow:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  reminderLabel:     { fontSize: 12, color: t.text.secondary, fontWeight: '500', flex: 0 },
-  reminderTimeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 2, paddingHorizontal: 8, borderRadius: 10, backgroundColor: t.brand[50], borderWidth: 1, borderColor: t.brand[200] },
-  reminderTimeTxt:   { fontSize: 12, fontWeight: '700', color: t.brand[600], fontVariant: ['tabular-nums'] },
+  reminderRow:   { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reminderLabel: { fontSize: 12, color: t.text.secondary, fontWeight: '500', flex: 1 },
 
-  toggle:          { width: 38, height: 22, borderRadius: 11, backgroundColor: t.border.default, justifyContent: 'center', paddingHorizontal: 2 },
-  toggleOn:        { backgroundColor: t.brand[500] },
-  toggleThumb:     { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 },
-  toggleThumbOn:   { alignSelf: 'flex-end' },
-
-  timePicker:      { marginTop: 12, backgroundColor: t.surface.sunken, borderRadius: 10, padding: 12, alignItems: 'center' },
-  timePickerLabel: { fontSize: 12, fontWeight: '600', color: t.text.secondary, marginBottom: 8, alignSelf: 'flex-start' },
-  timePickerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timeUnit:        { alignItems: 'center', gap: 2 },
-  timeArrow:       { padding: 6 },
-  timeVal:         { fontSize: 28, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 44, textAlign: 'center' },
-  timeSep:         { fontSize: 26, fontWeight: '700', color: t.text.secondary, marginTop: -4 },
-  timeDoneBtn:     { marginTop: 10, paddingVertical: 7, paddingHorizontal: 28, borderRadius: 20, backgroundColor: t.brand[600] },
-  timeDoneTxt:     { fontSize: 13, fontWeight: '700', color: '#fff' },
+  toggle:        { width: 38, height: 22, borderRadius: 11, backgroundColor: t.border.default, justifyContent: 'center', paddingHorizontal: 2 },
+  toggleOn:      { backgroundColor: t.brand[500] },
+  toggleThumb:   { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 },
+  toggleThumbOn: { alignSelf: 'flex-end' },
 
   emptyState:  { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   emptyCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: t.surface.sunken, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
   emptyTitle:  { fontSize: 16, fontWeight: '700', color: t.text.primary, marginBottom: 6 },
   emptySub:    { fontSize: 13, color: t.text.secondary, textAlign: 'center', lineHeight: 19 },
 
-  addBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: t.brand[600], borderRadius: 12, paddingVertical: 13, marginTop: 8 },
-  addBtnTxt:   { fontSize: 15, fontWeight: '700', color: '#fff' },
+  addBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: t.brand[600], borderRadius: 12, paddingVertical: 13, marginTop: 8 },
+  addBtnTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  modalSheet:   { backgroundColor: t.surface.default, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
+  // Modal sheet
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: t.surface.default, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, paddingBottom: 36 },
   modalHandle:  { width: 36, height: 4, borderRadius: 2, backgroundColor: t.border.default, alignSelf: 'center', marginBottom: 16 },
   modalTitle:   { fontSize: 18, fontWeight: '800', color: t.text.primary, marginBottom: 14 },
 
@@ -7889,15 +8004,36 @@ const useSpStyles = makeStyles((t) => StyleSheet.create({
   presetChip:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: t.brand[200], backgroundColor: t.surface.sunken },
   presetChipTxt:    { fontSize: 12, fontWeight: '600', color: t.text.primary },
 
-  inputLabel: { fontSize: 12, fontWeight: '600', color: t.text.secondary, marginBottom: 4, marginTop: 10 },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: t.text.secondary, marginBottom: 6, marginTop: 14 },
+  inputHint:  { fontSize: 11, color: t.text.tertiary, marginTop: 4 },
   input:      { backgroundColor: t.surface.sunken, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, fontSize: 14, color: t.text.primary, borderWidth: 1, borderColor: t.border.default },
 
-  modalActions:    { flexDirection: 'row', gap: 10, marginTop: 20 },
-  modalCancelBtn:  { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: t.border.default, alignItems: 'center' },
-  modalCancelTxt:  { fontSize: 14, fontWeight: '600', color: t.text.secondary },
-  modalAddBtn:     { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: t.brand[600], alignItems: 'center' },
-  modalAddBtnOff:  { opacity: 0.45 },
-  modalAddTxt:     { fontSize: 14, fontWeight: '700', color: '#fff' },
+  // Segmented buttons (frequency / days / times)
+  segRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  segBtn:       { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: t.border.default, backgroundColor: t.surface.sunken },
+  segBtnActive: { backgroundColor: t.brand[600], borderColor: t.brand[600] },
+  segTxt:       { fontSize: 13, fontWeight: '600', color: t.text.secondary },
+  segTxtActive: { color: '#fff' },
+
+  // Time picker
+  timePicker:    { backgroundColor: t.surface.sunken, borderRadius: 12, padding: 14, alignItems: 'center' },
+  timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timeUnit:      { alignItems: 'center', gap: 2 },
+  timeArrow:     { padding: 6 },
+  timeVal:       { fontSize: 32, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 48, textAlign: 'center' },
+  timeSep:       { fontSize: 28, fontWeight: '700', color: t.text.secondary, marginTop: -4 },
+
+  // Day of month picker
+  dayNumRow:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dayNumVal:  { fontSize: 28, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 44, textAlign: 'center' },
+  dayNumUnit: { fontSize: 13, color: t.text.secondary },
+
+  modalActions:   { flexDirection: 'row', gap: 10, marginTop: 24 },
+  modalCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: t.border.default, alignItems: 'center' },
+  modalCancelTxt: { fontSize: 14, fontWeight: '600', color: t.text.secondary },
+  modalAddBtn:    { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: t.brand[600], alignItems: 'center' },
+  modalAddBtnOff: { opacity: 0.45 },
+  modalAddTxt:    { fontSize: 14, fontWeight: '700', color: '#fff' },
 }));
 
 // ── Helper: strip undefined values before any Firestore write ─────────────────
