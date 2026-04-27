@@ -746,8 +746,11 @@ const formatFullDate = (ts) => {
 };
 
 function MembershipDetailModal({ visible, onClose, member }) {
+  const C  = usePalette();
+  const { theme } = useTheme();
   const [payments, setPayments] = useState([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
+  const statusBarPad = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
 
   useEffect(() => {
     if (!member?.id || !visible) return;
@@ -769,7 +772,8 @@ function MembershipDetailModal({ visible, onClose, member }) {
   const daysLeft = daysUntilExpiry(member);
   const expired = Date.now() > (member.planEndDate || 0);
   const status = !member.active ? 'Inactive' : expired ? 'Expired' : daysLeft <= 7 ? 'Expiring Soon' : 'Active';
-  const statusColor = !member.active ? C.mid : expired ? C.red : daysLeft <= 7 ? C.amber : C.green;
+  const statusColor = !member.active ? C.muted : expired ? C.red : daysLeft <= 7 ? C.amber : C.green;
+  const border = theme.border.default;
 
   const rows = [
     { label: 'Membership Status', value: status, color: statusColor, bold: true },
@@ -785,15 +789,17 @@ function MembershipDetailModal({ visible, onClose, member }) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.light }}>
-          <TouchableOpacity onPress={onClose}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: theme.surface.raised }}>
+        {statusBarPad > 0 && <View style={{ height: statusBarPad, backgroundColor: theme.surface.raised }} />}
+        {/* Header */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: border }}>
+          <TouchableOpacity onPress={onClose} hitSlop={8}>
             <Text style={{ color: C.primary, fontSize: 15, fontWeight: '600' }}>✕ Close</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 17, fontWeight: '800', color: C.dark }}>Membership Details</Text>
           <View style={{ width: 60 }} />
         </View>
-        <ScrollView style={{ padding: 20 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           {/* Status badge */}
           <View style={{ alignItems: 'center', marginBottom: 24 }}>
             <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: statusColor + '22', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
@@ -806,7 +812,7 @@ function MembershipDetailModal({ visible, onClose, member }) {
 
           {/* Detail rows */}
           {rows.map((r, i) => (
-            <View key={i} style={{ backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: C.light }}>
+            <View key={i} style={{ backgroundColor: theme.surface.default, borderRadius: 12, padding: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: border }}>
               <Text style={{ fontSize: 13, color: C.mid, fontWeight: '500', flex: 1 }}>{r.label}</Text>
               <Text style={{ fontSize: 14, fontWeight: r.bold ? '800' : '600', color: r.color || C.dark, textAlign: 'right', flex: 1 }}>{r.value}</Text>
             </View>
@@ -818,12 +824,12 @@ function MembershipDetailModal({ visible, onClose, member }) {
             {loadingPayments ? (
               <ActivityIndicator size="small" color={C.primary} />
             ) : payments.length === 0 ? (
-              <View style={{ backgroundColor: C.card, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: C.light, alignItems: 'center' }}>
+              <View style={{ backgroundColor: theme.surface.default, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: border, alignItems: 'center' }}>
                 <Text style={{ fontSize: 13, color: C.mid }}>No payment records yet</Text>
               </View>
             ) : (
               payments.map((p, i) => (
-                <View key={p.id || i} style={{ backgroundColor: C.card, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: C.light }}>
+                <View key={p.id || i} style={{ backgroundColor: theme.surface.default, borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: border }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: C.dark }}>
                       {p.amount != null ? `₹${Number(p.amount).toLocaleString('en-IN')}` : '—'}
@@ -851,15 +857,13 @@ function MembershipDetailModal({ visible, onClose, member }) {
 
           {/* Gym info if available */}
           {member.gymName && (
-            <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginTop: 12, borderWidth: 1, borderColor: C.light }}>
+            <View style={{ backgroundColor: theme.surface.default, borderRadius: 14, padding: 16, marginTop: 12, borderWidth: 1, borderColor: border }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: C.dark, marginBottom: 6 }}>🏛 Gym</Text>
               <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{member.gymName}</Text>
               {member.gymAddress && <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>{member.gymAddress}</Text>}
               {member.gymPhone && <Text style={{ fontSize: 12, color: C.mid, marginTop: 2 }}>📞 {member.gymPhone}</Text>}
             </View>
           )}
-
-          <View style={{ height: 40 }} />
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -3933,23 +3937,21 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const scrollToInput = (inputRef) => {
     if (!inputRef?.current || !scrollRef.current) return;
     setTimeout(() => {
-      if (!inputRef.current || !scrollRef.current) return;
-      inputRef.current.measureLayout(
-        scrollRef.current,
-        (x, y, width, height) => {
-          const kbH = keyboardHeight.current || 300;
-          const screenH = Dimensions.get('window').height;
-          const heroH = 180;   // approx sticky hero header height
-          const visibleH = screenH - kbH - heroH;
-          if (y + height > visibleH) {
-            scrollRef.current.scrollTo({
-              y: Math.max(0, y - (visibleH - height - 32)),
-              animated: true,
-            });
-          }
-        },
-        () => {}
-      );
+      if (!inputRef.current) return;
+      inputRef.current.measureInWindow((_x, screenY, _w, h) => {
+        const kbH = keyboardHeight.current || 300;
+        const screenH = Dimensions.get('window').height;
+        const inputBottom = screenY + h;
+        const visibleBottom = screenH - kbH;
+        const margin = 32;
+        if (inputBottom + margin > visibleBottom) {
+          const delta = inputBottom + margin - visibleBottom;
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, currentScrollY.current + delta),
+            animated: true,
+          });
+        }
+      });
     }, 350);
   };
 
@@ -6653,37 +6655,11 @@ function ProgressScreen({ member, gymId, memberId }) {
   const [weightLog, setWeightLog] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [weightInput, setWeightInput] = useState('');
-  const [weightFocused, setWeightFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState([]);
 
-  // ── Refs for keyboard-aware scroll ────────────────────────────────────────
-  // progressScrollRef: the root ScrollView — lets us call scrollTo() from the
-  //   keyboard listener so the weight input is always above the keyboard.
-  // weightInputRef: the weight TextInput — measureLayout() against the
-  //   ScrollView gives its Y offset *within* the scroll content (not the screen),
-  //   which is exactly what scrollTo(y) expects.
-  const progressScrollRef  = useRef(null);
-  const weightInputRef     = useRef(null);
-  const scrollOffsetRef    = useRef(0);
-
-  useEffect(() => {
-    const sub = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (!weightFocused || !weightInputRef.current || !progressScrollRef.current) return;
-      const kbTop = e.endCoordinates.y;
-      weightInputRef.current.measureInWindow((_x, y, _w, h) => {
-        const inputScreenBottom = y + h;
-        const margin = 24;
-        if (inputScreenBottom + margin > kbTop) {
-          progressScrollRef.current.scrollTo({
-            y: scrollOffsetRef.current + (inputScreenBottom + margin - kbTop),
-            animated: true,
-          });
-        }
-      });
-    });
-    return () => sub.remove();
-  }, [weightFocused]);
+  const progressScrollRef = useRef(null);
+  const weightInputRef    = useRef(null);
 
   useEffect(() => {
     // Fix: use gymId OR trainerId as namespace for freelance members
@@ -6738,14 +6714,12 @@ function ProgressScreen({ member, gymId, memberId }) {
     : null;
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView
       ref={progressScrollRef}
       style={g.screen}
       showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
-      scrollEventThrottle={16}>
+      keyboardShouldPersistTaps="handled">
       <Text style={pr.pageTitle}>Progress</Text>
       <Text style={pr.pageSub}>Track your body, workouts and photos — stay on the wave.</Text>
 
@@ -6855,7 +6829,7 @@ function ProgressScreen({ member, gymId, memberId }) {
           {/* Log weight row — web `.input-base` + `.btn-primary` */}
           <Text style={pr.sectionLabel}>LOG TODAY'S WEIGHT</Text>
           <View style={pr.logRow}>
-            <View style={[pr.logInputWrap, weightFocused && pr.logInputWrapFocus]}>
+            <View style={pr.logInputWrap}>
               <Ionicons name="scale-outline" size={18} color={theme.text.tertiary} />
               <TextInput
                 ref={weightInputRef}
@@ -6868,8 +6842,6 @@ function ProgressScreen({ member, gymId, memberId }) {
                 autoCorrect={false}
                 value={weightInput}
                 onChangeText={setWeightInput}
-                onFocus={() => setWeightFocused(true)}
-                onBlur={() => setWeightFocused(false)}
               />
               <Text style={pr.logUnit}>kg</Text>
             </View>
@@ -7061,6 +7033,7 @@ function ProgressScreen({ member, gymId, memberId }) {
       })()}
       <View style={{ height: 40 }} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -8493,6 +8466,7 @@ const useNtStyles = makeStyles((t) => StyleSheet.create({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TrainerInviteSection({ member, onTrainerLinked }) {
+  const ti = useTiStyles();
   const [invitesEnabled, setInvitesEnabled] = React.useState(member?.acceptingTrainerInvites ?? false);
   const [linkInput, setLinkInput] = React.useState('');
   const [linkResult, setLinkResult] = React.useState(null);
@@ -8705,38 +8679,38 @@ function TrainerInviteSection({ member, onTrainerLinked }) {
   );
 }
 
-const ti = StyleSheet.create({
-  card: { backgroundColor: C.card, borderRadius: 14, padding: 16, elevation: 1, borderWidth: 1, borderColor: C.light },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  toggleLabel: { fontSize: 15, fontWeight: '700', color: C.dark },
-  toggleSub: { fontSize: 12, color: C.mid, marginTop: 2 },
-  toggle: { width: 50, height: 28, borderRadius: 14, backgroundColor: C.light, justifyContent: 'center', padding: 3 },
-  toggleOn: { backgroundColor: C.primary },
-  toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.card },
-  toggleKnobOn: { alignSelf: 'flex-end' },
-  divider: { height: 1, backgroundColor: C.light, marginVertical: 14 },
-  pendingTitle: { fontSize: 11, fontWeight: '700', color: C.mid, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  inviteCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F0FDF4', borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#BBF7D0' },
-  resultCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EFF6FF', borderRadius: 10, padding: 12, marginTop: 10, borderWidth: 1, borderColor: '#BFDBFE' },
-  inviteAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' },
+const useTiStyles = makeStyles((t) => StyleSheet.create({
+  card:           { backgroundColor: t.surface.default, borderRadius: 14, padding: 16, elevation: 1, borderWidth: 1, borderColor: t.border.default },
+  toggleRow:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  toggleLabel:    { fontSize: 15, fontWeight: '700', color: t.text.primary },
+  toggleSub:      { fontSize: 12, color: t.text.secondary, marginTop: 2 },
+  toggle:         { width: 50, height: 28, borderRadius: 14, backgroundColor: t.border.default, justifyContent: 'center', padding: 3 },
+  toggleOn:       { backgroundColor: t.brand[600] },
+  toggleKnob:     { width: 22, height: 22, borderRadius: 11, backgroundColor: t.surface.default },
+  toggleKnobOn:   { alignSelf: 'flex-end' },
+  divider:        { height: 1, backgroundColor: t.border.default, marginVertical: 14 },
+  pendingTitle:   { fontSize: 11, fontWeight: '700', color: t.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  inviteCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: t.success[50], borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: t.success[200] },
+  resultCard:     { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: t.brand[50], borderRadius: 10, padding: 12, marginTop: 10, borderWidth: 1, borderColor: t.brand[200] },
+  inviteAvatar:   { width: 40, height: 40, borderRadius: 20, backgroundColor: t.brand[600], alignItems: 'center', justifyContent: 'center' },
   inviteAvatarText: { color: '#fff', fontWeight: '800', fontSize: 16 },
-  inviteName: { fontSize: 14, fontWeight: '700', color: C.dark },
-  inviteSub: { fontSize: 12, color: C.mid, marginTop: 2 },
-  inviteActions: { flexDirection: 'row', gap: 6 },
-  inviteBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
-  acceptBtn: { backgroundColor: C.primary },
-  acceptBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  rejectBtn: { backgroundColor: C.light },
-  rejectBtnText: { color: C.mid, fontWeight: '600', fontSize: 13 },
-  linkTitle: { fontSize: 14, fontWeight: '700', color: C.dark, marginBottom: 3 },
-  linkSub: { fontSize: 12, color: C.mid, marginBottom: 10 },
-  linkRow: { flexDirection: 'row', gap: 8 },
-  linkInput: { flex: 1, backgroundColor: C.bg, borderRadius: 10, padding: 12, fontSize: 14, color: C.dark, borderWidth: 1, borderColor: C.light },
-  inputDisabled: { opacity: 0.5 },
-  goBtn: { backgroundColor: C.primary, borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center' },
-  goBtnDisabled: { backgroundColor: C.light },
-  goBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-});
+  inviteName:     { fontSize: 14, fontWeight: '700', color: t.text.primary },
+  inviteSub:      { fontSize: 12, color: t.text.secondary, marginTop: 2 },
+  inviteActions:  { flexDirection: 'row', gap: 6 },
+  inviteBtn:      { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  acceptBtn:      { backgroundColor: t.brand[600] },
+  acceptBtnText:  { color: '#fff', fontWeight: '700', fontSize: 13 },
+  rejectBtn:      { backgroundColor: t.surface.sunken },
+  rejectBtnText:  { color: t.text.secondary, fontWeight: '600', fontSize: 13 },
+  linkTitle:      { fontSize: 14, fontWeight: '700', color: t.text.primary, marginBottom: 3 },
+  linkSub:        { fontSize: 12, color: t.text.secondary, marginBottom: 10 },
+  linkRow:        { flexDirection: 'row', gap: 8 },
+  linkInput:      { flex: 1, backgroundColor: t.surface.sunken, borderRadius: 10, padding: 12, fontSize: 14, color: t.text.primary, borderWidth: 1, borderColor: t.border.default },
+  inputDisabled:  { opacity: 0.5 },
+  goBtn:          { backgroundColor: t.brand[600], borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, justifyContent: 'center' },
+  goBtnDisabled:  { backgroundColor: t.border.default },
+  goBtnText:      { color: '#fff', fontWeight: '700', fontSize: 15 },
+}));
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8905,7 +8879,6 @@ function ProfileScreen({ member, onLogout, onTrainerChat, onUpdateMember, onRegi
       })}
 
       {/* ── Appearance ───────────────────────────────────────────────── */}
-      <Text style={g.sec}>Appearance</Text>
       <ThemeToggle style={{ marginBottom: 8 }} />
 
       <Text style={g.sec}>Account</Text>
