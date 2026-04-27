@@ -38,6 +38,11 @@ jobs:
     - name: Generate Android project
       run: npx expo prebuild --clean
 
+    - name: Increase Gradle JVM heap
+      run: |
+        sed -i 's/org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m/' android/gradle.properties
+        echo "org.gradle.daemon=false" >> android/gradle.properties
+
     - name: Build APK
       run: cd android && ./gradlew assembleRelease --no-daemon
 
