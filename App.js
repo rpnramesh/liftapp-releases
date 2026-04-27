@@ -4008,7 +4008,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
 
   // ── Auto-resume logging when returning to tab with active workout ──────────
   useEffect(() => {
-    if ((workoutTimer?.running || workoutTimer?.completed) && !isLogging && todayWorkout && !todayWorkout.isRestDay) {
+    if (workoutTimer?.running && !isLogging && todayWorkout && !todayWorkout.isRestDay) {
       setIsLogging(true);
     }
   }, [todayWorkout]);
@@ -4546,7 +4546,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           Show whenever the timer is running OR completed (not just isLogging)
           so the user can see the elapsed time and access Continue / Complete
           even from the overview tab without re-entering the logging view.   */}
-      {(isLogging || workoutTimer?.running || workoutTimer?.completed) && logExercises.length > 0 && (
+      {(isLogging || workoutTimer?.running) && logExercises.length > 0 && (
         <View style={[wk.heroHeader, {
           backgroundColor: C.card,
           borderBottomColor: C.border,
@@ -4838,22 +4838,42 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           <>
             {todayWorkout && !todayWorkout.isRestDay ? (
               <>
-                {(workoutTimer?.running && !isLogging) || workoutTimer?.completed ? (
-                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    {workoutTimer?.running && !isLogging && (
-                      <View style={wk.liveChip}>
-                        <View style={wk.liveDot} />
-                        <Text style={wk.liveTxt}>In Progress</Text>
-                      </View>
-                    )}
-                    {workoutTimer?.completed && (
-                      <View style={wk.doneChip}>
-                        <Ionicons name="checkmark-circle" size={14} color={C.green} />
-                        <Text style={wk.doneTxt}>Done</Text>
-                      </View>
-                    )}
+                {workoutTimer?.running && !isLogging && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
+                    <View style={wk.liveChip}>
+                      <View style={wk.liveDot} />
+                      <Text style={wk.liveTxt}>In Progress</Text>
+                    </View>
                   </View>
-                ) : null}
+                )}
+
+                {workoutTimer?.completed && (
+                  <TouchableOpacity
+                    style={wk.completionCard}
+                    activeOpacity={0.8}
+                    onPress={() => onWorkoutFinish?.(buildWorkoutFinishData({
+                      dayLabel:        activeWorkout?.dayLabel || todayWorkout?.dayLabel || '',
+                      planName:        activeWorkout?.name || todayWorkout?.name || 'Workout',
+                      durationSeconds: elapsed,
+                      exercises:       logExercises.length > 0 ? logExercises : (todayWorkout?.exercises || []),
+                    }))}>
+                    <View style={wk.completionCardLeft}>
+                      <View style={wk.completionIconCircle}>
+                        <Ionicons name="trophy" size={22} color="#fff" />
+                      </View>
+                      <View>
+                        <Text style={wk.completionTitle}>Workout Complete!</Text>
+                        <Text style={wk.completionSub}>
+                          {elapsed > 0 ? `Finished in ${formatElapsed(elapsed)}` : 'Great job today'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={wk.completionViewBtn}>
+                      <Text style={wk.completionViewTxt}>View</Text>
+                      <Ionicons name="chevron-forward" size={14} color={C.green} />
+                    </View>
+                  </TouchableOpacity>
+                )}
 
                 {/* ── Overview exercise cards (pre-logging state) ─────────────
                     Improvements vs before:
@@ -6006,6 +6026,23 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   },
   doneTxt: { fontSize: 11, fontWeight: '700', color: t.success[700], letterSpacing: 0.2 },
 
+  /* ── Completion card (replaces hero header when workout is done) ── */
+  completionCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: t.success[50],
+    borderRadius: t.radius.xl,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: t.success[200],
+  },
+  completionCardLeft:   { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  completionIconCircle: { width: 42, height: 42, borderRadius: 21, backgroundColor: t.success[600], justifyContent: 'center', alignItems: 'center' },
+  completionTitle:      { fontSize: 15, fontWeight: '800', color: t.success[800], letterSpacing: -0.2 },
+  completionSub:        { fontSize: 12, color: t.success[700], marginTop: 2 },
+  completionViewBtn:    { flexDirection: 'row', alignItems: 'center', gap: 2, paddingLeft: 8 },
+  completionViewTxt:    { fontSize: 12, fontWeight: '700', color: t.success[700] },
+
   /* ── Empty states ────────────────────────────────────────────── */
   emptyState: { alignItems: 'center', paddingVertical: 56, paddingHorizontal: 24 },
   emptyIconCircle: {
@@ -6609,6 +6646,7 @@ const PROGRESS_TABS = [
 
 function ProgressScreen({ member, gymId, memberId }) {
   const C = usePalette();
+  const { theme } = useTheme();
   const g = useGlobalStyles();
   const pr = usePrStyles();
   const [activeTab, setActiveTab] = useState('Weight');
@@ -6625,32 +6663,24 @@ function ProgressScreen({ member, gymId, memberId }) {
   // weightInputRef: the weight TextInput — measureLayout() against the
   //   ScrollView gives its Y offset *within* the scroll content (not the screen),
   //   which is exactly what scrollTo(y) expects.
-  const progressScrollRef = useRef(null);
-  const weightInputRef    = useRef(null);
+  const progressScrollRef  = useRef(null);
+  const weightInputRef     = useRef(null);
+  const scrollOffsetRef    = useRef(0);
 
-  // When the keyboard fully appears (keyboardDidShow), scroll so the weight
-  // input sits comfortably above the keyboard top edge.
-  // We use measureLayout (relative to ScrollView) instead of measureInWindow
-  // (screen coords) to avoid the "programmatic scroll dismisses keyboard" bug.
   useEffect(() => {
     const sub = Keyboard.addListener('keyboardDidShow', (e) => {
-      if (!weightFocused) return;
-      const kbTop = e.endCoordinates.y;          // keyboard top from screen top
-      if (!weightInputRef.current || !progressScrollRef.current) return;
-      weightInputRef.current.measureLayout(
-        progressScrollRef.current,               // measure relative to scroll content
-        (x, y, w, h) => {
-          const inputBottom = y + h;
-          const margin = 24;                     // breathing room above keyboard
-          if (inputBottom + margin > kbTop) {
-            progressScrollRef.current.scrollTo({
-              y: inputBottom + margin - kbTop,
-              animated: true,
-            });
-          }
-        },
-        () => {}
-      );
+      if (!weightFocused || !weightInputRef.current || !progressScrollRef.current) return;
+      const kbTop = e.endCoordinates.y;
+      weightInputRef.current.measureInWindow((_x, y, _w, h) => {
+        const inputScreenBottom = y + h;
+        const margin = 24;
+        if (inputScreenBottom + margin > kbTop) {
+          progressScrollRef.current.scrollTo({
+            y: scrollOffsetRef.current + (inputScreenBottom + margin - kbTop),
+            animated: true,
+          });
+        }
+      });
     });
     return () => sub.remove();
   }, [weightFocused]);
@@ -6713,7 +6743,9 @@ function ProgressScreen({ member, gymId, memberId }) {
       style={g.screen}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive">
+      keyboardDismissMode="interactive"
+      onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+      scrollEventThrottle={16}>
       <Text style={pr.pageTitle}>Progress</Text>
       <Text style={pr.pageSub}>Track your body, workouts and photos — stay on the wave.</Text>
 
@@ -7462,6 +7494,438 @@ function buildMemberChatId(gymId, trainerId, memberId) {
   const ns = (gymId && gymId.trim()) ? gymId : trainerId;
   return `${ns}_${trainerId}_${memberId}`;
 }
+
+// ─── Supplements Screen ───────────────────────────────────────────────────────
+
+const SUPP_PRESETS = [
+  { name: 'Whey Protein',  dose: '30g',      icon: 'barbell-outline' },
+  { name: 'Creatine',      dose: '5g',       icon: 'flash-outline' },
+  { name: 'Vitamin D',     dose: '2000 IU',  icon: 'sunny-outline' },
+  { name: 'Vitamin C',     dose: '500mg',    icon: 'leaf-outline' },
+  { name: 'Omega-3',       dose: '1000mg',   icon: 'water-outline' },
+  { name: 'Magnesium',     dose: '400mg',    icon: 'medical-outline' },
+  { name: 'Multivitamin',  dose: '1 tablet', icon: 'star-outline' },
+  { name: 'BCAA',          dose: '10g',      icon: 'fitness-outline' },
+  { name: 'Pre-workout',   dose: '1 scoop',  icon: 'thunderstorm-outline' },
+  { name: 'Zinc',          dose: '25mg',     icon: 'shield-outline' },
+];
+
+const SUPP_STORAGE_KEY = (uid) => `LIFT_SUPPLEMENTS_${uid}`;
+const SUPP_TAKEN_KEY   = (uid) => {
+  const d = new Date();
+  return `LIFT_SUPPTAKEN_${uid}_${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+};
+const SUPP_NOTIF_KEY   = (id)  => `LIFT_SUPPNOTIF_${id}`;
+
+async function scheduleSupplementNotif(supp) {
+  const prev = await AsyncStorage.getItem(SUPP_NOTIF_KEY(supp.id)).catch(() => null);
+  if (prev) await Notifications.cancelScheduledNotificationAsync(prev).catch(() => {});
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: '💊 Supplement Reminder',
+      body: `Time to take your ${supp.name}${supp.dose ? ` — ${supp.dose}` : ''}`,
+      sound: true,
+      channelId: 'supplements',
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: supp.reminderHour,
+      minute: supp.reminderMinute,
+      repeats: true,
+    },
+  });
+  await AsyncStorage.setItem(SUPP_NOTIF_KEY(supp.id), id).catch(() => {});
+  return id;
+}
+
+async function cancelSupplementNotif(suppId) {
+  const id = await AsyncStorage.getItem(SUPP_NOTIF_KEY(suppId)).catch(() => null);
+  if (id) {
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+    await AsyncStorage.removeItem(SUPP_NOTIF_KEY(suppId)).catch(() => {});
+  }
+}
+
+function SupplementsScreen({ memberId }) {
+  const C   = usePalette();
+  const { theme } = useTheme();
+  const sp  = useSpStyles();
+
+  const [supplements,   setSupplements]   = useState([]);
+  const [takenToday,    setTakenToday]    = useState(new Set());
+  const [editingTime,   setEditingTime]   = useState(null); // supplement id whose time picker is open
+  const [showAdd,       setShowAdd]       = useState(false);
+  const [showPresets,   setShowPresets]   = useState(true);
+  const [newName,       setNewName]       = useState('');
+  const [newDose,       setNewDose]       = useState('');
+  const [saving,        setSaving]        = useState(false);
+
+  const storageKey = SUPP_STORAGE_KEY(memberId);
+  const takenKey   = SUPP_TAKEN_KEY(memberId);
+
+  const persist = async (list) => {
+    setSupplements(list);
+    await AsyncStorage.setItem(storageKey, JSON.stringify(list)).catch(() => {});
+  };
+
+  useEffect(() => {
+    AsyncStorage.getItem(storageKey).then(raw => {
+      if (raw) setSupplements(JSON.parse(raw));
+    }).catch(() => {});
+    AsyncStorage.getItem(takenKey).then(raw => {
+      if (raw) setTakenToday(new Set(JSON.parse(raw)));
+    }).catch(() => {});
+  }, [storageKey, takenKey]);
+
+  const toggleTaken = async (id) => {
+    const next = new Set(takenToday);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setTakenToday(next);
+    await AsyncStorage.setItem(takenKey, JSON.stringify([...next])).catch(() => {});
+  };
+
+  const toggleReminder = async (id) => {
+    const list = supplements.map(s => {
+      if (s.id !== id) return s;
+      const updated = { ...s, reminderEnabled: !s.reminderEnabled };
+      if (updated.reminderEnabled) scheduleSupplementNotif(updated);
+      else cancelSupplementNotif(id);
+      return updated;
+    });
+    await persist(list);
+  };
+
+  const updateTime = async (id, hour, minute) => {
+    const list = supplements.map(s => {
+      if (s.id !== id) return s;
+      const updated = { ...s, reminderHour: hour, reminderMinute: minute };
+      if (updated.reminderEnabled) scheduleSupplementNotif(updated);
+      return updated;
+    });
+    await persist(list);
+  };
+
+  const addSupplement = async (name, dose) => {
+    if (!name.trim()) return;
+    setSaving(true);
+    const supp = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: name.trim(),
+      dose: dose.trim(),
+      reminderEnabled: false,
+      reminderHour: 8,
+      reminderMinute: 0,
+      createdAt: Date.now(),
+    };
+    await persist([...supplements, supp]);
+    setShowAdd(false);
+    setNewName('');
+    setNewDose('');
+    setSaving(false);
+  };
+
+  const deleteSupplement = (id) => {
+    Alert.alert('Remove Supplement', 'Remove this supplement from your list?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          cancelSupplementNotif(id);
+          await persist(supplements.filter(s => s.id !== id));
+          if (editingTime === id) setEditingTime(null);
+        },
+      },
+    ]);
+  };
+
+  const takenCount = supplements.filter(s => takenToday.has(s.id)).length;
+
+  return (
+    <ScrollView
+      style={sp.screen}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled">
+
+      {/* Header */}
+      <Text style={sp.pageTitle}>Supplements</Text>
+      <Text style={sp.pageSub}>Track your daily supplements and stay consistent.</Text>
+
+      {/* Summary chip */}
+      {supplements.length > 0 && (
+        <View style={sp.summaryRow}>
+          <View style={[sp.summaryChip, { backgroundColor: takenCount === supplements.length ? C.green + '22' : C.card }]}>
+            <Ionicons
+              name={takenCount === supplements.length ? 'checkmark-circle' : 'time-outline'}
+              size={15}
+              color={takenCount === supplements.length ? C.green : C.muted}
+            />
+            <Text style={[sp.summaryTxt, { color: takenCount === supplements.length ? C.green : C.muted }]}>
+              {takenCount}/{supplements.length} taken today
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Supplement cards */}
+      {supplements.map(supp => {
+        const taken = takenToday.has(supp.id);
+        const timeOpen = editingTime === supp.id;
+        const hh = String(supp.reminderHour).padStart(2, '0');
+        const mm = String(supp.reminderMinute).padStart(2, '0');
+        return (
+          <View key={supp.id} style={[sp.card, taken && sp.cardTaken]}>
+            <View style={sp.cardTop}>
+              {/* Left: name + dose */}
+              <View style={sp.cardLeft}>
+                <Text style={sp.cardName}>{supp.name}</Text>
+                {!!supp.dose && <Text style={sp.cardDose}>{supp.dose}</Text>}
+              </View>
+              {/* Right: taken toggle + delete */}
+              <View style={sp.cardActions}>
+                <TouchableOpacity
+                  style={[sp.takenBtn, taken && sp.takenBtnActive]}
+                  onPress={() => toggleTaken(supp.id)}
+                  activeOpacity={0.75}>
+                  <Ionicons
+                    name={taken ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                    size={18}
+                    color={taken ? '#fff' : C.muted}
+                  />
+                  <Text style={[sp.takenTxt, taken && sp.takenTxtActive]}>
+                    {taken ? 'Taken' : 'Take'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={sp.deleteBtn} onPress={() => deleteSupplement(supp.id)} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={15} color={C.muted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Reminder row */}
+            <View style={sp.reminderRow}>
+              <Ionicons name="alarm-outline" size={14} color={supp.reminderEnabled ? C.primary : C.muted} />
+              <Text style={[sp.reminderLabel, supp.reminderEnabled && { color: C.primary }]}>
+                Daily reminder
+              </Text>
+              {supp.reminderEnabled && (
+                <TouchableOpacity
+                  style={sp.reminderTimeBadge}
+                  onPress={() => setEditingTime(timeOpen ? null : supp.id)}
+                  activeOpacity={0.7}>
+                  <Text style={sp.reminderTimeTxt}>{hh}:{mm}</Text>
+                  <Ionicons name={timeOpen ? 'chevron-up' : 'chevron-down'} size={11} color={C.primary} />
+                </TouchableOpacity>
+              )}
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                onPress={() => toggleReminder(supp.id)}
+                hitSlop={8}
+                style={[sp.toggle, supp.reminderEnabled && sp.toggleOn]}>
+                <View style={[sp.toggleThumb, supp.reminderEnabled && sp.toggleThumbOn]} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Inline time picker */}
+            {timeOpen && (
+              <View style={sp.timePicker}>
+                <Text style={sp.timePickerLabel}>Set reminder time</Text>
+                <View style={sp.timePickerRow}>
+                  {/* Hour */}
+                  <View style={sp.timeUnit}>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, (supp.reminderHour + 1) % 24, supp.reminderMinute)}>
+                      <Ionicons name="chevron-up" size={18} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.timeVal}>{hh}</Text>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, (supp.reminderHour + 23) % 24, supp.reminderMinute)}>
+                      <Ionicons name="chevron-down" size={18} color={C.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={sp.timeSep}>:</Text>
+                  {/* Minute */}
+                  <View style={sp.timeUnit}>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, supp.reminderHour, (supp.reminderMinute + 5) % 60)}>
+                      <Ionicons name="chevron-up" size={18} color={C.primary} />
+                    </TouchableOpacity>
+                    <Text style={sp.timeVal}>{mm}</Text>
+                    <TouchableOpacity style={sp.timeArrow} onPress={() => updateTime(supp.id, supp.reminderHour, (supp.reminderMinute + 55) % 60)}>
+                      <Ionicons name="chevron-down" size={18} color={C.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <TouchableOpacity style={sp.timeDoneBtn} onPress={() => setEditingTime(null)}>
+                  <Text style={sp.timeDoneTxt}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        );
+      })}
+
+      {/* Empty state */}
+      {supplements.length === 0 && (
+        <View style={sp.emptyState}>
+          <View style={sp.emptyCircle}>
+            <Ionicons name="flask-outline" size={28} color={C.primary} />
+          </View>
+          <Text style={sp.emptyTitle}>No supplements yet</Text>
+          <Text style={sp.emptySub}>Add the supplements you take daily and set reminders so you never miss a dose.</Text>
+        </View>
+      )}
+
+      {/* Add button */}
+      <TouchableOpacity style={sp.addBtn} onPress={() => setShowAdd(true)} activeOpacity={0.85}>
+        <Ionicons name="add" size={18} color="#fff" />
+        <Text style={sp.addBtnTxt}>Add Supplement</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 32 }} />
+
+      {/* Add Modal */}
+      <Modal visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
+        <Pressable style={sp.modalOverlay} onPress={() => setShowAdd(false)}>
+          <Pressable style={sp.modalSheet} onPress={e => e.stopPropagation()}>
+            <View style={sp.modalHandle} />
+            <Text style={sp.modalTitle}>Add Supplement</Text>
+
+            {/* Presets toggle */}
+            <TouchableOpacity style={sp.presetsToggle} onPress={() => setShowPresets(p => !p)}>
+              <Text style={sp.presetsToggleTxt}>{showPresets ? 'Hide presets' : 'Choose from presets'}</Text>
+              <Ionicons name={showPresets ? 'chevron-up' : 'chevron-down'} size={14} color={C.primary} />
+            </TouchableOpacity>
+
+            {/* Preset chips */}
+            {showPresets && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={sp.presetScroll} contentContainerStyle={{ gap: 8 }}>
+                {SUPP_PRESETS.map(p => (
+                  <TouchableOpacity
+                    key={p.name}
+                    style={sp.presetChip}
+                    onPress={() => { setNewName(p.name); setNewDose(p.dose); setShowPresets(false); }}
+                    activeOpacity={0.75}>
+                    <Ionicons name={p.icon} size={14} color={C.primary} />
+                    <Text style={sp.presetChipTxt}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Custom inputs */}
+            <Text style={sp.inputLabel}>Name</Text>
+            <TextInput
+              style={sp.input}
+              placeholder="e.g. Vitamin B12"
+              placeholderTextColor={C.muted}
+              value={newName}
+              onChangeText={setNewName}
+              returnKeyType="next"
+              autoCorrect={false}
+            />
+            <Text style={sp.inputLabel}>Dose (optional)</Text>
+            <TextInput
+              style={sp.input}
+              placeholder="e.g. 1000mcg"
+              placeholderTextColor={C.muted}
+              value={newDose}
+              onChangeText={setNewDose}
+              returnKeyType="done"
+              autoCorrect={false}
+            />
+
+            <View style={sp.modalActions}>
+              <TouchableOpacity style={sp.modalCancelBtn} onPress={() => { setShowAdd(false); setNewName(''); setNewDose(''); }}>
+                <Text style={sp.modalCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[sp.modalAddBtn, (!newName.trim() || saving) && sp.modalAddBtnOff]}
+                onPress={() => addSupplement(newName, newDose)}
+                disabled={!newName.trim() || saving}>
+                {saving
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={sp.modalAddTxt}>Add</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const useSpStyles = makeStyles((t) => StyleSheet.create({
+  screen:      { flex: 1, backgroundColor: t.surface.raised, paddingHorizontal: 16, paddingTop: 20 },
+  pageTitle:   { fontSize: 26, fontWeight: '800', color: t.text.primary, letterSpacing: -0.5, marginBottom: 4 },
+  pageSub:     { fontSize: 14, color: t.text.secondary, marginBottom: 20 },
+
+  summaryRow:  { marginBottom: 16 },
+  summaryChip: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: t.border.default },
+
+  summaryTxt:  { fontSize: 13, fontWeight: '600' },
+
+  card:        { backgroundColor: t.surface.default, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: t.border.default },
+  cardTaken:   { borderColor: t.success[400] + '55' },
+  cardTop:     { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  cardLeft:    { flex: 1 },
+  cardName:    { fontSize: 15, fontWeight: '700', color: t.text.primary, marginBottom: 2 },
+  cardDose:    { fontSize: 12, color: t.text.secondary, fontWeight: '500' },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  takenBtn:       { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1, borderColor: t.border.default, backgroundColor: t.surface.sunken },
+  takenBtnActive: { backgroundColor: t.success[600], borderColor: t.success[600] },
+  takenTxt:       { fontSize: 12, fontWeight: '600', color: t.text.secondary },
+  takenTxtActive: { color: '#fff' },
+  deleteBtn:      { padding: 4 },
+
+  reminderRow:       { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reminderLabel:     { fontSize: 12, color: t.text.secondary, fontWeight: '500', flex: 0 },
+  reminderTimeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 2, paddingHorizontal: 8, borderRadius: 10, backgroundColor: t.brand[50], borderWidth: 1, borderColor: t.brand[200] },
+  reminderTimeTxt:   { fontSize: 12, fontWeight: '700', color: t.brand[600], fontVariant: ['tabular-nums'] },
+
+  toggle:          { width: 38, height: 22, borderRadius: 11, backgroundColor: t.border.default, justifyContent: 'center', paddingHorizontal: 2 },
+  toggleOn:        { backgroundColor: t.brand[500] },
+  toggleThumb:     { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 2 },
+  toggleThumbOn:   { alignSelf: 'flex-end' },
+
+  timePicker:      { marginTop: 12, backgroundColor: t.surface.sunken, borderRadius: 10, padding: 12, alignItems: 'center' },
+  timePickerLabel: { fontSize: 12, fontWeight: '600', color: t.text.secondary, marginBottom: 8, alignSelf: 'flex-start' },
+  timePickerRow:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timeUnit:        { alignItems: 'center', gap: 2 },
+  timeArrow:       { padding: 6 },
+  timeVal:         { fontSize: 28, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 44, textAlign: 'center' },
+  timeSep:         { fontSize: 26, fontWeight: '700', color: t.text.secondary, marginTop: -4 },
+  timeDoneBtn:     { marginTop: 10, paddingVertical: 7, paddingHorizontal: 28, borderRadius: 20, backgroundColor: t.brand[600] },
+  timeDoneTxt:     { fontSize: 13, fontWeight: '700', color: '#fff' },
+
+  emptyState:  { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+  emptyCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: t.surface.sunken, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  emptyTitle:  { fontSize: 16, fontWeight: '700', color: t.text.primary, marginBottom: 6 },
+  emptySub:    { fontSize: 13, color: t.text.secondary, textAlign: 'center', lineHeight: 19 },
+
+  addBtn:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: t.brand[600], borderRadius: 12, paddingVertical: 13, marginTop: 8 },
+  addBtnTxt:   { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: t.surface.default, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 },
+  modalHandle:  { width: 36, height: 4, borderRadius: 2, backgroundColor: t.border.default, alignSelf: 'center', marginBottom: 16 },
+  modalTitle:   { fontSize: 18, fontWeight: '800', color: t.text.primary, marginBottom: 14 },
+
+  presetsToggle:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
+  presetsToggleTxt: { fontSize: 13, fontWeight: '600', color: t.brand[600] },
+  presetScroll:     { marginBottom: 14 },
+  presetChip:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: t.brand[200], backgroundColor: t.surface.sunken },
+  presetChipTxt:    { fontSize: 12, fontWeight: '600', color: t.text.primary },
+
+  inputLabel: { fontSize: 12, fontWeight: '600', color: t.text.secondary, marginBottom: 4, marginTop: 10 },
+  input:      { backgroundColor: t.surface.sunken, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, fontSize: 14, color: t.text.primary, borderWidth: 1, borderColor: t.border.default },
+
+  modalActions:    { flexDirection: 'row', gap: 10, marginTop: 20 },
+  modalCancelBtn:  { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: t.border.default, alignItems: 'center' },
+  modalCancelTxt:  { fontSize: 14, fontWeight: '600', color: t.text.secondary },
+  modalAddBtn:     { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: t.brand[600], alignItems: 'center' },
+  modalAddBtnOff:  { opacity: 0.45 },
+  modalAddTxt:     { fontSize: 14, fontWeight: '700', color: '#fff' },
+}));
 
 // ── Helper: strip undefined values before any Firestore write ─────────────────
 function cleanForFirestore(obj) {
@@ -9572,6 +10036,22 @@ function AppBody() {
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
+  // ── Notification channels + permission (once on app start) ────────────────
+  useEffect(() => {
+    const setup = async () => {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('supplements', {
+          name: 'Supplement Reminders',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          sound: 'default',
+        });
+      }
+      await Notifications.requestPermissionsAsync();
+    };
+    setup().catch(() => {});
+  }, []);
+
   // ── Android hardware back button ───────────────────────────────────────────
   // Mirrors the SwipeBackScreen gesture: on any non-main screen, pressing the
   // Android back button returns to main instead of exiting the app.
@@ -10023,10 +10503,11 @@ function AppBody() {
   );
 
   const tabs = [
-    { name: 'Home', icon: 'home', iconOutline: 'home-outline' },
-    { name: 'Workouts', icon: 'barbell', iconOutline: 'barbell-outline' },
-    { name: 'Progress', icon: 'trending-up', iconOutline: 'trending-up-outline' },
-    { name: 'Profile', icon: 'person-circle', iconOutline: 'person-circle-outline' },
+    { name: 'Home',        icon: 'home',          iconOutline: 'home-outline' },
+    { name: 'Workouts',    icon: 'barbell',        iconOutline: 'barbell-outline' },
+    { name: 'Progress',    icon: 'trending-up',    iconOutline: 'trending-up-outline' },
+    { name: 'Supplements', icon: 'flask',          iconOutline: 'flask-outline' },
+    { name: 'Profile',     icon: 'person-circle',  iconOutline: 'person-circle-outline' },
   ];
 
   const renderTab = () => {
@@ -10088,6 +10569,8 @@ function AppBody() {
             memberId={uid}
           />
         );
+      case 'Supplements':
+        return <SupplementsScreen memberId={uid} />;
       case 'Profile':
         return (
           <ProfileScreen
