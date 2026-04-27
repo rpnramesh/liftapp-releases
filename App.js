@@ -1682,7 +1682,8 @@ function buildWorkoutFinishData({ dayLabel, planName, durationSeconds, exercises
       const actual = actualResolver ? actualResolver(ex, index) : null;
       return {
         exerciseName: ex.exerciseName || ex.name,
-        muscleGroup: ex.muscleGroup || '',
+        muscleGroup:  ex.muscleGroup  || '',
+        videoUrl:     ex.videoUrl     || '',  // preserved so post-workout YT icon works
         targetSets: ex.targetSets || ex.sets || ex.mainSets || 0,
         targetReps: ex.targetReps || ex.reps || ex.mainReps || 0,
         actualSets: actual?.actualSets ?? ex.actualSets ?? ex.targetSets ?? ex.sets ?? ex.mainSets ?? 0,
@@ -4745,16 +4746,20 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : exKey); }}
                         activeOpacity={0.7}
                       >
-                        <TouchableOpacity style={wk.exIcon} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} activeOpacity={0.6}>
-                          <Ionicons name="play-circle" size={22} color={C.deepBlue} />
+                        {/* YouTube chip — tappable, opens reference video for this exercise */}
+                        <TouchableOpacity
+                          style={wk.ytChip}
+                          onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
+                          hitSlop={6}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name="logo-youtube" size={20} color="#FF0000" />
                         </TouchableOpacity>
                         <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Ionicons name="fitness-outline" size={13} color={C.mid} />
-                            <Text style={wk.exName}>{ex.name}</Text>
-                          </View>
+                          {/* Exercise name — no icon prefix, cleaner hierarchy */}
+                          <Text style={wk.exName}>{ex.name}</Text>
                           <Text style={wk.exMeta}>
-                            {sets} sets × {reps} reps  •  {rest}s rest
+                            {sets} sets × {reps} reps  ·  {rest}s rest
                           </Text>
                         </View>
                         <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={'#C7C7CC'} />
@@ -4906,16 +4911,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : ex.id); }}
                         activeOpacity={0.75}
                       >
-                        {/* Icon chip: shows sequence number until done, then checkmark */}
+                        {/* YouTube chip — replaces the noisy green-tick/seq-number chip.
+                            Always tappable to open the reference video.
+                            Red is vivid on both light and dark backgrounds. */}
                         <TouchableOpacity
-                          style={[wk.exIcon, isDone && wk.exIconDone]}
+                          style={wk.ytChip}
                           onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
-                          activeOpacity={0.6}
+                          hitSlop={6}
+                          activeOpacity={0.75}
                         >
-                          {isDone
-                            ? <Ionicons name="checkmark" size={20} color="#fff" />
-                            : <Text style={wk.exSeqNum}>{String(exIdx + 1).padStart(2, '0')}</Text>
-                          }
+                          <Ionicons name="logo-youtube" size={20} color="#FF0000" />
                         </TouchableOpacity>
 
                         <View style={{ flex: 1 }}>
@@ -4942,21 +4947,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           </View>
                         </View>
 
-                        {/* Right: status badge + chevron */}
+                        {/* Right: slim status pip + expand chevron.
+                            DONE → tiny green checkmark pip (no text — icon says it all).
+                            READY → faint dot, doesn't compete with exercise name. */}
                         <View style={{ alignItems: 'flex-end', gap: 4 }}>
                           {isDone ? (
                             <View style={wk.exStatusDone}>
-                              <Ionicons name="checkmark-circle" size={12} color={C.green} />
-                              <Text style={[wk.exStatusTxt, { color: C.green }]}>DONE</Text>
+                              <Ionicons name="checkmark" size={9} color={C.green} />
                             </View>
                           ) : (
                             <View style={wk.exStatusReady}>
-                              <Text style={[wk.exStatusTxt, { color: C.muted }]}>READY</Text>
+                              <View style={wk.exStatusDot} />
                             </View>
                           )}
                           <Ionicons
                             name={isOpen ? 'chevron-up' : 'chevron-down'}
-                            size={16}
+                            size={15}
                             color={isDone ? C.green : C.muted}
                           />
                         </View>
@@ -5904,9 +5910,9 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     padding: 18, gap: 16,
     minHeight: 80,                              // finger-friendly
   },
-  // Icon chip = web num-badge-brand
+  // Legacy icon chip — kept for safety; ytChip is used in JSX now
   exIcon: {
-    width: 48, height: 48, borderRadius: t.radius.md,
+    width: 40, height: 40, borderRadius: t.radius.md,
     backgroundColor: 'rgba(79,70,229,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
@@ -5914,6 +5920,15 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     backgroundColor: t.success[600],
     borderWidth: 1, borderColor: t.success[700],
     ...t.shadow.success,
+  },
+
+  // YouTube chip — replaces the seq-number/green-tick icon chip.
+  // Transparent red tint background keeps the icon visible on dark cards
+  // without being harsh. Touch target is 40×40 + hitSlop:6 = ~52px effective.
+  ytChip: {
+    width: 40, height: 40, borderRadius: t.radius.md,
+    backgroundColor: t.mode === 'dark' ? 'rgba(255,0,0,0.13)' : 'rgba(255,0,0,0.07)',
+    alignItems: 'center', justifyContent: 'center',
   },
 
   exName:     { fontSize: t.fontSize.base, fontWeight: '600', color: t.text.primary, letterSpacing: -0.2 },  // ↓ xl(18)→base(14) matches lv.exName
@@ -5938,10 +5953,14 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   // Bottom metadata row (muscle tag + last weight)
   exMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5, flexWrap: 'wrap' },
   exLastWeight: { fontSize: 11, fontWeight: '600', color: t.brand[t.mode === 'dark' ? 400 : 600] },
-  // "DONE" / "READY" pills on overview cards
-  exStatusDone: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(22,163,74,0.10)', borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2 },
-  exStatusReady: { backgroundColor: t.surface.sunken, borderRadius: t.radius.full, paddingHorizontal: 7, paddingVertical: 2 },
-  exStatusTxt: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
+  // "DONE" pip — icon only, no text. Small green pill with a single checkmark.
+  // Icon-only is cleaner: the green card tint + line-through name already
+  // communicate completion without a noisy "DONE" label.
+  exStatusDone:  { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(22,163,74,0.12)', alignItems: 'center', justifyContent: 'center' },
+  // "READY" pip — neutral dot, almost invisible, just enough to fill the slot.
+  exStatusReady: { width: 20, height: 20, borderRadius: 10, backgroundColor: t.surface.sunken, alignItems: 'center', justifyContent: 'center' },
+  exStatusDot:   { width: 5, height: 5, borderRadius: 2.5, backgroundColor: t.border.strong },
+  exStatusTxt:   { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
 
   /* ── Live chip ("in progress") — web status-pill-brand ───────── */
   liveChip: {
@@ -6877,14 +6896,11 @@ function ProgressScreen({ member, gymId, memberId }) {
               style={[pr.logBtn, (!weightInput || saving) && pr.logBtnOff]}
               onPress={handleLogWeight}
               disabled={!weightInput || saving}
-              activeOpacity={0.9}
+              activeOpacity={0.85}
             >
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <>
-                    <Ionicons name="add" size={18} color="#fff" />
-                    <Text style={pr.logBtnTxt}>Log</Text>
-                  </>
+                : <Ionicons name="add" size={24} color="#fff" />
               }
             </TouchableOpacity>
           </View>
@@ -7281,20 +7297,16 @@ const usePrStyles = makeStyles((t) => StyleSheet.create({
   },
   logUnit: { fontSize: 13, color: t.text.tertiary, fontWeight: '700' },
   logBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    width: 52, height: 52,
+    borderRadius: 16,
     backgroundColor: t.brand[600],
-    borderWidth: 1, borderColor: t.brand[700],
-    borderRadius: t.radius.md,
-    paddingHorizontal: 20,
-    minHeight: 52, minWidth: 88,
+    alignItems: 'center', justifyContent: 'center',
     ...t.shadow.brand,
   },
   logBtnOff: {
-    backgroundColor: t.neutral[300],
-    borderColor: t.neutral[300],
+    backgroundColor: t.neutral[200],
     shadowOpacity: 0,
   },
-  logBtnTxt: { color: '#fff', fontWeight: '700', fontSize: t.fontSize.md, letterSpacing: 0.1 },
 
   /* ── Workouts-tab stat grid ───────────────────────────────────────── */
   statGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
@@ -7889,16 +7901,22 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
 
               {/* Actions */}
               <View style={sp.modalActions}>
-                <TouchableOpacity style={sp.modalCancelBtn} onPress={onClose}>
-                  <Text style={sp.modalCancelTxt}>Cancel</Text>
+                {/* Dismiss — ghost square, icon only */}
+                <TouchableOpacity style={sp.modalCancelBtn} onPress={onClose} hitSlop={4} activeOpacity={0.7}>
+                  <Ionicons name="close" size={20} color="#9ca3af" />
                 </TouchableOpacity>
+                {/* Confirm — icon + compact label, full flex */}
                 <TouchableOpacity
                   style={[sp.modalAddBtn, (!name.trim() || saving) && sp.modalAddBtnOff]}
                   onPress={handleSave}
-                  disabled={!name.trim() || saving}>
+                  disabled={!name.trim() || saving}
+                  activeOpacity={0.85}>
                   {saving
                     ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={sp.modalAddTxt}>{initial ? 'Save' : 'Add'}</Text>
+                    : <View style={sp.modalAddInner}>
+                        <Ionicons name="checkmark" size={18} color="#fff" />
+                        <Text style={sp.modalAddTxt}>{initial ? 'Save' : 'Add'}</Text>
+                      </View>
                   }
                 </TouchableOpacity>
               </View>
@@ -8157,12 +8175,29 @@ const useSpStyles = makeStyles((t) => StyleSheet.create({
   dayNumVal:  { fontSize: 28, fontWeight: '700', color: t.text.primary, fontVariant: ['tabular-nums'], minWidth: 44, textAlign: 'center' },
   dayNumUnit: { fontSize: 13, color: t.text.secondary },
 
-  modalActions:   { flexDirection: 'row', gap: 10, marginTop: 24 },
-  modalCancelBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: t.border.default, alignItems: 'center' },
-  modalCancelTxt: { fontSize: 14, fontWeight: '600', color: t.text.secondary },
-  modalAddBtn:    { flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: t.brand[600], alignItems: 'center' },
-  modalAddBtnOff: { opacity: 0.45 },
-  modalAddTxt:    { fontSize: 14, fontWeight: '700', color: '#fff' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 24, alignItems: 'center' },
+
+  // Ghost dismiss — square, icon-only, sits left at fixed width
+  modalCancelBtn: {
+    width: 52, height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5, borderColor: t.border.default,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: t.surface.sunken,
+  },
+
+  // Primary confirm — fills remaining space, strong brand fill
+  modalAddBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: t.brand[600],
+    alignItems: 'center', justifyContent: 'center',
+    ...t.shadow.brand,
+  },
+  modalAddBtnOff: { opacity: 0.38, shadowOpacity: 0 },
+  modalAddInner:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalAddTxt:    { fontSize: 15, fontWeight: '700', color: '#fff', letterSpacing: 0.1 },
 }));
 
 // ── Helper: strip undefined values before any Firestore write ─────────────────
@@ -9625,8 +9660,10 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
   const C  = usePalette();
   const wf = useWfStyles();
   const t  = C._theme;
-  const [showNotes, setShowNotes] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [showNotes,    setShowNotes]    = useState(false);
+  const [notes,        setNotes]        = useState('');
+  // Video modal — same ExerciseVideoModal used in WorkoutsScreen
+  const [videoExName,  setVideoExName]  = useState(null);
 
   // ── Derived stats ────────────────────────────────────────────────────────
   const exs = data?.exercises || [];
@@ -9806,15 +9843,31 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
             <View style={[wf.section, { backgroundColor: C.card, borderColor: C.border }]}>
               <Text style={[wf.sectionLabel, { color: C.muted }]}>SESSION BREAKDOWN</Text>
               {exs.map((ex, i) => {
-                const w = parseFloat(ex.weight) || 0;
+                const w   = parseFloat(ex.weight) || 0;
                 const vol = w > 0
                   ? `${Math.round(w * (parseInt(ex.actualReps ?? ex.targetReps, 10) || 0) * (ex.actualSets || ex.targetSets || 0))} kg vol`
                   : null;
+                const hasVideo = !!ex.videoUrl;
                 return (
                   <View key={i} style={[wf.exRow, i < exs.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.borderSubtle }]}>
-                    <View style={[wf.exBadge, { backgroundColor: C.green + '20' }]}>
-                      <Ionicons name="checkmark" size={14} color={C.green} />
-                    </View>
+                    {/* Left: YouTube chip when video available, subtle done dot otherwise.
+                        Tap opens the reference video even on the summary screen — useful
+                        for reviewing form immediately after the session. */}
+                    {hasVideo ? (
+                      <TouchableOpacity
+                        style={wf.ytChip}
+                        onPress={() => setVideoExName({ name: ex.exerciseName || ex.name, videoUrl: ex.videoUrl })}
+                        hitSlop={6}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                      </TouchableOpacity>
+                    ) : (
+                      /* No video stored → minimal green completion dot */
+                      <View style={wf.exDoneDot}>
+                        <Ionicons name="checkmark" size={11} color={C.green} />
+                      </View>
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text style={[wf.exName, { color: C.dark }]} numberOfLines={1}>
                         {ex.exerciseName || ex.name}
@@ -9925,6 +9978,14 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
           </View>
         </View>
       </Modal>
+
+      {/* Reference video modal — same component used in WorkoutsScreen */}
+      <ExerciseVideoModal
+        visible={!!videoExName}
+        exerciseName={videoExName?.name}
+        videoUrl={videoExName?.videoUrl}
+        onClose={() => setVideoExName(null)}
+      />
     </View>
   );
 }
@@ -10041,8 +10102,23 @@ const useWfStyles = makeStyles((t) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     gap: 10, paddingVertical: 10,
   },
+  // Legacy badge — kept but replaced by ytChip / exDoneDot in JSX
   exBadge: {
     width: 28, height: 28, borderRadius: t.radius.sm,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // YouTube chip for post-workout review.
+  // Slightly smaller than the pre-workout chip to suit the tighter summary list.
+  ytChip: {
+    width: 36, height: 36, borderRadius: t.radius.sm,
+    backgroundColor: t.mode === 'dark' ? 'rgba(255,0,0,0.13)' : 'rgba(255,0,0,0.07)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // Fallback for exercises with no stored videoUrl.
+  // Minimal green circle — quieter than the old solid checkmark badge.
+  exDoneDot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(22,163,74,0.10)',
     alignItems: 'center', justifyContent: 'center',
   },
   exName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.1 },
