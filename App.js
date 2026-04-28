@@ -7942,8 +7942,13 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
   const statusBar = Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0;
   const sheetMaxH = Math.min(
     screenH * 0.90,
-    screenH - kbH - statusBar - 16,  // 16 px safe margin from top
+    screenH - kbH - statusBar - 16,
   );
+  // scrollMaxH: concrete pixel height for the ScrollView.
+  // flex:1 in an unconstrained parent collapses to 0 in React Native —
+  // this explicit value avoids that and gives the ScrollView a real height.
+  // 166 = handle(18) + title(36) + footer(80) + sheet padding(32)
+  const scrollMaxH = Math.max(120, sheetMaxH - 166);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -7956,7 +7961,7 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
 
         {/* ── Sheet — stops tap propagation so overlay doesn't close ────────── */}
         <Pressable
-          style={[sp.modalSheet, { maxHeight: sheetMaxH }]}
+          style={sp.modalSheet}
           onPress={e => e.stopPropagation()}
         >
 
@@ -7970,7 +7975,7 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
               ScrollView exactly (sheetMaxH - headerHeight - footerHeight)
               pixels of visible height. Content that exceeds this scrolls.  */}
           <ScrollView
-            style={{ flex: 1 }}
+            style={{ maxHeight: scrollMaxH }}
             contentContainerStyle={sp.modalScrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
