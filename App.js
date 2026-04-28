@@ -7929,9 +7929,9 @@ function SuppFormModal({ visible, initial, onSave, onClose }) {
         onPress={onClose}
       >
 
-        {/* ── Sheet — stops tap propagation so overlay doesn't close ────────── */}
+        {/* ── Sheet — stops tap propagation, slides above keyboard via marginBottom ── */}
         <Pressable
-          style={sp.modalSheet}
+          style={[sp.modalSheet, { marginBottom: kbH, maxHeight: sheetMaxH }]}
           onPress={e => e.stopPropagation()}
         >
 
