@@ -4923,7 +4923,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   return (
                     // Same compact style as selected-day cards — no expand, no chevron,
                     // no inner white set-table box. Consistent across all workout screens.
-                    <View key={ex.id} style={[wk.exCardStatic, isDone && wk.exCardDone]}>
+                    <View key={ex.id} style={wk.exCardStatic}>
                       <View style={wk.exCardTouch}>
                         {/* YouTube chip */}
                         <TouchableOpacity
