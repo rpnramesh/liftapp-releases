@@ -3410,8 +3410,8 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
     ...t.shadow.card,
     position: 'relative',
   },
-  exCardDone:   { borderColor: 'rgba(22,163,74,0.30)', backgroundColor: 'rgba(22,163,74,0.03)' },
-  exCardActive: { borderColor: t.brand[300], borderWidth: 1.5, ...t.shadow.raised },
+  exCardDone:   { borderColor: 'rgba(22,163,74,0.45)' },
+  exCardActive: { borderColor: t.brand[400], borderWidth: 1.5, ...t.shadow.raised },
 
   // Left accent stripe — 4 px, full card height
   exStripe: {
