@@ -2187,7 +2187,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                   </Text>
 
                   <Text style={lv.exMeta}>
-                    {skipped ? 'Exercise skipped' : `${totalSets} sets × ${ex.reps} reps · ${ex.rest}s rest`}
+                    {skipped ? 'Exercise skipped' : `${totalSets} sets · ${ex.rest}s rest`}
                   </Text>
 
                   {/* Previous workout data — "Last: 8×35kg" */}
@@ -3424,9 +3424,9 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   exHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 16, paddingRight: 14,
-    paddingVertical: 12,   // ↓ was 16
-    minHeight: 60,          // ↓ was 72
+    paddingHorizontal: 14,  // matches wk.exCardTouch
+    paddingVertical: 11,    // matches wk.exCardTouch
+    minHeight: 60,
   },
   exStatusChip: {
     width: 40, height: 40,
@@ -3463,23 +3463,22 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 7, paddingHorizontal: 12,    // ↓ was 12/14 — more compact rows
+    paddingVertical: 5, paddingHorizontal: 12,
     borderBottomWidth: 1, borderBottomColor: t.border.subtle,
     gap: 10,
     position: 'relative',
-    minHeight: 48,                                 // ↓ was 64
+    minHeight: 40,
   },
   // Done set: light success wash
   setRowDone: {
     backgroundColor: 'rgba(22,163,74,0.06)',
     borderBottomColor: 'rgba(22,163,74,0.12)',
   },
-  // Current (next up) set: brand tint + slightly more padding
   setRowCurrent: {
     backgroundColor: t.mode === 'dark'
       ? 'rgba(99,102,241,0.12)'
       : 'rgba(79,70,229,0.06)',
-    paddingVertical: 9,     // ↓ was 14 — current set still slightly taller than done
+    paddingVertical: 6,
   },
 
   // Green flash overlay — animated, absolute
@@ -4784,7 +4783,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <View style={{ flex: 1 }}>
                           <Text style={wk.exName}>{ex.name}</Text>
                           <Text style={wk.exMeta}>
-                            {sets} sets × {reps} reps  ·  {rest}s rest
+                            {sets} sets · {rest}s rest
                           </Text>
                         </View>
                         {/* No chevron — card is non-expandable for selected-day view */}
@@ -4940,7 +4939,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             {ex.name}
                           </Text>
                           <Text style={wk.exMeta}>
-                            {ex.sets} sets × {ex.reps} reps  ·  {ex.rest}s rest
+                            {ex.sets} sets · {ex.rest}s rest
                           </Text>
                           {(ex.muscleGroup || (bestPrevW && !isDone)) ? (
                             <View style={wk.exMetaRow}>
@@ -5057,7 +5056,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         {skipped ? <Text style={lv.skippedTag}> · Skipped</Text> : null}
                       </Text>
                       <Text style={lv.exMeta}>
-                        {skipped ? 'Skipped' : `${totalSets} sets × ${ex.reps} reps · ${ex.rest}s rest`}
+                        {skipped ? 'Skipped' : `${totalSets} sets · ${ex.rest}s rest`}
                       </Text>
                       {prevSummary && !isDone && <Text style={lv.exPrev}>{prevSummary}</Text>}
                       {isInProgress && (
@@ -5116,11 +5115,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <View style={lv.exStateLabelSkip}>
                           <Text style={lv.exStateLabelTxtSkip}>SKIP</Text>
                         </View>
-                      ) : (
-                        <View style={lv.exStateLabelIdle}>
-                          <Text style={lv.exStateLabelTxtIdle}>UP NEXT</Text>
-                        </View>
-                      )}
+                      ) : null /* idle — no label, play icon in status chip is sufficient */}
                       <Ionicons
                         name={isOpen ? 'chevron-up' : 'chevron-down'}
                         size={14}
@@ -10600,7 +10595,7 @@ function WorkoutHistoryScreen({ member, memberId, onBack }) {
                       <View style={{ flex: 1 }}>
                         <Text style={wh.exName}>{ex.exerciseName || ex.name}</Text>
                         <Text style={wh.exMeta}>
-                          {(ex.targetSets || ex.actualSets || (ex.sets?.length))} sets × {ex.targetReps || ex.actualReps} reps
+                          {(ex.targetSets || ex.actualSets || (ex.sets?.length))} sets
                           {ex.weight > 0 ? ` · ${ex.weight} kg` : ''}
                           {ex.muscleGroup ? ` · ${ex.muscleGroup}` : ''}
                         </Text>
