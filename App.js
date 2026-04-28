@@ -4603,7 +4603,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       <ScrollView
         ref={scrollRef}
         style={[g.screen, isLogging && { paddingTop: 0 }]}
-        contentContainerStyle={{ paddingBottom: Math.max(100, kbPadding) }}
+        contentContainerStyle={{ paddingBottom: Math.max(24, kbPadding) }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -4723,11 +4723,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             This prevents Rest Day / empty state from showing below the hero. */}
         {!isLogging && selectedDayIdx !== null && selectedDay ? (
           <>
+            {/* Header row: ← Today  |  ✓ (completed badge, icon-only) */}
             <View style={wk.selectedDayHeader}>
               <TouchableOpacity onPress={() => setSelectedDayIdx(null)} style={wk.backBtn} activeOpacity={0.7}>
                 <Ionicons name="arrow-back" size={14} color={C.primary} />
                 <Text style={wk.backBtnTxt}>Today</Text>
               </TouchableOpacity>
+              {selectedDay.completedAt ? (
+                /* Completed badge — icon only, tappable to view summary */
+                <TouchableOpacity
+                  style={wk.completedBadge}
+                  activeOpacity={0.8}
+                  onPress={() => onWorkoutFinish?.(buildWorkoutFinishData({
+                    dayLabel: selectedDay.dayLabel || todayFullDay,
+                    planName: fullPlan?.name || selectedDay.dayLabel || 'Workout',
+                    durationSeconds: selectedDay.durationSeconds || 0,
+                    exercises: selectedDay.exercises || [],
+                  }))}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color={C.green} />
+                  <Text style={wk.completedBadgeTxt}>Done</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             {(selectedDay.restDay || restDays?.[selectedDayIdx]) ? (
               <View style={wk.emptyState}>
@@ -4765,13 +4782,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           <Ionicons name="logo-youtube" size={20} color="#FF0000" />
                         </TouchableOpacity>
                         <View style={{ flex: 1 }}>
-                          {/* Exercise name — no icon prefix, cleaner hierarchy */}
                           <Text style={wk.exName}>{ex.name}</Text>
                           <Text style={wk.exMeta}>
                             {sets} sets × {reps} reps  ·  {rest}s rest
                           </Text>
                         </View>
-                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={'#C7C7CC'} />
+                        {/* No chevron — card is non-expandable for selected-day view */}
                       </TouchableOpacity>
                       {isOpen && (
                         <View style={wk.exExpandedContent}>
@@ -4791,51 +4807,44 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </View>
                   );
                 })}
-                <View style={wk.btnRow}>
-                  <TouchableOpacity
-                    style={[wk.startBtn, { flex: 1 }, selectedDay.completedAt && { backgroundColor: C.green }]}
-                    onPress={() => {
-                      if (selectedDay.completedAt) {
-                        onWorkoutFinish?.(buildWorkoutFinishData({
-                          dayLabel: selectedDay.dayLabel || todayFullDay,
-                          planName: fullPlan?.name || selectedDay.dayLabel || "Workout",
-                          durationSeconds: selectedDay.durationSeconds || 0,
-                          exercises: selectedDay.exercises || [],
+                {/* Start / Mark Complete buttons — only shown for incomplete days.
+                    The "Completed" status is now shown as a badge in the header. */}
+                {!selectedDay.completedAt && (
+                  <View style={wk.btnRow}>
+                    <TouchableOpacity
+                      style={[wk.startBtn, { flex: 1 }]}
+                      onPress={() => {
+                        const exs = selectedDay.exercises.map(ex => ({
+                          id: ex.id || ex.name, name: ex.name,
+                          sets: ex.mainSets || 3, reps: ex.mainReps || 10,
+                          rest: ex.mainRestSeconds || 60, note: ex.notes || '',
+                          warmupSets: ex.warmupSets || 0,
+                          muscleGroup: ex.muscleGroup || '',
+                          videoUrl: ex.videoUrl || '',
                         }));
-                        return;
-                      }
-                      const exs = selectedDay.exercises.map(ex => ({
-                        id: ex.id || ex.name, name: ex.name,
-                        sets: ex.mainSets || 3, reps: ex.mainReps || 10,
-                        rest: ex.mainRestSeconds || 60, note: ex.notes || '',
-                        warmupSets: ex.warmupSets || 0,
-                        muscleGroup: ex.muscleGroup || '',
-                        videoUrl: ex.videoUrl || '',
-                      }));
-                      const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
-                      setWorkoutDoneSets({});
-                      setWorkoutSetWeights({});
-                      setRestEndTimes({});
-                      setLoggingWorkout({
-                        id: fullPlan?.id || selectedDay.dayLabel,
-                        name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
-                        estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
-                        exercises: exs,
-                        dayLabel: selectedDay.dayLabel || todayFullDay,
-                      });
-                      loggingDayIdxRef.current = selectedDayIdx; // Capture the plan day being started (null=today)
-                      setSelectedDayIdx(null);
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                      setMetaCollapsed(true);
-                      startWorkoutTimer();
-                      setIsLogging(true);
-                    }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name={selectedDay.completedAt ? 'checkmark-circle-outline' : 'play'} size={16} color="#fff" />
-                      <Text style={wk.startBtnTxt}>{selectedDay.completedAt ? 'Completed' : 'Start'}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  {!selectedDay.completedAt && (
+                        const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+                        setWorkoutDoneSets({});
+                        setWorkoutSetWeights({});
+                        setRestEndTimes({});
+                        setLoggingWorkout({
+                          id: fullPlan?.id || selectedDay.dayLabel,
+                          name: fullPlan?.name || selectedDay.dayLabel || "Today's Workout",
+                          estimatedMinutes: Math.max(10, Math.round(estSecs / 60)),
+                          exercises: exs,
+                          dayLabel: selectedDay.dayLabel || todayFullDay,
+                        });
+                        loggingDayIdxRef.current = selectedDayIdx;
+                        setSelectedDayIdx(null);
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setMetaCollapsed(true);
+                        startWorkoutTimer();
+                        setIsLogging(true);
+                      }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="play" size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>Start</Text>
+                      </View>
+                    </TouchableOpacity>
                     <TouchableOpacity style={[wk.startBtn, { flex: 1, backgroundColor: C.green }]} onPress={() => {
                       setPastCompleteDayIdx(selectedDayIdx);
                       setPastCompleteDay(selectedDay);
@@ -4847,8 +4856,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <Text style={wk.startBtnTxt}>Complete</Text>
                       </View>
                     </TouchableOpacity>
-                  )}
-                </View>
+                  </View>
+                )}
               </>
             ) : (
               <View style={wk.emptyState}>
@@ -4909,20 +4918,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     • Placeholder rows use token colors (not hardcoded greys)
                     • LayoutAnimation on expand for smooth height transition  */}
                 {!isLogging && todayWorkout.exercises?.map((ex, exIdx) => {
-                  const isOpen = expandedOverview === ex.id;
-                  const isDone = allSetsOf(ex);
-                  // Best previous weight for this exercise (set 1, if loaded)
+                  const isDone    = allSetsOf(ex);
                   const bestPrevW = lastWeights[`${ex.id}_1`];
                   return (
+                    // Same compact style as selected-day cards — no expand, no chevron,
+                    // no inner white set-table box. Consistent across all workout screens.
                     <View key={ex.id} style={[wk.exCardStatic, isDone && wk.exCardDone]}>
-                      <TouchableOpacity
-                        style={wk.exCardTouch}
-                        onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : ex.id); }}
-                        activeOpacity={0.75}
-                      >
-                        {/* YouTube chip — replaces the noisy green-tick/seq-number chip.
-                            Always tappable to open the reference video.
-                            Red is vivid on both light and dark backgrounds. */}
+                      <View style={wk.exCardTouch}>
+                        {/* YouTube chip */}
                         <TouchableOpacity
                           style={wk.ytChip}
                           onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
@@ -4933,101 +4936,28 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         </TouchableOpacity>
 
                         <View style={{ flex: 1 }}>
-                          {/* Exercise name */}
                           <Text style={[wk.exName, isDone && wk.exNameDone]} numberOfLines={1}>
                             {ex.name}
                           </Text>
-
-                          {/* Meta: sets × reps · rest */}
                           <Text style={wk.exMeta}>
                             {ex.sets} sets × {ex.reps} reps  ·  {ex.rest}s rest
                           </Text>
-
-                          {/* Bottom row: muscle tag + last weight */}
-                          <View style={wk.exMetaRow}>
-                            {ex.muscleGroup ? (
-                              <View style={wk.exMusclePill}>
-                                <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
-                              </View>
-                            ) : null}
-                            {bestPrevW && !isDone ? (
-                              <Text style={wk.exLastWeight}>Last: {bestPrevW} kg</Text>
-                            ) : null}
-                          </View>
-                        </View>
-
-                        {/* Right: slim status pip + expand chevron.
-                            DONE → tiny green checkmark pip (no text — icon says it all).
-                            READY → faint dot, doesn't compete with exercise name. */}
-                        <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                          {isDone ? (
-                            <View style={wk.exStatusDone}>
-                              <Ionicons name="checkmark" size={9} color={C.green} />
-                            </View>
-                          ) : (
-                            <View style={wk.exStatusReady}>
-                              <View style={wk.exStatusDot} />
-                            </View>
-                          )}
-                          <Ionicons
-                            name={isOpen ? 'chevron-up' : 'chevron-down'}
-                            size={15}
-                            color={isDone ? C.green : C.muted}
-                          />
-                        </View>
-                      </TouchableOpacity>
-
-                      {/* Expanded: read-only set preview */}
-                      {isOpen && (
-                        <View style={lv.setsContainer}>
-                          <View style={lv.setHeaderRow}>
-                            <Text style={[lv.setHeaderTxt, { width: 36 }]}>SET</Text>
-                            <Text style={[lv.setHeaderTxt, { width: 52 }]}>REPS</Text>
-                            <Text style={[lv.setHeaderTxt, { flex: 1 }]}>PREV WEIGHT</Text>
-                          </View>
-                          {(ex.warmupSets > 0) && Array.from({ length: ex.warmupSets }, (_, i) => {
-                            const stateKey = `${ex.id}_w_${i + 1}`;
-                            const lastW = lastWeights[stateKey];
-                            return (
-                              <View key={stateKey} style={lv.setRow}>
-                                <View style={[lv.setNumBadge, lv.setNumBadgeWarmup]}>
-                                  <Text style={[lv.setNumTxt, lv.setNumTxtWarmup]}>W</Text>
+                          {(ex.muscleGroup || (bestPrevW && !isDone)) ? (
+                            <View style={wk.exMetaRow}>
+                              {ex.muscleGroup ? (
+                                <View style={wk.exMusclePill}>
+                                  <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
                                 </View>
-                                <View style={lv.repsBox}>
-                                  <Text style={lv.repsVal}>{ex.reps}</Text>
-                                </View>
-                                <View style={[lv.weightGroup, { justifyContent: 'center' }]}>
-                                  <Text style={[lv.lastVal, { fontSize: 15 }]}>{lastW ? `${lastW} kg` : '—'}</Text>
-                                </View>
-                              </View>
-                            );
-                          })}
-                          {Array.from({ length: ex.sets }, (_, i) => {
-                            const setNo = i + 1;
-                            const stateKey = `${ex.id}_${setNo}`;
-                            const lastW = lastWeights[stateKey];
-                            return (
-                              <View key={setNo} style={lv.setRow}>
-                                <View style={lv.setNumBadge}>
-                                  <Text style={lv.setNumTxt}>{setNo}</Text>
-                                </View>
-                                <View style={lv.repsBox}>
-                                  <Text style={lv.repsVal}>{ex.reps}</Text>
-                                </View>
-                                <View style={[lv.weightGroup, { justifyContent: 'center' }]}>
-                                  <Text style={[lv.lastVal, { fontSize: 15 }]}>{lastW ? `${lastW} kg` : '—'}</Text>
-                                </View>
-                              </View>
-                            );
-                          })}
-                          {ex.note ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.primary} />
-                              <Text style={wk.exNoteText}>{ex.note}</Text>
+                              ) : null}
+                              {bestPrevW && !isDone ? (
+                                <Text style={wk.exLastWeight}>Last: {bestPrevW} kg</Text>
+                              ) : null}
                             </View>
                           ) : null}
                         </View>
-                      )}
+
+                        {/* Status pip only — no chevron */}
+                      </View>
                     </View>
                   );
                 })}
@@ -5952,8 +5882,8 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   /* ── Exercise cards (web .card) ──────────────────────────────── */
   exCardStatic: {
     backgroundColor: t.surface.default,
-    borderRadius: t.radius.xl,              // 16
-    marginBottom: 12,
+    borderRadius: t.radius.lg,
+    marginBottom: 8,
     overflow: 'hidden',
     borderWidth: 1, borderColor: t.border.default,
     ...t.shadow.card,
@@ -5963,8 +5893,8 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
 
   exCardTouch: {
     flexDirection: 'row', alignItems: 'center',
-    padding: 18, gap: 16,
-    minHeight: 80,                              // finger-friendly
+    paddingHorizontal: 14, paddingVertical: 11, gap: 12,
+    minHeight: 60,
   },
   // Legacy icon chip — kept for safety; ytChip is used in JSX now
   exIcon: {
@@ -6094,7 +6024,6 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
   /* ── Selected day header (viewing a non-today day) ───────────── */
   selectedDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   selectedDayTitle:  { fontSize: t.fontSize['2xl'], fontWeight: '800', color: t.text.primary, letterSpacing: -0.5 },
-  // Back chip — web .btn-link / ghost
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 12, paddingVertical: 8,
@@ -6102,8 +6031,16 @@ const useWkStyles = makeStyles((t) => StyleSheet.create({
     backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.12)' : t.brand[50],
     minHeight: 36,
   },
-  backBtnTxt:  { fontSize: 13, fontWeight: '700', color: t.brand[700] },
-  exCountHint: { fontSize: t.fontSize.sm, fontWeight: '600', color: t.text.secondary, marginBottom: 12 },
+  backBtnTxt: { fontSize: 13, fontWeight: '700', color: t.brand[700] },
+  // Completed badge — sits in the header row next to "Today", icon + tiny label
+  completedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: t.radius.full,
+    backgroundColor: 'rgba(22,163,74,0.10)',
+  },
+  completedBadgeTxt: { fontSize: 12, fontWeight: '700', color: t.success[700] },
+  exCountHint: { fontSize: t.fontSize.sm, fontWeight: '600', color: t.text.secondary, marginBottom: 10 },
 
   /* ── Done chip — web status-pill-success ─────────────────────── */
   doneChip: {
