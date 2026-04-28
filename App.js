@@ -4756,22 +4756,16 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             ) : selectedDay.exercises?.length > 0 ? (
               <>
                 <Text style={wk.exCountHint}>
-                  {selectedDay.exercises.length} exercises · tap to expand
+                  {selectedDay.exercises.length} exercises
                 </Text>
                 {selectedDay.exercises.map((ex, idx) => {
                   const exKey = ex.id || idx;
-                  const isOpen = expandedOverview === exKey;
                   const sets = ex.mainSets || 3;
-                  const reps = ex.mainReps || 10;
                   const rest = ex.mainRestSeconds || 60;
                   return (
                     <View key={exKey} style={wk.exCardStatic}>
-                      <TouchableOpacity
-                        style={wk.exCardTouch}
-                        onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedOverview(isOpen ? null : exKey); }}
-                        activeOpacity={0.7}
-                      >
-                        {/* YouTube chip — tappable, opens reference video for this exercise */}
+                      <View style={wk.exCardTouch}>
+                        {/* YouTube chip */}
                         <TouchableOpacity
                           style={wk.ytChip}
                           onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
@@ -4786,23 +4780,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             {sets} sets · {rest}s rest
                           </Text>
                         </View>
-                        {/* No chevron — card is non-expandable for selected-day view */}
-                      </TouchableOpacity>
-                      {isOpen && (
-                        <View style={wk.exExpandedContent}>
-                          {ex.muscleGroup ? (
-                            <View style={wk.exMusclePill}>
-                              <Text style={wk.exMuscleText}>{ex.muscleGroup}</Text>
-                            </View>
-                          ) : null}
-                          {ex.notes ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                              <Ionicons name="chatbubble-ellipses-outline" size={12} color={C.deepBlue} />
-                              <Text style={wk.exNoteText}>{ex.notes}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      )}
+                      </View>
                     </View>
                   );
                 })}
