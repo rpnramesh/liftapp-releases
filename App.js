@@ -3444,8 +3444,19 @@ const useLvStyles = makeStyles((t) => StyleSheet.create({
   exNameDone: { color: t.text.tertiary, textDecorationLine: 'line-through', textDecorationColor: t.neutral[400] },
   skippedTag: { fontSize: 12, fontWeight: '600', color: t.text.tertiary },
   exMeta:     { fontSize: t.fontSize.xs, color: t.text.secondary, marginTop: 3, letterSpacing: 0.1 },
-  // "Last: 8×35kg" — motivational previous data
   exPrev:     { fontSize: t.fontSize.xs, color: t.brand[t.mode === 'dark' ? 400 : 600], fontWeight: '600', marginTop: 3 },
+
+  // "Last session" button — compact pill below the exercise name
+  lastSessionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: t.radius.full,
+    backgroundColor: t.mode === 'dark' ? 'rgba(99,102,241,0.14)' : t.brand[50],
+    borderWidth: 1, borderColor: t.brand[100],
+  },
+  lastSessionBtnTxt: { fontSize: 11, fontWeight: '700', color: t.brand[t.mode === 'dark' ? 400 : 600] },
 
   // Mini progress bar
   progressRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
@@ -3867,6 +3878,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [showEditDurationModal, setShowEditDurationModal] = useState(false);
   const [editDurationMinutes, setEditDurationMinutes] = useState('');
   const [videoExName, setVideoExName] = useState(null);
+  // lastSessionModal: { name, sets: [{setNo, weight, reps}] } — shows prev session data
+  const [lastSessionModal, setLastSessionModal] = useState(null);
 
   // ── Custom modal state replacing Alert.alert calls ───────────────────────────
   // dayOptionsModal: long-press on a day chip → shows "Mark Rest / Postpone"
@@ -5036,7 +5049,25 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       <Text style={lv.exMeta}>
                         {skipped ? 'Skipped' : `${totalSets} sets · ${ex.rest}s rest`}
                       </Text>
-                      {prevSummary && !isDone && <Text style={lv.exPrev}>{prevSummary}</Text>}
+                      {/* Last session button — shows a modal with per-set weight+reps from the previous session */}
+                      {!isDone && prevWeights.some(Boolean) && (
+                        <TouchableOpacity
+                          style={lv.lastSessionBtn}
+                          hitSlop={6}
+                          activeOpacity={0.75}
+                          onPress={() => {
+                            const sets = Array.from({ length: getTotalSets(ex) }, (_, i) => ({
+                              setNo: i + 1,
+                              weight: lastWeights[`${ex.id}_${i + 1}`] || null,
+                              reps:   lastReps[`${ex.id}_${i + 1}`]   || null,
+                            }));
+                            setLastSessionModal({ name: ex.name, sets });
+                          }}
+                        >
+                          <Ionicons name="time-outline" size={11} color={C.primary} />
+                          <Text style={lv.lastSessionBtnTxt}>Last session</Text>
+                        </TouchableOpacity>
+                      )}
                       {isInProgress && (
                         <View style={lv.progressRow}>
                           <View style={lv.progressTrack}>
@@ -5576,6 +5607,55 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         </View>
       </Modal>
       <ExerciseVideoModal visible={!!videoExName} exerciseName={videoExName?.name || videoExName} videoUrl={videoExName?.videoUrl} onClose={() => setVideoExName(null)} />
+
+      {/* ── Last Session Modal ───────────────────────────────────────────────
+          Opens when user taps "Last session" on an exercise card during logging.
+          Shows per-set weight and reps from the previous workout session.      */}
+      {lastSessionModal && (
+        <Modal transparent animationType="slide" visible={!!lastSessionModal} onRequestClose={() => setLastSessionModal(null)}>
+          <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }} onPress={() => setLastSessionModal(null)}>
+            <Pressable onPress={e => e.stopPropagation()}
+              style={{ backgroundColor: C.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 32 }}>
+              {/* Handle */}
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: C.border, alignSelf: 'center', marginBottom: 16 }} />
+              {/* Title */}
+              <Text style={{ fontSize: 17, fontWeight: '800', color: C.dark, marginBottom: 4, letterSpacing: -0.2 }}>{lastSessionModal.name}</Text>
+              <Text style={{ fontSize: 12, color: C.muted, marginBottom: 16, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: '700' }}>Last Session</Text>
+              {/* Header row */}
+              <View style={{ flexDirection: 'row', paddingHorizontal: 4, marginBottom: 8 }}>
+                <Text style={{ width: 40, fontSize: 11, fontWeight: '700', color: C.muted }}>SET</Text>
+                <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: C.muted, textAlign: 'center' }}>REPS</Text>
+                <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: C.muted, textAlign: 'center' }}>WEIGHT</Text>
+              </View>
+              {/* Set rows */}
+              {lastSessionModal.sets.map((s, i) => (
+                <View key={s.setNo} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 10,
+                  borderTopWidth: i === 0 ? 0 : 1, borderTopColor: C.light }}>
+                  <View style={{ width: 40, height: 28, borderRadius: 8, backgroundColor: C.sunken, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: C.mid }}>{s.setNo}</Text>
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: s.reps ? C.dark : C.muted, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+                    {s.reps ?? '—'}
+                  </Text>
+                  <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: s.weight ? C.primary : C.muted, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+                    {s.weight ? `${s.weight} kg` : '—'}
+                  </Text>
+                </View>
+              ))}
+              {/* No data fallback */}
+              {lastSessionModal.sets.every(s => !s.weight && !s.reps) && (
+                <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                  <Text style={{ fontSize: 14, color: C.muted }}>No data from previous session</Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={() => setLastSessionModal(null)}
+                style={{ marginTop: 20, backgroundColor: C.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Got it</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {/* ── Day Options Modal ────────────────────────────────────────────────
           Replaces: Alert.alert(`${dayName} Options`, ...) from handleDayLongPress.
