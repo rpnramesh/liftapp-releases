@@ -4525,11 +4525,29 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
         planName:        activeWorkout?.name || '',
         durationSeconds: curElapsed,
         exercises:       logExercises,
-        actualResolver:  (ex) => ({
-          actualSets: getTotalSets(ex),
-          actualReps: parseInt(customReps[`${ex.id}_1`] ?? ex.reps, 10),
-          weight:     parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
-        }),
+        // Scan ALL sets for best weight and reps — not just set 1.
+        // User may have entered weight on set 2/3 but not set 1, or modified
+        // reps on a non-first set. First non-zero value wins.
+        actualResolver: (ex) => {
+          const n = getTotalSets(ex);
+          let bestW = 0;
+          for (let i = 1; i <= n; i++) {
+            const w = parseFloat(localSetWeights[`${ex.id}_${i}`] || '0');
+            if (w > 0) { bestW = w; break; }
+          }
+          if (bestW === 0) {
+            for (let i = 1; i <= n; i++) {
+              const w = parseFloat(lastWeights[`${ex.id}_${i}`] || '0');
+              if (w > 0) { bestW = w; break; }
+            }
+          }
+          let bestReps = ex.reps;
+          for (let i = 1; i <= n; i++) {
+            const r = customReps[`${ex.id}_${i}`];
+            if (r != null && r !== '') { bestReps = parseInt(r, 10) || ex.reps; break; }
+          }
+          return { actualSets: n, actualReps: bestReps, weight: bestW };
+        },
       }));
     }
   };
@@ -4585,7 +4603,7 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       <ScrollView
         ref={scrollRef}
         style={[g.screen, isLogging && { paddingTop: 0 }]}
-        contentContainerStyle={{ paddingBottom: kbPadding }}
+        contentContainerStyle={{ paddingBottom: Math.max(100, kbPadding) }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         onScroll={(e) => {
@@ -5626,11 +5644,26 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   planName:        activeWorkout?.name || '',
                   durationSeconds: overrideSeconds,
                   exercises:       logExercises,
-                  actualResolver:  (ex) => ({
-                    actualSets: getTotalSets(ex),
-                    actualReps: parseInt(customReps[`${ex.id}_1`] ?? ex.reps, 10),
-                    weight:     parseFloat(localSetWeights[`${ex.id}_1`] || lastWeights[`${ex.id}_1`] || '0'),
-                  }),
+                  actualResolver: (ex) => {
+                    const n = getTotalSets(ex);
+                    let bestW = 0;
+                    for (let i = 1; i <= n; i++) {
+                      const w = parseFloat(localSetWeights[`${ex.id}_${i}`] || '0');
+                      if (w > 0) { bestW = w; break; }
+                    }
+                    if (bestW === 0) {
+                      for (let i = 1; i <= n; i++) {
+                        const w = parseFloat(lastWeights[`${ex.id}_${i}`] || '0');
+                        if (w > 0) { bestW = w; break; }
+                      }
+                    }
+                    let bestReps = ex.reps;
+                    for (let i = 1; i <= n; i++) {
+                      const r = customReps[`${ex.id}_${i}`];
+                      if (r != null && r !== '') { bestReps = parseInt(r, 10) || ex.reps; break; }
+                    }
+                    return { actualSets: n, actualReps: bestReps, weight: bestW };
+                  },
                 }));
               }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Complete</Text>
@@ -8258,7 +8291,32 @@ function SupplementsScreen({ memberId }) {
     ]);
   };
 
-  const takenCount = supplements.filter(s => takenToday.has(s.id)).length;
+  // Returns true if this supplement is scheduled for today.
+  // Daily: always. Weekly: only on matching day-of-week.
+  // Monthly/Quarterly: only on the configured day of month.
+  const isScheduledToday = (s) => {
+    const freq = (s.frequency || 'Daily').toLowerCase();
+    if (freq === 'daily') return true;
+    if (freq === 'weekly') {
+      // SUPP weekday stored as 1=Sun…7=Sat; JS getDay() 0=Sun…6=Sat
+      const todayJS  = new Date().getDay();          // 0–6
+      const suppJS   = ((s.weekday ?? 2) - 1) % 7;  // convert 1-7 → 0-6
+      return todayJS === suppJS;
+    }
+    if (freq === 'monthly') {
+      return new Date().getDate() === (s.monthDay ?? 1);
+    }
+    if (freq === 'quarterly') {
+      const today = new Date();
+      return today.getDate() === (s.monthDay ?? 1) &&
+             [1, 4, 7, 10].includes(today.getMonth() + 1);
+    }
+    return true;
+  };
+
+  // Only count supplements that are due today for the chip.
+  const todaySupplements = supplements.filter(isScheduledToday);
+  const takenCount       = todaySupplements.filter(s => takenToday.has(s.id)).length;
 
   const freqLabel = (s) => {
     const f = s.frequency ?? 'Daily';
@@ -8274,34 +8332,53 @@ function SupplementsScreen({ memberId }) {
 
       {supplements.length > 0 && (
         <View style={sp.summaryRow}>
-          <View style={[sp.summaryChip, { backgroundColor: takenCount === supplements.length ? C.green + '22' : C.card }]}>
-            <Ionicons name={takenCount === supplements.length ? 'checkmark-circle' : 'time-outline'} size={15}
-              color={takenCount === supplements.length ? C.green : C.muted} />
-            <Text style={[sp.summaryTxt, { color: takenCount === supplements.length ? C.green : C.muted }]}>
-              {takenCount}/{supplements.length} taken today
+          <View style={[sp.summaryChip, {
+            backgroundColor: todaySupplements.length > 0 && takenCount === todaySupplements.length
+              ? C.green + '22' : C.card,
+          }]}>
+            <Ionicons
+              name={todaySupplements.length > 0 && takenCount === todaySupplements.length
+                ? 'checkmark-circle' : 'time-outline'}
+              size={15}
+              color={todaySupplements.length > 0 && takenCount === todaySupplements.length
+                ? C.green : C.muted}
+            />
+            <Text style={[sp.summaryTxt, {
+              color: todaySupplements.length > 0 && takenCount === todaySupplements.length
+                ? C.green : C.muted,
+            }]}>
+              {takenCount}/{todaySupplements.length} taken today
             </Text>
           </View>
         </View>
       )}
 
       {supplements.map(supp => {
-        const taken = takenToday.has(supp.id);
+        const taken     = takenToday.has(supp.id);
+        const dueToday  = isScheduledToday(supp);
         const hh = String(supp.reminderHour ?? 8).padStart(2, '0');
         const mm = String(supp.reminderMinute ?? 0).padStart(2, '0');
         const tpd = supp.timesPerDay ?? 1;
         return (
-          <View key={supp.id} style={[sp.card, taken && sp.cardTaken]}>
+          <View key={supp.id} style={[sp.card, taken && sp.cardTaken, !dueToday && { opacity: 0.45 }]}>
             <View style={sp.cardTop}>
               <View style={sp.cardLeft}>
                 <Text style={sp.cardName}>{supp.name}</Text>
                 {!!supp.dose && <Text style={sp.cardDose}>{supp.dose}</Text>}
               </View>
               <View style={sp.cardActions}>
-                <TouchableOpacity style={[sp.takenBtn, taken && sp.takenBtnActive]}
-                  onPress={() => toggleTaken(supp.id)} activeOpacity={0.75}>
+                {/* Take button disabled and hidden when supplement is not due today */}
+                <TouchableOpacity
+                  style={[sp.takenBtn, taken && sp.takenBtnActive]}
+                  onPress={() => dueToday && toggleTaken(supp.id)}
+                  activeOpacity={dueToday ? 0.75 : 1}
+                  disabled={!dueToday}
+                >
                   <Ionicons name={taken ? 'checkmark-circle' : 'checkmark-circle-outline'} size={18}
                     color={taken ? '#fff' : C.muted} />
-                  <Text style={[sp.takenTxt, taken && sp.takenTxtActive]}>{taken ? 'Taken' : 'Take'}</Text>
+                  <Text style={[sp.takenTxt, taken && sp.takenTxtActive]}>
+                    {taken ? 'Taken' : dueToday ? 'Take' : 'Not today'}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={sp.iconBtn} onPress={() => setFormModal(supp)} hitSlop={8}>
                   <Ionicons name="pencil-outline" size={15} color={C.muted} />
@@ -10125,20 +10202,23 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
           )}
 
           {/* ── Exercise breakdown ── */}
+          {/* Each exercise is its own card — matches the pre-workout exercise list style.
+              No outer grey wrapper so there are no "white boxes inside grey boxes". */}
           {exs.length > 0 && (
-            <View style={[wf.section, { backgroundColor: C.card, borderColor: C.border }]}>
-              <Text style={[wf.sectionLabel, { color: C.muted }]}>SESSION BREAKDOWN</Text>
+            <>
+              <Text style={[wf.sectionLabel, { color: C.muted, alignSelf: 'flex-start', marginBottom: 8 }]}>
+                SESSION BREAKDOWN
+              </Text>
               {exs.map((ex, i) => {
                 const w   = parseFloat(ex.weight) || 0;
                 const vol = w > 0
-                  ? `${Math.round(w * (parseInt(ex.actualReps ?? ex.targetReps, 10) || 0) * (ex.actualSets || ex.targetSets || 0))} kg vol`
+                  ? `${Math.round(w * (parseInt(ex.actualReps ?? ex.targetReps, 10) || 0) * (ex.actualSets || ex.targetSets || 0))} kg`
                   : null;
                 const hasVideo = !!ex.videoUrl;
                 return (
-                  <View key={i} style={[wf.exRow, i < exs.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.borderSubtle }]}>
-                    {/* Left: YouTube chip when video available, subtle done dot otherwise.
-                        Tap opens the reference video even on the summary screen — useful
-                        for reviewing form immediately after the session. */}
+                  /* Individual card per exercise — same look as pre-workout exCardStatic */
+                  <View key={i} style={[wf.exCard, { backgroundColor: C.card, borderColor: C.border }]}>
+                    {/* YouTube / done indicator */}
                     {hasVideo ? (
                       <TouchableOpacity
                         style={wf.ytChip}
@@ -10149,7 +10229,6 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
                         <Ionicons name="logo-youtube" size={18} color="#FF0000" />
                       </TouchableOpacity>
                     ) : (
-                      /* No video stored → minimal green completion dot */
                       <View style={wf.exDoneDot}>
                         <Ionicons name="checkmark" size={11} color={C.green} />
                       </View>
@@ -10159,20 +10238,20 @@ function WorkoutFinishScreen({ data, member, memberName, onBack, onViewHistory, 
                         {ex.exerciseName || ex.name}
                       </Text>
                       <Text style={[wf.exMeta, { color: C.muted }]}>
-                        {ex.actualSets || ex.targetSets}×{ex.actualReps || ex.targetReps}
+                        {ex.actualSets || ex.targetSets} sets
+                        {' · '}{ex.actualReps || ex.targetReps} reps
                         {w > 0 ? `  ·  ${w} kg` : ''}
-                        {vol ? `  ·  ${vol}` : ''}
                       </Text>
                     </View>
-                    {w > 0 && (
+                    {vol && (
                       <View style={[wf.volChip, { backgroundColor: C.blue2 }]}>
-                        <Text style={[wf.volChipTxt, { color: C.primary }]}>{w} kg</Text>
+                        <Text style={[wf.volChipTxt, { color: C.primary }]}>{vol}</Text>
                       </View>
                     )}
                   </View>
                 );
               })}
-            </View>
+            </>
           )}
 
           {/* ── Action buttons ── */}
@@ -10383,10 +10462,21 @@ const useWfStyles = makeStyles((t) => StyleSheet.create({
   chip: { borderRadius: t.radius.full, paddingHorizontal: 12, paddingVertical: 5 },
   chipTxt: { fontSize: 12, fontWeight: '600' },
 
-  /* ── Exercise row ── */
+  /* ── Exercise row (legacy, kept for safety) ── */
   exRow: {
     flexDirection: 'row', alignItems: 'center',
     gap: 10, paddingVertical: 10,
+  },
+  /* ── Standalone exercise card — matches pre-workout exCardStatic ── */
+  exCard: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 12,
+    borderRadius: t.radius.xl,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    width: '100%',
+    ...t.shadow.card,
   },
   // Legacy badge — kept but replaced by ytChip / exDoneDot in JSX
   exBadge: {
