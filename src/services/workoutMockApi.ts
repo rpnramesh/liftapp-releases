@@ -75,7 +75,14 @@ export const ExerciseAPI = {
     );
   },
 
-  create: async (data: { name: string; description: string; muscleGroup: string; videoId?: string; videoTitle?: string }) => {
+  create: async (data: {
+    name: string;
+    description: string;
+    muscleGroup: string;
+    trackingMetric?: string;
+    videoId?: string;
+    videoTitle?: string;
+  }) => {
     const trainerId = uid();
     if (!trainerId) throw new Error('Not logged in');
     const gymId = await getGymId();
@@ -86,8 +93,36 @@ export const ExerciseAPI = {
       description: data.description,
       muscleGroup: data.muscleGroup,
       exerciseMuscleGroup: data.muscleGroup,
+      trackingMetric: data.trackingMetric ?? 'weight_reps',
       videoId: data.videoId ?? null,
       videoTitle: data.videoTitle ?? null,
+      warmupSets: 0, warmupReps: 10, warmupRestSeconds: 60,
+      mainSets: 3, mainReps: 10, mainRestSeconds: 60,
+      createdAt: ts(), updatedAt: ts(),
+    });
+    await setDoc(ref, exercise);
+    return exercise;
+  },
+
+  // createSeeded: idempotent bulk insert for the pre-built exercise library.
+  // Uses a deterministic doc ID (seed_<csvId>) so repeated calls are safe —
+  // setDoc overwrites the same document rather than creating duplicates.
+  createSeeded: async (csvId: string, data: {
+    name: string; description: string; muscleGroup: string; trackingMetric: string;
+  }) => {
+    const trainerId = uid();
+    if (!trainerId) throw new Error('Not logged in');
+    const gymId = await getGymId();
+    const docId = `seed_${csvId}`;
+    const ref = doc(db, 'gyms', gymId, 'exercises', docId);
+    const exercise = clean({
+      id: docId, exerciseId: docId, trainerId, gymId,
+      name: data.name, exerciseName: data.name,
+      description: data.description,
+      muscleGroup: data.muscleGroup,
+      exerciseMuscleGroup: data.muscleGroup,
+      trackingMetric: data.trackingMetric,
+      isSeeded: true,
       warmupSets: 0, warmupReps: 10, warmupRestSeconds: 60,
       mainSets: 3, mainReps: 10, mainRestSeconds: 60,
       createdAt: ts(), updatedAt: ts(),

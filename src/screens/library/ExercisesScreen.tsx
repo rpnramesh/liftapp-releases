@@ -23,6 +23,7 @@ import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, GS, R, S } from '../../constants/theme';
 import { useDebounce } from '../../hooks/useTrainer';
 import { MUSCLE_GROUP_ICONS, MUSCLE_GROUPS } from '../../services/workoutDemoData';
+import { TRACKING_METRICS } from '../../types/workout.types';
 import { ExerciseAPI, WorkoutAPI } from '../../services/workoutMockApi';
 
 interface Props {
@@ -169,7 +170,12 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
                   onPress={() => setEditModal(ex)} activeOpacity={0.85}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.exerciseName}>{ex.name}</Text>
-                    <Text style={styles.exerciseDesc} numberOfLines={2}>{ex.description}</Text>
+                    <Text style={styles.exerciseDesc} numberOfLines={1}>{ex.description}</Text>
+                    {ex.trackingMetric && (
+                      <Text style={styles.trackingBadge}>
+                        {TRACKING_METRICS.find(m => m.value === ex.trackingMetric)?.label ?? ex.trackingMetric}
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.cardActions}>
                     <TouchableOpacity style={styles.editBtn}
@@ -194,9 +200,14 @@ export default function ExercisesScreen({ onExerciseCountChange }: Props) {
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>{editModal.name}</Text>
               <View style={styles.modalGroupBadge}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <IconSymbol name={MUSCLE_GROUP_ICONS[editModal.muscleGroup] ?? 'dumbbell'} size={16} color={C.primary} />
                   <Text style={styles.modalGroupText}>{editModal.muscleGroup}</Text>
+                  {editModal.trackingMetric && (
+                    <Text style={styles.modalTrackingText}>
+                      {'· ' + (TRACKING_METRICS.find(m => m.value === editModal.trackingMetric)?.label ?? editModal.trackingMetric)}
+                    </Text>
+                  )}
                 </View>
               </View>
               <Text style={styles.modalDesc}>{editModal.description}</Text>
@@ -232,6 +243,8 @@ const styles = StyleSheet.create({
   exerciseCard: { backgroundColor: C.white, borderRadius: R.lg, padding: S.md, marginBottom: S.sm, flexDirection: 'row', alignItems: 'flex-start', gap: S.md, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
   exerciseName: { fontSize: 15, fontWeight: '600', color: C.dark, marginBottom: 3 },
   exerciseDesc: { fontSize: 12, color: C.mid, lineHeight: 17 },
+  trackingBadge: { fontSize: 11, color: C.primary, fontWeight: '600', marginTop: 4 },
+  modalTrackingText: { fontSize: 13, color: C.primary, fontWeight: '600' },
   cardActions: { alignItems: 'center', gap: S.sm, paddingTop: 2 },
   editBtn: { backgroundColor: C.primaryBg, paddingHorizontal: S.sm, paddingVertical: 4, borderRadius: R.sm },
   editBtnText: { fontSize: 12, color: C.primary, fontWeight: '600' },

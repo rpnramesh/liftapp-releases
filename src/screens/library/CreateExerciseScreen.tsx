@@ -21,6 +21,7 @@ import KeyboardSafeView from '../../components/ui/KeyboardSafeView';
 import { C, R, S } from '../../constants/theme';
 import { LibraryStackParamList } from '../../navigation/TrainerNavigator';
 import { MUSCLE_GROUPS, MUSCLE_GROUP_ICONS } from '../../services/workoutDemoData';
+import { TRACKING_METRICS } from '../../types/workout.types';
 import { ExerciseAPI } from '../../services/workoutMockApi';
 
 type Props = NativeStackScreenProps<LibraryStackParamList, 'CreateExercise'>;
@@ -29,11 +30,12 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
   const existing = route.params?.exercise;
   const isEditing = !!existing;
 
-  const [name, setName] = useState(existing?.name ?? '');
-  const [description, setDescription] = useState(existing?.description ?? '');
-  const [muscleGroup, setMuscleGroup] = useState(existing?.muscleGroup ?? 'Chest');
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
+  const [name,           setName]           = useState(existing?.name ?? '');
+  const [description,    setDescription]    = useState(existing?.description ?? '');
+  const [muscleGroup,    setMuscleGroup]    = useState(existing?.muscleGroup ?? 'Chest');
+  const [trackingMetric, setTrackingMetric] = useState(existing?.trackingMetric ?? 'weight_reps');
+  const [saving,         setSaving]         = useState(false);
+  const [errors,         setErrors]         = useState({});
 
   const validate = () => {
     const e = {};
@@ -64,6 +66,7 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
           name: name.trim(),
           description: description.trim(),
           muscleGroup,
+          trackingMetric,
           exerciseName: name.trim(),
           exerciseMuscleGroup: muscleGroup,
         });
@@ -72,6 +75,7 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
           name: name.trim(),
           description: description.trim(),
           muscleGroup,
+          trackingMetric,
         });
       }
       // Go back — ExercisesScreen will auto-refresh via useFocusEffect
@@ -119,6 +123,27 @@ export default function CreateExerciseScreen({ navigation, route }: Props) {
                   onPress={() => setMuscleGroup(g)}>
                   <IconSymbol name={MUSCLE_GROUP_ICONS[g] ?? 'dumbbell'} size={14} color={muscleGroup === g ? C.white : C.primary} />
                   <Text style={[styles.groupChipText, muscleGroup === g && styles.groupChipTextActive]}>{g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Tracking Metric */}
+          <View>
+            <Text style={styles.label}>Tracking Metric *</Text>
+            <Text style={styles.labelHint}>
+              How is this exercise logged? Choose what members track each set.
+            </Text>
+            <View style={styles.chipWrap}>
+              {TRACKING_METRICS.map(m => (
+                <TouchableOpacity
+                  key={m.value}
+                  style={[styles.groupChip, trackingMetric === m.value && styles.groupChipActive]}
+                  onPress={() => setTrackingMetric(m.value)}
+                >
+                  <Text style={[styles.groupChipText, trackingMetric === m.value && styles.groupChipTextActive]}>
+                    {m.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>

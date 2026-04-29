@@ -16,11 +16,33 @@ export type MuscleGroup =
   | 'Full Body'
   | 'Other';
 
+// How this exercise is tracked in the logging view.
+// weight_reps  → standard strength: log kg + reps each set
+// reps         → bodyweight: reps only, no weight field
+// time         → isometric / cardio duration: seconds or minutes
+// distance_time→ cardio machine: km + minutes
+// reps_time    → HIIT: both reps and time
+export type TrackingMetric =
+  | 'weight_reps'
+  | 'reps'
+  | 'time'
+  | 'distance_time'
+  | 'reps_time';
+
+export const TRACKING_METRICS: { value: TrackingMetric; label: string }[] = [
+  { value: 'weight_reps',   label: 'Weight + Reps'   },
+  { value: 'reps',          label: 'Reps only'        },
+  { value: 'time',          label: 'Time / Duration'  },
+  { value: 'distance_time', label: 'Distance + Time'  },
+  { value: 'reps_time',     label: 'Reps + Time'      },
+];
+
 export interface Exercise {
   id: string;
   name: string;
   description: string;
   muscleGroup: MuscleGroup;
+  trackingMetric: TrackingMetric;  // how this exercise is logged
   videoId?: string;          // links to a video in Video Library
   videoTitle?: string;
   createdAt: string;

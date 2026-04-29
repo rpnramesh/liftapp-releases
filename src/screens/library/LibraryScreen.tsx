@@ -7,6 +7,8 @@ import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { IconSymbol } from '../../components/ui/icon-symbol';
 import { C, R, S } from '../../constants/theme';
+import { auth } from '../../firebase/config';
+import { seedExerciseLibrary } from '../../services/exerciseSeeder';
 import { ExerciseAPI } from '../../services/workoutMockApi';
 import VideoLibraryScreen from '../video/VideoLibraryScreen';
 import ExercisesScreen from './ExercisesScreen';
@@ -19,10 +21,12 @@ export default function LibraryScreen() {
   const [exerciseCount, setExerciseCount] = useState<number>(-1); // -1 = loading
   const navigation = useNavigation<any>();
 
-  // Refresh exercise count every time this screen comes into focus
-  // This ensures the +Workout button state is always accurate
+  // Seed the 15-exercise library on first use, then refresh the count.
+  // seedExerciseLibrary is idempotent — returns immediately on subsequent calls.
   const loadExerciseCount = useCallback(async () => {
     try {
+      const trainerId = auth.currentUser?.uid ?? '';
+      await seedExerciseLibrary(trainerId);
       const exercises = await ExerciseAPI.getAll();
       setExerciseCount(exercises.length);
     } catch {
