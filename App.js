@@ -321,7 +321,10 @@ function OtpLoginScreen({ onSuccess }) {
           }
         } catch (e) { console.log('Phone lookup error:', e.message); }
 
-        // Create the auth-linked member document, merging any inherited gym data
+        // Create the auth-linked member document, merging any inherited gym data.
+        // gymMemberId stores the original gym-created Firestore doc ID so the
+        // assignment listener can read workouts from the correct path regardless
+        // of whether the gym assigned BEFORE or AFTER the member's first login.
         await setDoc(doc(db, 'members', uid), {
           id: uid,
           phone: `+91${phone}`,
@@ -330,7 +333,14 @@ function OtpLoginScreen({ onSuccess }) {
           plan: '', planStartDate: Date.now(), planEndDate: Date.now(),
           active: true, createdAt: Date.now(),
           ...inherited,
+          gymMemberId: oldMemberId || null,
         });
+
+        // Mark the gym-created member doc with this auth UID so the gym app
+        // can write new workout assignments to the path this listener watches.
+        if (oldMemberId) {
+          updateDoc(doc(db, 'members', oldMemberId), { linkedUid: uid }).catch(() => {});
+        }
 
         // If the pre-created member had a gym assignment, copy it to this UID's path
         // so the workout plan shows up immediately without the gym needing to reassign.
@@ -10987,7 +10997,11 @@ function AppBody() {
       }
     };
 
-    const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', uid);
+    // Use the gym-created member doc ID when available (gymMemberId), because the
+    // gym app writes assignments keyed by the Firestore auto-generated member ID.
+    // Fall back to the Firebase Auth UID for members who haven't re-logged in yet.
+    const assignDocId = member?.gymMemberId || uid;
+    const assignRef = doc(db, 'gyms', gymOrTrainer, 'assignments', assignDocId);
     const unsub = onSnapshot(assignRef, (snap) => {
       if (!snap.exists()) {
         setAssignment(null); setTodayWorkout(null); setPlanWeek(null); setFullPlan(null);
