@@ -354,6 +354,42 @@ function OtpLoginScreen({ onSuccess }) {
             }
           } catch (e) { console.log('Assignment migration error:', e.message); }
         }
+      } else {
+        // Returning member: ensure gymMemberId is set (needed for assignment listener).
+        // This was only written on first login in older versions — patch it here if missing.
+        const existingData = snap.data();
+        if (!existingData?.gymMemberId && existingData?.gymId) {
+          try {
+            const phone10 = phone.replace(/\D/g, '').slice(-10);
+            let foundOldId = null;
+            for (const fmt of [`+91${phone10}`, phone10]) {
+              const qsnap = await getDocs(query(collection(db, 'members'), where('phone', '==', fmt)));
+              for (const d of qsnap.docs) {
+                if (d.id !== uid) { foundOldId = d.id; break; }
+              }
+              if (foundOldId) break;
+            }
+            if (foundOldId) {
+              // Patch gymMemberId on auth doc + linkedUid on old doc (background, no-throw)
+              updateDoc(doc(db, 'members', uid),        { gymMemberId: foundOldId }).catch(() => {});
+              updateDoc(doc(db, 'members', foundOldId), { linkedUid:   uid        }).catch(() => {});
+              // Also copy assignment if not already at auth UID path
+              const existingAssign = await getDoc(
+                doc(db, 'gyms', existingData.gymId, 'assignments', uid)
+              ).catch(() => null);
+              if (!existingAssign?.exists()) {
+                const oldAssign = await getDoc(
+                  doc(db, 'gyms', existingData.gymId, 'assignments', foundOldId)
+                ).catch(() => null);
+                if (oldAssign?.exists()) {
+                  setDoc(doc(db, 'gyms', existingData.gymId, 'assignments', uid), {
+                    ...oldAssign.data(), id: uid, memberId: uid,
+                  }).catch(() => {});
+                }
+              }
+            }
+          } catch (e) { console.log('gymMemberId patch error:', e.message); }
+        }
       }
       onSuccess(uid);
     } catch (e) {
