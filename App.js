@@ -5095,45 +5095,130 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
               </View>
             ) : selectedDay.exercises?.length > 0 ? (
               <>
-                <Text style={wk.exCountHint}>
-                  {selectedDay.exercises.length} exercises
-                </Text>
-                {selectedDay.exercises.map((ex, idx) => {
-                  const exKey = ex.id || idx;
-                  const sets = ex.mainSets || 3;
-                  const rest = ex.mainRestSeconds || 60;
+                {(() => {
+                  // Group exercises into display items before rendering
+                  const rawExs = selectedDay.exercises || [];
+                  const groups = processExercisesForDisplay(rawExs.map(ex => ({
+                    ...ex, id: ex.id || ex.name,
+                    circuitId: ex.circuitId || null,
+                    supersetGroup: ex.supersetGroup || null,
+                  })));
+                  const totalDisplay = groups.length;
+                  const SS_COLORS = { A:'#ef4444', B:'#f97316', C:'#8b5cf6', D:'#06b6d4' };
+
                   return (
-                    <View key={exKey} style={wk.exCardStatic}>
-                      <View style={wk.exCardTouch}>
-                        {/* YouTube chip */}
-                        <TouchableOpacity
-                          style={wk.ytChip}
-                          onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })}
-                          hitSlop={6}
-                          activeOpacity={0.75}
-                        >
-                          <Ionicons name="logo-youtube" size={20} color="#FF0000" />
-                        </TouchableOpacity>
-                        <View style={{ flex: 1 }}>
-                          <Text style={wk.exName}>{ex.name}</Text>
-                          <Text style={wk.exMeta}>
-                            {(() => {
-                              const isTime = ex.trackingType === 'time';
-                              const metric = isTime
-                                ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
-                                : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
-                              if (ex.circuitId) {
-                                return `Circuit ${ex.circuitId} · ${metric} · ${ex.circuitRounds || 3} rounds`;
-                              }
-                              return `${sets} × ${metric} · ${rest}s rest`;
-                            })()}
-                            {ex.supersetGroup && !ex.circuitId ? ` · SS:${ex.supersetGroup}` : ''}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
+                    <>
+                      <Text style={wk.exCountHint}>
+                        {totalDisplay} item{totalDisplay !== 1 ? 's' : ''} · {rawExs.length} exercises
+                      </Text>
+
+                      {groups.map((item, gIdx) => {
+                        /* ── SUPERSET ── */
+                        if (item.type === 'superset') {
+                          const ssBg = SS_COLORS[item.id] || C.primary;
+                          return (
+                            <View key={`ss_${item.id}_${gIdx}`} style={[wk.exCardStatic, { borderLeftWidth: 4, borderLeftColor: ssBg, paddingLeft: 0 }]}>
+                              {/* Superset header */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8,
+                                borderBottomWidth: 1, borderBottomColor: `${ssBg}25` }}>
+                                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: `${ssBg}18`, borderWidth: 1,
+                                  borderColor: `${ssBg}40`, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '800', color: ssBg }}>SS</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: ssBg }}>Superset {item.id}</Text>
+                                  <Text style={wk.exMeta}>{item.exercises.length} exercises · {item.exercises[0]?.mainRestSeconds || 60}s rest after pair</Text>
+                                </View>
+                              </View>
+                              {/* Superset exercises */}
+                              {item.exercises.map((ex, ei) => {
+                                const isTime = ex.trackingType === 'time';
+                                const metric = isTime
+                                  ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
+                                  : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
+                                return (
+                                  <View key={ex.id || ei} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10,
+                                    borderTopWidth: ei > 0 ? 1 : 0, borderTopColor: `${ssBg}18` }}>
+                                    <TouchableOpacity style={wk.ytChip} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} hitSlop={6} activeOpacity={0.75}>
+                                      <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                                    </TouchableOpacity>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={wk.exName}>{ex.name}</Text>
+                                      <Text style={wk.exMeta}>{(ex.mainSets || 3)} × {metric}</Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          );
+                        }
+
+                        /* ── CIRCUIT ── */
+                        if (item.type === 'circuit') {
+                          return (
+                            <View key={`c_${item.id}_${gIdx}`} style={[wk.exCardStatic, { borderLeftWidth: 4, borderLeftColor: C.primary }]}>
+                              {/* Circuit header */}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8,
+                                borderBottomWidth: 1, borderBottomColor: 'rgba(79,70,229,0.15)' }}>
+                                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(79,70,229,0.12)',
+                                  borderWidth: 1, borderColor: 'rgba(79,70,229,0.3)', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                                  <Text style={{ fontSize: 12 }}>⚡</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 13, fontWeight: '700', color: C.primary }}>Circuit {item.id}</Text>
+                                  <Text style={wk.exMeta}>{item.rounds} rounds · {item.restSeconds}s rest between rounds · {item.exercises.length} exercises</Text>
+                                </View>
+                              </View>
+                              {/* Circuit exercises */}
+                              {item.exercises.map((ex, ei) => {
+                                const isTime = ex.trackingType === 'time';
+                                const metric = isTime
+                                  ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
+                                  : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
+                                return (
+                                  <View key={ex.id || ei} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10,
+                                    borderTopWidth: ei > 0 ? 1 : 0, borderTopColor: 'rgba(79,70,229,0.1)' }}>
+                                    <TouchableOpacity style={wk.ytChip} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} hitSlop={6} activeOpacity={0.75}>
+                                      <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                                    </TouchableOpacity>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={wk.exName}>{ex.name}</Text>
+                                      <Text style={wk.exMeta}>{isTime ? '⏱' : ''} {metric}</Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          );
+                        }
+
+                        /* ── REGULAR ── */
+                        const ex = item.exercises[0];
+                        const sets = ex.mainSets || 3;
+                        const rest = ex.mainRestSeconds || 60;
+                        const isTime = ex.trackingType === 'time';
+                        const metric = isTime
+                          ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
+                          : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
+                        return (
+                          <View key={ex.id || gIdx} style={wk.exCardStatic}>
+                            <View style={wk.exCardTouch}>
+                              <TouchableOpacity style={wk.ytChip} onPress={() => setVideoExName({ name: ex.name, videoUrl: ex.videoUrl })} hitSlop={6} activeOpacity={0.75}>
+                                <Ionicons name="logo-youtube" size={20} color="#FF0000" />
+                              </TouchableOpacity>
+                              <View style={{ flex: 1 }}>
+                                <Text style={wk.exName}>{ex.name}</Text>
+                                <Text style={wk.exMeta}>
+                                  {isTime ? `⏱ ${metric} × ${sets} sets` : `${sets} × ${metric}`} · {rest}s rest
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
                   );
-                })}
+                })()}
                 {/* Start / Mark Complete buttons — only shown for incomplete days.
                     The "Completed" status is now shown as a badge in the header. */}
                 {!selectedDay.completedAt && (
