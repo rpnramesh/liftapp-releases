@@ -2238,9 +2238,12 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                       const metric = isTime
                         ? `${ex.durationSeconds || 30}${ex.durationSecondsMax ? `–${ex.durationSecondsMax}` : ''}s`
                         : `${ex.reps}${ex.repsMax ? `–${ex.repsMax}` : ''} reps`;
+                      if (ex.circuitId) {
+                        return `Circuit ${ex.circuitId}  ·  ${metric}  ·  ${ex.circuitRounds || 3} rounds`;
+                      }
                       return `${totalSets} sets × ${metric} · ${ex.rest}s rest`;
                     })()}
-                    {ex.supersetGroup ? `  ·  SS:${ex.supersetGroup}` : ''}
+                    {ex.supersetGroup && !ex.circuitId ? `  ·  SS:${ex.supersetGroup}` : ''}
                   </Text>
 
                   {/* Previous workout data — "Last: 8×35kg" */}
@@ -4852,9 +4855,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                               const metric = isTime
                                 ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
                                 : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
+                              if (ex.circuitId) {
+                                return `Circuit ${ex.circuitId} · ${metric} · ${ex.circuitRounds || 3} rounds`;
+                              }
                               return `${sets} × ${metric} · ${rest}s rest`;
                             })()}
-                            {ex.supersetGroup ? ` · SS:${ex.supersetGroup}` : ''}
+                            {ex.supersetGroup && !ex.circuitId ? ` · SS:${ex.supersetGroup}` : ''}
                           </Text>
                         </View>
                       </View>
@@ -4880,7 +4886,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           rest:               ex.mainRestSeconds || 60,
                           note:               ex.notes || '',
                           warmupSets:         ex.warmupSets || 0,
-                          supersetGroup:      ex.supersetGroup || null,
+                          supersetGroup:      ex.supersetGroup      || null,
+                          circuitId:          ex.circuitId          || null,
+                          circuitRounds:      ex.circuitRounds      || null,
+                          circuitRestSeconds: ex.circuitRestSeconds || null,
                           muscleGroup:        ex.muscleGroup || '',
                           videoUrl:           ex.videoUrl || '',
                         }));
@@ -11034,7 +11043,10 @@ function AppBody() {
           durationSecondsMax:  ex.mainDurationSecondsMax || null,
           rest:                ex.mainRestSeconds || 60,
           warmupSets:          ex.warmupSets || 0,
-          supersetGroup:       ex.supersetGroup || null,
+          supersetGroup:       ex.supersetGroup      || null,
+          circuitId:           ex.circuitId          || null,
+          circuitRounds:       ex.circuitRounds      || null,
+          circuitRestSeconds:  ex.circuitRestSeconds || null,
           note:                ex.notes || '',
           muscleGroup:         ex.muscleGroup || '',
           videoUrl:            ex.videoUrl || '',
