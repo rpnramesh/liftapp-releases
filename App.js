@@ -1714,6 +1714,41 @@ const ev = StyleSheet.create({
   thumbTxt: { fontSize: 13, fontWeight: '600', color: C.primary },
 });
 
+// ── Group exercises into display items (superset / circuit / regular) ─────────
+function processExercisesForDisplay(exercises) {
+  const items = [];
+  const seen  = new Set();
+  exercises.forEach(ex => {
+    if (ex.circuitId) {
+      const key = `c_${ex.circuitId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        items.push({
+          type:        'circuit',
+          id:          ex.circuitId,
+          exercises:   exercises.filter(e => e.circuitId === ex.circuitId),
+          rounds:      ex.circuitRounds      || 3,
+          restSeconds: ex.circuitRestSeconds || 60,
+        });
+      }
+    } else if (ex.supersetGroup) {
+      const key = `ss_${ex.supersetGroup}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        items.push({
+          type:        'superset',
+          id:          ex.supersetGroup,
+          exercises:   exercises.filter(e => e.supersetGroup === ex.supersetGroup),
+          restSeconds: ex.rest || 60,
+        });
+      }
+    } else {
+      items.push({ type: 'regular', exercises: [ex] });
+    }
+  });
+  return items;
+}
+
 // ── buildWorkoutFinishData — module-level helper ──────────────────────────────
 // Extracted from LoggingView (where it was a local closure) to module scope so
 // WorkoutsScreen can call it too. Previously WorkoutsScreen referenced it at
@@ -1753,6 +1788,11 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
   const [allDone, setAllDone] = useState(!!workoutTimer?.completed);
   const [customReps, setCustomReps] = useState({});
   const [extraSets, setExtraSets] = useState({});
+  // Circuit state
+  const [circuitRound,     setCircuitRound]     = useState({}); // {id: currentRound}
+  const [circuitActuals,   setCircuitActuals]   = useState({}); // {`${id}_${round}_${exId}`: value}
+  const [circuitCompleted, setCircuitCompleted] = useState({}); // {id: true}
+  const displayItems = processExercisesForDisplay(exercises);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completeMinutes, setCompleteMinutes] = useState('');
   const [videoExName, setVideoExName] = useState(null);
@@ -2176,7 +2216,231 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
               • success-600 = done
               • neutral = pending / skipped
         */}
-        {exercises.map((ex) => {
+        {/* ── Render grouped display items ──────────────────────────────
+            Groups: superset → one card, circuit → one card, regular → one card each */}
+        {displayItems.map((item, itemIdx) => {
+
+          /* ── SUPERSET GROUP CARD ──────────────────────────────────── */
+          if (item.type === 'superset') {
+            const SS_COLORS = { A:'#ef4444', B:'#f97316', C:'#8b5cf6', D:'#06b6d4' };
+            const ssColor   = SS_COLORS[item.id] || C.primary;
+            const allSSDone = item.exercises.every(e => allSetsOf(e));
+            return (
+              <View key={`ss_${item.id}_${itemIdx}`} style={[lv.exCard, allSSDone && lv.exCardDone, { borderLeftWidth: 4, borderLeftColor: ssColor }]}>
+                {/* Superset header */}
+                <View style={[lv.exHeader, { borderBottomWidth: 1, borderBottomColor: `${ssColor}25` }]}>
+                  <View style={[lv.exStatusChip, { backgroundColor: `${ssColor}18`, borderColor: `${ssColor}40` }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: ssColor }}>SS</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[lv.exName, { color: ssColor }]}>Superset {item.id}</Text>
+                    <Text style={lv.exMeta}>{item.exercises.length} exercises · {item.restSeconds}s rest after pair</Text>
+                  </View>
+                  {allSSDone && <Ionicons name="checkmark-circle" size={22} color={C.green} />}
+                </View>
+                {/* Each exercise in superset */}
+                {item.exercises.map((ex, ei) => {
+                  const isOpen    = expanded === ex.id;
+                  const totalSets = getTotalSets(ex);
+                  const isDone    = allSetsOf(ex);
+                  const doneCnt   = Array.from({ length: totalSets }, (_, i) => doneSets[`${ex.id}_${i+1}`]).filter(Boolean).length;
+                  return (
+                    <View key={ex.id} style={{ borderTopWidth: ei > 0 ? 1 : 0, borderTopColor: `${ssColor}18` }}>
+                      <TouchableOpacity style={[lv.exHeader, { paddingVertical: 8 }]}
+                        onPress={() => setExpanded(isOpen ? null : ex.id)} activeOpacity={0.8}>
+                        <View style={[lv.exStatusChip, isDone ? lv.exStatusChipDone : doneCnt > 0 ? lv.exStatusChipActive : lv.exStatusChipIdle]}>
+                          {isDone ? <Ionicons name="checkmark" size={16} color="#fff" />
+                            : doneCnt > 0 ? <Text style={lv.exStatusCount}>{doneCnt}</Text>
+                            : <Ionicons name="play" size={13} color={C.mid} />}
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={[lv.exName, isDone && lv.exNameDone]} numberOfLines={1}>{ex.name}</Text>
+                          <Text style={lv.exMeta}>{totalSets} sets × {ex.trackingType === 'time' ? `${ex.durationSeconds||30}${ex.durationSecondsMax?`–${ex.durationSecondsMax}`:''}s` : `${ex.reps}${ex.repsMax?`–${ex.repsMax}`:''} reps`}</Text>
+                        </View>
+                        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={C.muted} />
+                      </TouchableOpacity>
+                      {isOpen && (
+                        <View style={lv.setList}>
+                          {Array.from({ length: totalSets }, (_, i) => {
+                            const setNo   = i + 1;
+                            const sk      = `${ex.id}_${setNo}`;
+                            const done    = doneSets[sk];
+                            const cur     = !done && Array.from({ length: setNo-1 }, (_, j) => `${ex.id}_${j+1}`).every(k => doneSets[k]);
+                            const lastW   = lastWeights[sk];
+                            const isFlash = latestDone === sk;
+                            return (
+                              <View key={setNo}>
+                                <View style={[lv.setRow, done && lv.setRowDone, cur && lv.setRowCurrent, isFlash && { overflow: 'hidden' }]}>
+                                  {isFlash && <Animated.View pointerEvents="none" style={[lv.flashOverlay, { opacity: flashAnim }]} />}
+                                  <View style={[lv.setNumBadge, done ? lv.setNumBadgeDone : cur ? lv.setNumBadgeCurrent : null]}>
+                                    {done ? <Ionicons name="checkmark" size={13} color="#fff" />
+                                      : <Text style={[lv.setNumTxt, cur && lv.setNumTxtCurrent]}>{setNo}</Text>}
+                                  </View>
+                                  <View style={lv.repsCol}>
+                                    <Text style={lv.fieldLabel}>{ex.trackingType === 'time' ? 'SEC' : 'REPS'}</Text>
+                                    {done
+                                      ? <Text style={lv.fieldValueDone}>{customReps[sk] ?? (ex.trackingType === 'time' ? ex.durationSeconds ?? 30 : ex.reps)}</Text>
+                                      : <TextInput style={[lv.fieldInput, cur && lv.fieldInputActive]} keyboardType="number-pad" maxLength={4}
+                                          value={String(customReps[sk] ?? (ex.trackingType === 'time' ? ex.durationSeconds ?? 30 : ex.reps))}
+                                          onChangeText={v => setCustomReps(p => ({ ...p, [sk]: v.replace(/\D/g,'') }))} selectTextOnFocus />}
+                                  </View>
+                                  {ex.trackingType !== 'time' && (
+                                    <View style={lv.weightCol}>
+                                      <Text style={lv.fieldLabel}>KG</Text>
+                                      {done ? <Text style={lv.fieldValueDone}>{setWeights[sk] || lastW || '—'}</Text>
+                                        : <TextInput style={[lv.fieldInput, lv.fieldInputWide, cur && lv.fieldInputActive]} keyboardType="decimal-pad"
+                                            placeholder={lastW || '0'} placeholderTextColor={C.muted} value={setWeights[sk] || ''}
+                                            onChangeText={v => { const u = { ...setWeights, [sk]: v }; setSetWeights(u); setSetWeightsExternal(u); }} selectTextOnFocus />}
+                                    </View>
+                                  )}
+                                  {done
+                                    ? <View style={lv.doneTick}><Ionicons name="checkmark-circle" size={30} color={C.green} /></View>
+                                    : <TouchableOpacity style={[lv.completeSetBtn, cur && lv.completeSetBtnActive]}
+                                        onPress={() => markSetDoneWithFlash(ex.id, setNo, ex.rest, totalSets)} activeOpacity={0.75}>
+                                        <Ionicons name="checkmark" size={20} color={cur ? '#fff' : C.muted} />
+                                      </TouchableOpacity>}
+                                </View>
+                                {done && restTimers[sk] > 0 && <RestTimerStrip stateKey={sk} restTimers={restTimers} adjustRest={adjustRest} C={C} />}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          }
+
+          /* ── CIRCUIT GROUP CARD ───────────────────────────────────── */
+          if (item.type === 'circuit') {
+            const cId         = item.id;
+            const totalRounds = item.rounds;
+            const curRound    = circuitRound[cId] || 1;
+            const isDone      = !!circuitCompleted[cId];
+
+            const getActual = (exId) => {
+              const key = `${cId}_${curRound}_${exId}`;
+              return circuitActuals[key] ?? null;
+            };
+            const setActual = (exId, val) => {
+              setCircuitActuals(prev => ({ ...prev, [`${cId}_${curRound}_${exId}`]: val }));
+            };
+
+            const completeRound = () => {
+              if (curRound >= totalRounds) {
+                setCircuitCompleted(prev => ({ ...prev, [cId]: true }));
+                // Fire rest timer on a dummy key so it shows
+                const endKey = `circuit_${cId}_done`;
+                setRestEndTimes(prev => ({ ...prev, [endKey]: Date.now() + item.restSeconds * 1000 }));
+              } else {
+                const endKey = `circuit_${cId}_r${curRound}`;
+                setRestEndTimes(prev => ({ ...prev, [endKey]: Date.now() + item.restSeconds * 1000 }));
+                setCircuitRound(prev => ({ ...prev, [cId]: curRound + 1 }));
+              }
+            };
+
+            return (
+              <View key={`c_${cId}_${itemIdx}`} style={[lv.exCard, isDone && lv.exCardDone, { borderLeftWidth: 4, borderLeftColor: C.primary }]}>
+                {/* Circuit header */}
+                <View style={[lv.exHeader, { borderBottomWidth: 1, borderBottomColor: 'rgba(79,70,229,0.15)' }]}>
+                  <View style={[lv.exStatusChip, { backgroundColor: 'rgba(79,70,229,0.12)', borderColor: 'rgba(79,70,229,0.3)' }]}>
+                    {isDone ? <Ionicons name="checkmark" size={16} color="#fff" style={{ backgroundColor: C.green, borderRadius: 12 }} />
+                      : <Text style={{ fontSize: 12, fontWeight: '800', color: C.primary }}>⚡</Text>}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={[lv.exName, { color: C.primary }]}>Circuit {cId}</Text>
+                    <Text style={lv.exMeta}>{totalRounds} rounds · {item.restSeconds}s rest between rounds</Text>
+                  </View>
+                  {isDone && <Ionicons name="checkmark-circle" size={22} color={C.green} />}
+                </View>
+
+                {!isDone && (
+                  <View style={{ padding: 14 }}>
+                    {/* Round tracker */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: C.mid }}>ROUND</Text>
+                      {Array.from({ length: totalRounds }, (_, i) => i + 1).map(r => (
+                        <View key={r} style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: r < curRound ? C.green : r === curRound ? C.primary : 'rgba(79,70,229,0.1)',
+                          borderWidth: r === curRound ? 0 : 1.5, borderColor: r < curRound ? C.green : 'rgba(79,70,229,0.25)' }}>
+                          {r < curRound
+                            ? <Ionicons name="checkmark" size={14} color="#fff" />
+                            : <Text style={{ fontSize: 12, fontWeight: '800', color: r === curRound ? '#fff' : C.primary }}>{r}</Text>}
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Exercise rows — one per exercise in the circuit */}
+                    {item.exercises.map((ex, ei) => {
+                      const isTime = ex.trackingType === 'time';
+                      const target = isTime ? (ex.durationSeconds || 30) : ex.reps;
+                      const actual = getActual(ex.id);
+                      return (
+                        <View key={ex.id} style={{ marginBottom: 10, paddingBottom: 10,
+                          borderBottomWidth: ei < item.exercises.length - 1 ? 1 : 0,
+                          borderBottomColor: 'rgba(79,70,229,0.1)' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{ex.name}</Text>
+                              <Text style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
+                                Target: {target}{isTime ? 's' : ' reps'}
+                                {(isTime && ex.durationSecondsMax) ? `–${ex.durationSecondsMax}s` : ''}
+                                {(!isTime && ex.repsMax) ? `–${ex.repsMax} reps` : ''}
+                              </Text>
+                            </View>
+                            {/* Actual input */}
+                            <View style={{ alignItems: 'center', minWidth: 64 }}>
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: C.primary, marginBottom: 3 }}>
+                                {isTime ? 'SEC DONE' : 'REPS DONE'}
+                              </Text>
+                              <TextInput
+                                style={{ width: 64, height: 40, borderRadius: 10, borderWidth: 1.5, borderColor: C.primary + '60',
+                                  backgroundColor: 'rgba(79,70,229,0.06)', textAlign: 'center', fontSize: 18, fontWeight: '800', color: C.dark }}
+                                keyboardType="number-pad"
+                                maxLength={4}
+                                value={actual != null ? String(actual) : String(target)}
+                                onChangeText={v => setActual(ex.id, v.replace(/\D/g, ''))}
+                                selectTextOnFocus
+                              />
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+
+                    {/* Complete Round button */}
+                    <TouchableOpacity
+                      style={{ backgroundColor: C.primary, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 4 }}
+                      activeOpacity={0.8}
+                      onPress={completeRound}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                        {curRound >= totalRounds ? '✓ Complete Circuit' : `Complete Round ${curRound}`}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Rest timer after round */}
+                    {Object.entries(restTimers).filter(([k]) => k.startsWith(`circuit_${cId}`)).map(([k, secs]) =>
+                      secs > 0 ? <RestTimerStrip key={k} stateKey={k} restTimers={restTimers} adjustRest={adjustRest} C={C} /> : null
+                    )}
+                  </View>
+                )}
+
+                {isDone && (
+                  <View style={{ padding: 16, alignItems: 'center' }}>
+                    <Text style={{ color: C.green, fontWeight: '700', fontSize: 15 }}>
+                      ✓ All {totalRounds} rounds complete!
+                    </Text>
+                  </View>
+                )}
+              </View>
+            );
+          }
+
+          /* ── REGULAR EXERCISE CARD (unchanged logic) ──────────────── */
+          const ex = item.exercises[0];
+          {
           const isOpen        = expanded === ex.id;
           const totalSets     = getTotalSets(ex);
           const skipped       = isSkipped(ex);
@@ -2355,7 +2619,8 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                                 )}
                               </View>
 
-                              {/* Weight input */}
+                              {/* Weight input — hidden for time-based exercises */}
+                              {ex.trackingType !== 'time' && (
                               <View style={lv.weightCol}>
                                 <Text style={lv.fieldLabel}>KG</Text>
                                 {isDoneSet ? (
@@ -2382,6 +2647,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                                   </View>
                                 )}
                               </View>
+                              )}
 
                               {/* Complete-set button or done tick */}
                               {isDoneSet ? (
@@ -2399,8 +2665,8 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                               )}
                             </View>
 
-                            {/* Quick-action bar — shown only below the current active set */}
-                            {isCurrent && !isDoneSet && (
+                            {/* Quick-action bar — hidden for time-based, shown only below the current active set */}
+                            {isCurrent && !isDoneSet && ex.trackingType !== 'time' && (
                               <View style={lv.quickActions}>
                                 {lastW ? (
                                   <TouchableOpacity
@@ -2480,6 +2746,7 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
               )}
             </View>
           );
+          } // end regular exercise block
         })}
 
         {/* ── Mark Workout Complete CTA ─────────────────────────────────── */}
