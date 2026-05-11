@@ -2233,7 +2233,14 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                   </Text>
 
                   <Text style={lv.exMeta}>
-                    {skipped ? 'Exercise skipped' : `${totalSets} sets · ${ex.rest}s rest`}
+                    {skipped ? 'Exercise skipped' : (() => {
+                      const isTime = ex.trackingType === 'time';
+                      const metric = isTime
+                        ? `${ex.durationSeconds || 30}${ex.durationSecondsMax ? `–${ex.durationSecondsMax}` : ''}s`
+                        : `${ex.reps}${ex.repsMax ? `–${ex.repsMax}` : ''} reps`;
+                      return `${totalSets} sets × ${metric} · ${ex.rest}s rest`;
+                    })()}
+                    {ex.supersetGroup ? `  ·  SS:${ex.supersetGroup}` : ''}
                   </Text>
 
                   {/* Previous workout data — "Last: 8×35kg" */}
@@ -2320,19 +2327,23 @@ function LoggingView({ exercises, onBack, memberName, workoutTimer, stopWorkoutT
                                     ]}>{setNo}</Text>}
                               </View>
 
-                              {/* Reps input (editable on current/pending; read-only on done) */}
+                              {/* Reps / Duration input */}
                               <View style={lv.repsCol}>
-                                <Text style={lv.fieldLabel}>REPS</Text>
+                                <Text style={lv.fieldLabel}>
+                                  {ex.trackingType === 'time' ? 'SEC' : 'REPS'}
+                                </Text>
                                 {isDoneSet ? (
                                   <Text style={[lv.fieldValueDone]}>
-                                    {customReps[stateKey] ?? ex.reps}
+                                    {ex.trackingType === 'time'
+                                      ? (customReps[stateKey] ?? ex.durationSeconds ?? 30)
+                                      : (customReps[stateKey] ?? ex.reps)}
                                   </Text>
                                 ) : (
                                   <TextInput
                                     style={[lv.fieldInput, isCurrent && lv.fieldInputActive]}
                                     keyboardType="number-pad"
-                                    maxLength={3}
-                                    value={String(customReps[stateKey] ?? ex.reps)}
+                                    maxLength={4}
+                                    value={String(customReps[stateKey] ?? (ex.trackingType === 'time' ? (ex.durationSeconds ?? 30) : ex.reps))}
                                     onChangeText={val =>
                                       setCustomReps(prev => ({ ...prev, [stateKey]: val.replace(/[^0-9]/g, '') }))
                                     }
@@ -4836,7 +4847,14 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                         <View style={{ flex: 1 }}>
                           <Text style={wk.exName}>{ex.name}</Text>
                           <Text style={wk.exMeta}>
-                            {sets} sets · {rest}s rest
+                            {(() => {
+                              const isTime = ex.trackingType === 'time';
+                              const metric = isTime
+                                ? `${ex.mainDurationSeconds || 30}${ex.mainDurationSecondsMax ? `–${ex.mainDurationSecondsMax}` : ''}s`
+                                : `${ex.mainReps || 10}${ex.mainRepsMax ? `–${ex.mainRepsMax}` : ''} reps`;
+                              return `${sets} × ${metric} · ${rest}s rest`;
+                            })()}
+                            {ex.supersetGroup ? ` · SS:${ex.supersetGroup}` : ''}
                           </Text>
                         </View>
                       </View>
@@ -4851,12 +4869,20 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       style={[wk.startBtn, { flex: 1 }]}
                       onPress={() => {
                         const exs = selectedDay.exercises.map(ex => ({
-                          id: ex.id || ex.name, name: ex.name,
-                          sets: ex.mainSets || 3, reps: ex.mainReps || 10,
-                          rest: ex.mainRestSeconds || 60, note: ex.notes || '',
-                          warmupSets: ex.warmupSets || 0,
-                          muscleGroup: ex.muscleGroup || '',
-                          videoUrl: ex.videoUrl || '',
+                          id:                 ex.id || ex.name,
+                          name:               ex.name,
+                          sets:               ex.mainSets || 3,
+                          trackingType:       ex.trackingType || 'reps',
+                          reps:               ex.mainReps || 10,
+                          repsMax:            ex.mainRepsMax || null,
+                          durationSeconds:    ex.mainDurationSeconds || null,
+                          durationSecondsMax: ex.mainDurationSecondsMax || null,
+                          rest:               ex.mainRestSeconds || 60,
+                          note:               ex.notes || '',
+                          warmupSets:         ex.warmupSets || 0,
+                          supersetGroup:      ex.supersetGroup || null,
+                          muscleGroup:        ex.muscleGroup || '',
+                          videoUrl:           ex.videoUrl || '',
                         }));
                         const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
                         setWorkoutDoneSets({});
@@ -10998,15 +11024,20 @@ function AppBody() {
         setTodayWorkout({ id: 'rest', name: 'Rest Day', isRestDay: true, exercises: [] });
       } else if (todayDay && !todayDay.restDay && todayDay.exercises?.length > 0) {
         const exercises = todayDay.exercises.map(ex => ({
-          id: ex.id || ex.name,
-          name: ex.name,
-          sets: ex.mainSets || 3,
-          reps: ex.mainReps || 10,
-          rest: ex.mainRestSeconds || 60,
-          warmupSets: ex.warmupSets || 0,
-          note: ex.notes || '',
-          muscleGroup: ex.muscleGroup || '',
-          videoUrl: ex.videoUrl || '',
+          id:                  ex.id || ex.name,
+          name:                ex.name,
+          sets:                ex.mainSets || 3,
+          trackingType:        ex.trackingType || 'reps',
+          reps:                ex.mainReps || 10,
+          repsMax:             ex.mainRepsMax || null,
+          durationSeconds:     ex.mainDurationSeconds || null,
+          durationSecondsMax:  ex.mainDurationSecondsMax || null,
+          rest:                ex.mainRestSeconds || 60,
+          warmupSets:          ex.warmupSets || 0,
+          supersetGroup:       ex.supersetGroup || null,
+          note:                ex.notes || '',
+          muscleGroup:         ex.muscleGroup || '',
+          videoUrl:            ex.videoUrl || '',
         }));
         const estSecs = exercises.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
         setTodayWorkout({
