@@ -4200,6 +4200,8 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
   const [circuitRound,     setCircuitRound]     = useState({}); // {circuitId: currentRound 1-based}
   const [circuitActuals,   setCircuitActuals]   = useState({}); // {`${cId}_${round}_${exId}`: value}
   const [circuitCompleted, setCircuitCompleted] = useState({}); // {circuitId: true}
+  // Superset tracking state — each "set" = all exercises done back-to-back
+  const [supersetCurrentSet, setSupersetCurrentSet] = useState({}); // {ssId: currentSetNo 1-based}
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [completeMinutes, setCompleteMinutes] = useState('');
   const [showPastCompleteModal, setShowPastCompleteModal] = useState(false);
@@ -5680,26 +5682,144 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             {logDisplayItems.map((item, gIdx) => {
               const SS_COLORS = { A:'#ef4444', B:'#f97316', C:'#8b5cf6', D:'#06b6d4' };
 
-              // SUPERSET GROUP ─────────────────────────────────────────────
+              // SUPERSET GROUP — set-based: each "set" = all exercises done together
               if (item.type === 'superset') {
-                const ssBg = SS_COLORS[item.id] || C.primary;
-                const allSSDone = item.exercises.every(e => allSetsOf(e));
+                const ssId    = item.id;
+                const ssBg    = SS_COLORS[ssId] || C.primary;
+                const maxSets = item.exercises.length > 0 ? getTotalSets(item.exercises[0]) : 3;
+                const curSet  = supersetCurrentSet[ssId] || 1;
+                const allSSDone = curSet > maxSets;
+                const restSecs = item.exercises.length > 0 ? (item.exercises[0].rest || 60) : 60;
+                // Rest timer key for the most-recently completed set
+                const ssRestKey = Object.keys(restTimers).find(k => k.startsWith('ss_' + ssId + '_set') && restTimers[k] > 0);
+                const ssRestLeft = ssRestKey ? restTimers[ssRestKey] : null;
+
                 return (
-                  <View key={`ss_${item.id}_${gIdx}`}
+                  <View key={'ss_' + ssId + '_' + gIdx}
                     style={[lv.exCard, allSSDone && lv.exCardDone, { borderLeftWidth: 4, borderLeftColor: ssBg }]}>
+
+                    {/* Header */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10,
                       borderBottomWidth: 1, borderBottomColor: ssBg + '30' }}>
                       <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: ssBg + '18',
                         borderWidth: 1.5, borderColor: ssBg + '50', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: ssBg }}>SS{item.id}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: ssBg }}>SS{ssId}</Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: ssBg }}>Superset {item.id}</Text>
-                        <Text style={lv.exMeta}>{item.exercises.length} exercises · {item.exercises[0] && item.exercises[0].rest ? item.exercises[0].rest : 60}s rest after pair</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '700', color: ssBg }}>{'Superset ' + ssId}</Text>
+                        <Text style={lv.exMeta}>{item.exercises.length + ' exercises · ' + restSecs + 's rest between sets'}</Text>
                       </View>
                       {allSSDone && <Ionicons name="checkmark-circle" size={22} color={C.green} />}
                     </View>
-                    {item.exercises.map(ex => renderExCard(ex, 'ss_' + item.id + '_' + ex.id))}
+
+                    {/* Set progress dots */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: C.mid, letterSpacing: 1 }}>SET</Text>
+                      {Array.from({ length: maxSets }, (_, i) => i + 1).map(s => (
+                        <View key={s} style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: s < curSet ? ssBg : s === curSet ? ssBg : 'transparent',
+                          borderWidth: s >= curSet ? 1.5 : 0,
+                          borderColor: s === curSet ? ssBg : ssBg + '40',
+                          opacity: s > curSet ? 0.4 : 1 }}>
+                          {s < curSet
+                            ? <Ionicons name="checkmark" size={15} color="#fff" />
+                            : <Text style={{ fontSize: 13, fontWeight: '800', color: s === curSet ? '#fff' : ssBg }}>{s}</Text>}
+                        </View>
+                      ))}
+                    </View>
+
+                    {/* Exercise input rows for the current set */}
+                    {!allSSDone && (
+                      <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
+                        {item.exercises.map((ex, ei) => {
+                          const sk = ex.id + '_' + curSet;
+                          const isTimeBased = ex.trackingType === 'time';
+                          const defaultVal = isTimeBased ? (ex.durationSeconds || 30) : (ex.reps || 10);
+                          return (
+                            <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12,
+                              borderBottomWidth: ei < item.exercises.length - 1 ? 1 : 0,
+                              borderBottomColor: ssBg + '18' }}>
+                              {/* Name + type hint */}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{ex.name}</Text>
+                                <Text style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
+                                  {'Target: ' + defaultVal + (isTimeBased ? 's' : ' reps')}
+                                </Text>
+                              </View>
+                              {/* REPS or SEC */}
+                              <View style={{ alignItems: 'center' }}>
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: ssBg, marginBottom: 4 }}>
+                                  {isTimeBased ? 'SEC' : 'REPS'}
+                                </Text>
+                                <TextInput
+                                  style={{ width: 58, height: 40, borderRadius: 10, borderWidth: 1.5,
+                                    borderColor: ssBg + '70', backgroundColor: ssBg + '0D',
+                                    textAlign: 'center', fontSize: 18, fontWeight: '800', color: C.dark }}
+                                  keyboardType="number-pad" maxLength={4}
+                                  value={String(customReps[sk] ?? defaultVal)}
+                                  onChangeText={val => setCustomReps(prev => Object.assign({}, prev, { [sk]: val.replace(/[^0-9]/g, '') }))}
+                                  selectTextOnFocus
+                                />
+                              </View>
+                              {/* KG — hidden for time-based */}
+                              {!isTimeBased && (
+                                <View style={{ alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 10, fontWeight: '700', color: C.mid, marginBottom: 4 }}>KG</Text>
+                                  <TextInput
+                                    style={{ width: 58, height: 40, borderRadius: 10, borderWidth: 1.5,
+                                      borderColor: C.border, backgroundColor: C.card,
+                                      textAlign: 'center', fontSize: 18, fontWeight: '800', color: C.dark }}
+                                    keyboardType="decimal-pad" maxLength={5}
+                                    placeholder={lastWeights[sk] || '0'}
+                                    placeholderTextColor={C.muted}
+                                    value={localSetWeights[sk] || ''}
+                                    onChangeText={val => { const u = Object.assign({}, localSetWeights, { [sk]: val }); setLocalSetWeights(u); setWorkoutSetWeights(u); }}
+                                    selectTextOnFocus
+                                  />
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {/* Done Set N button */}
+                    {!allSSDone && (
+                      <TouchableOpacity
+                        style={{ backgroundColor: ssBg, borderRadius: 12, paddingVertical: 14,
+                          alignItems: 'center', marginHorizontal: 14, marginBottom: 14 }}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          // Mark all exercises' current set as done
+                          const nd = Object.assign({}, workoutDoneSets);
+                          item.exercises.forEach(ex => { nd[ex.id + '_' + curSet] = true; });
+                          setWorkoutDoneSets(nd);
+                          // Fire rest timer
+                          const rk = 'ss_' + ssId + '_set' + curSet;
+                          setRestEndTimes(prev => Object.assign({}, prev, { [rk]: Date.now() + restSecs * 1000 }));
+                          // Advance to next set
+                          setSupersetCurrentSet(prev => Object.assign({}, prev, { [ssId]: curSet + 1 }));
+                        }}>
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
+                          {curSet >= maxSets ? '✓ Superset Complete' : 'Done — Set ' + curSet + ' of ' + maxSets}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Rest timer between sets */}
+                    {ssRestLeft != null && ssRestLeft > 0 && (
+                      <View style={[lv.restStrip, { marginHorizontal: 14, marginBottom: 14 }]}>
+                        <Ionicons name="hourglass-outline" size={14} color={ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg} />
+                        <Text style={[lv.restStripTime, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg }]}>
+                          {Math.floor(ssRestLeft / 60) + ':' + String(ssRestLeft % 60).padStart(2, '0')}
+                        </Text>
+                        <Text style={[lv.restStripLabel, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg }]}>rest</Text>
+                        <View style={{ flex: 1 }} />
+                        <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(ssRestKey, -15)}><Text style={lv.restAdjTxt}>-15s</Text></TouchableOpacity>
+                        <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(ssRestKey, 30)}><Text style={lv.restAdjTxt}>+30s</Text></TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 );
               }
@@ -5717,6 +5837,12 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   return next;
                 });
                 const completeRound = () => {
+                  // Mark each circuit exercise's "set N" (= round N) as done so the
+                  // overall exercise counter updates correctly
+                  const nd = Object.assign({}, workoutDoneSets);
+                  item.exercises.forEach(ex => { nd[ex.id + '_' + curRound] = true; });
+                  setWorkoutDoneSets(nd);
+                  // Fire rest timer between rounds
                   const restKey = curRound >= totalRounds
                     ? 'circuit_' + cId + '_done'
                     : 'circuit_' + cId + '_r' + curRound;
