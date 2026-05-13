@@ -106,9 +106,30 @@ function MacroBar({ label, value, goal, color, unit = 'g' }) {
   );
 }
 
+// ── Unit helpers ──────────────────────────────────────────────────────────────
+function getServingUnit(food) {
+  const lbl = (food.servingLabel || '').toLowerCase();
+  const cat = (food.category || '').toLowerCase();
+  if (cat === 'beverages' || /\b(glass|glasses|ml|litre|liter)\b/.test(lbl)) return 'ml';
+  if (/\bpcs?\b|\bpieces?\b|\bballs?\b|\bstick\b|\beggs?\b/.test(lbl)) return 'pcs';
+  return 'g';
+}
+
+function parsePieceCount(servingLabel) {
+  const m = (servingLabel || '').match(/^(\d+)\s*/);
+  return m ? parseInt(m[1], 10) : 1;
+}
+
+function getPieceLabel(servingLabel) {
+  if (/egg/i.test(servingLabel)) return 'egg';
+  if (/ball/i.test(servingLabel)) return 'ball';
+  if (/stick/i.test(servingLabel)) return 'stick';
+  return 'piece';
+}
+
 // ── Quantity entry modal ──────────────────────────────────────────────────────
 function QuantityModal({ food, visible, onClose, onAdd, theme }) {
-  const [grams, setGrams] = useState('');
+  const [inputVal, setInputVal] = useState('');
   const slideY = useRef(new Animated.Value(600)).current;
   const brand = theme?.brand?.[600] || '#4f46e5';
   const bg    = theme?.surface?.raised || '#fff';
@@ -116,9 +137,34 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
   const textS = theme?.text?.secondary || '#555';
   const bord  = theme?.border?.subtle || '#e5e7eb';
 
+  const unit        = food ? getServingUnit(food) : 'g';
+  const pieceCount  = food ? parsePieceCount(food.servingLabel) : 1;
+  const pieceLabel  = food ? getPieceLabel(food.servingLabel) : 'piece';
+  const perPieceG   = food ? (food.servingGrams / pieceCount) : 100;
+
+  // Convert user input → grams for macro calculation
+  const inputNum = parseFloat(inputVal) || 0;
+  const derivedGrams = unit === 'pcs' ? inputNum * perPieceG : inputNum;
+  const scale = derivedGrams / 100;
+  const cal  = +(food ? food.caloriesPer100g * scale : 0).toFixed(1);
+  const pro  = +(food ? food.proteinPer100g  * scale : 0).toFixed(1);
+  const carb = +(food ? food.carbsPer100g    * scale : 0).toFixed(1);
+  const fat  = +(food ? food.fatPer100g      * scale : 0).toFixed(1);
+
+  // Quick buttons per unit type
+  const quickBtns = unit === 'pcs'
+    ? [1, 2, 3, 4, 5, 6, 8]
+    : unit === 'ml'
+      ? [100, 150, 200, 250, 300, 400, 500]
+      : [50, food?.servingGrams, 100, 150, 200, 250, 300].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  const defaultInput = unit === 'pcs'
+    ? String(pieceCount)
+    : String(food?.servingGrams || 100);
+
   useEffect(() => {
-    if (visible) {
-      setGrams(food ? String(food.servingGrams || 100) : '');
+    if (visible && food) {
+      setInputVal(defaultInput);
       Animated.spring(slideY, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 180 }).start();
     } else {
       Animated.timing(slideY, { toValue: 600, duration: 220, useNativeDriver: true }).start();
@@ -126,12 +172,20 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
   }, [visible, food]);
 
   if (!food) return null;
-  const g = parseFloat(grams) || 0;
-  const scale = g / 100;
-  const cal  = +(food.caloriesPer100g  * scale).toFixed(1);
-  const pro  = +(food.proteinPer100g   * scale).toFixed(1);
-  const carb = +(food.carbsPer100g     * scale).toFixed(1);
-  const fat  = +(food.fatPer100g       * scale).toFixed(1);
+
+  const inputLabel = unit === 'pcs'
+    ? `How many ${pieceLabel}s?`
+    : unit === 'ml'
+      ? 'How many ml?'
+      : 'How many grams?';
+
+  const unitSuffix = unit === 'pcs' ? pieceLabel : unit;
+
+  const servingDisplay = unit === 'ml'
+    ? `${food.servingLabel} (${food.servingGrams}ml)`
+    : unit === 'pcs'
+      ? `${food.servingLabel} · ${perPieceG}g each`
+      : `${food.servingLabel} (${food.servingGrams}g)`;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -150,14 +204,12 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
               <Text style={{ fontSize: 44 }}>{food.emoji || '🍽️'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 17, fontWeight: '800', color: textP, letterSpacing: -0.3 }}>{food.name}</Text>
-                <Text style={{ fontSize: 12, color: textS, marginTop: 2 }}>
-                  Std. serving: {food.servingLabel} ({food.servingGrams}g)
-                </Text>
+                <Text style={{ fontSize: 12, color: textS, marginTop: 2 }}>Std. serving: {servingDisplay}</Text>
               </View>
             </View>
 
-            {/* Quantity input */}
-            <Text style={{ fontSize: 13, fontWeight: '700', color: textS, marginBottom: 6 }}>How many grams?</Text>
+            {/* Input label */}
+            <Text style={{ fontSize: 13, fontWeight: '700', color: textS, marginBottom: 6 }}>{inputLabel}</Text>
             <View style={{
               flexDirection: 'row', alignItems: 'center',
               borderWidth: 2, borderColor: brand, borderRadius: 14,
@@ -166,40 +218,46 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
               <TextInput
                 style={{ flex: 1, fontSize: 28, fontWeight: '800', color: textP, paddingVertical: 12 }}
                 keyboardType="numeric"
-                value={grams}
-                onChangeText={setGrams}
+                value={inputVal}
+                onChangeText={setInputVal}
                 selectTextOnFocus
               />
-              <Text style={{ fontSize: 16, fontWeight: '600', color: textS }}>g</Text>
+              <Text style={{ fontSize: 16, fontWeight: '600', color: textS }}>{unitSuffix}</Text>
             </View>
 
-            {/* Quick size buttons */}
+            {/* Quick buttons */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}
               contentContainerStyle={{ gap: 8 }}>
-              {[50, food.servingGrams, 150, 200, 250, 300].filter((v, i, a) => a.indexOf(v) === i).map(v => (
-                <TouchableOpacity key={v} onPress={() => setGrams(String(v))}
-                  style={{
-                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                    backgroundColor: +grams === v ? brand : (theme?.surface?.sunken || '#f3f4f6'),
-                    borderWidth: 1, borderColor: +grams === v ? brand : bord,
-                  }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: +grams === v ? '#fff' : textS }}>{v}g</Text>
-                </TouchableOpacity>
-              ))}
+              {quickBtns.map(v => {
+                const active = parseFloat(inputVal) === v;
+                const label = unit === 'pcs'
+                  ? (v === 1 ? `1 ${pieceLabel}` : `${v} ${pieceLabel}s`)
+                  : `${v}${unit}`;
+                return (
+                  <TouchableOpacity key={v} onPress={() => setInputVal(String(v))}
+                    style={{
+                      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                      backgroundColor: active ? brand : (theme?.surface?.sunken || '#f3f4f6'),
+                      borderWidth: 1, borderColor: active ? brand : bord,
+                    }}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#fff' : textS }}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
 
             {/* Live macro preview */}
-            {g > 0 && (
+            {derivedGrams > 0 && (
               <View style={{
                 flexDirection: 'row', gap: 8, marginBottom: 24,
                 backgroundColor: theme?.surface?.sunken || '#f9fafb',
                 borderRadius: 14, padding: 14,
               }}>
                 {[
-                  { label: 'kcal', val: cal, bg: '#fff7ed', color: '#ea580c' },
-                  { label: 'P',    val: `${pro}g`,  bg: '#eff6ff', color: '#2563eb' },
-                  { label: 'C',    val: `${carb}g`, bg: '#fffbeb', color: '#d97706' },
-                  { label: 'F',    val: `${fat}g`,  bg: '#fef2f2', color: '#dc2626' },
+                  { label: 'kcal', val: cal,         bg: '#fff7ed', color: '#ea580c' },
+                  { label: 'P',    val: `${pro}g`,   bg: '#eff6ff', color: '#2563eb' },
+                  { label: 'C',    val: `${carb}g`,  bg: '#fffbeb', color: '#d97706' },
+                  { label: 'F',    val: `${fat}g`,   bg: '#fef2f2', color: '#dc2626' },
                 ].map(m => (
                   <View key={m.label} style={{ flex: 1, backgroundColor: m.bg, borderRadius: 10, padding: 10, alignItems: 'center' }}>
                     <Text style={{ fontSize: 15, fontWeight: '800', color: m.color }}>{m.val}</Text>
@@ -209,11 +267,18 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
               </View>
             )}
 
+            {/* Grams equivalent note for pcs/ml */}
+            {unit !== 'g' && derivedGrams > 0 && (
+              <Text style={{ fontSize: 11, color: textS, textAlign: 'center', marginBottom: 12 }}>
+                ≈ {Math.round(derivedGrams)}{unit === 'ml' ? 'ml' : 'g'} total
+              </Text>
+            )}
+
             <TouchableOpacity
-              disabled={g <= 0}
-              onPress={() => onAdd({ food, grams: g, cal, pro, carb, fat })}
+              disabled={derivedGrams <= 0}
+              onPress={() => onAdd({ food, grams: Math.round(derivedGrams), cal, pro, carb, fat })}
               style={{
-                backgroundColor: g > 0 ? brand : '#d1d5db', borderRadius: 14,
+                backgroundColor: derivedGrams > 0 ? brand : '#d1d5db', borderRadius: 14,
                 padding: 16, alignItems: 'center', marginBottom: 8,
               }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: '#fff' }}>Add to Today's Log</Text>
@@ -682,7 +747,9 @@ export default function NutritionScreen({ memberId }) {
                   <Text style={{ fontSize: 32, marginRight: 12 }}>{food.emoji || '🍽️'}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: textP }}>{food.name}</Text>
-                    <Text style={{ fontSize: 11, color: textT, marginTop: 1 }}>{food.servingLabel} · {food.servingGrams}g</Text>
+                    <Text style={{ fontSize: 11, color: textT, marginTop: 1 }}>
+                      {food.servingLabel} · {food.servingGrams}{getServingUnit(food) === 'ml' ? 'ml' : 'g'}
+                    </Text>
                     <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
                       {[
                         { label: `${food.caloriesPer100g} kcal`, bg: '#fff7ed', color: '#ea580c' },
