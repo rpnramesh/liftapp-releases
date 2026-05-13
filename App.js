@@ -11846,7 +11846,7 @@ function AppBody() {
           />
         );
       case 'Nutrition':
-        return <NutritionScreen />;
+        return <NutritionScreen memberId={uid} />;
       case 'Supplements':
         return <SupplementsScreen memberId={uid} />;
       case 'Profile':

@@ -92,8 +92,8 @@ android {
         applicationId 'com.rpn.liftmember'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 34
-        versionName "3.3.3"
+        versionCode 3
+        versionName "3.3.6"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -105,10 +105,10 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file(LIFT_MEMBER_RELEASE_STORE_FILE)
-            storePassword LIFT_MEMBER_RELEASE_STORE_PASSWORD
-            keyAlias LIFT_MEMBER_RELEASE_KEY_ALIAS
-            keyPassword LIFT_MEMBER_RELEASE_KEY_PASSWORD
+            storeFile file("${rootProject.projectDir}/lift_member_release.keystore")
+            storePassword "password"
+            keyAlias "liftmember"
+            keyPassword "password"
         }
     }
     buildTypes {
