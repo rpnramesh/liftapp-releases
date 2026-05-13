@@ -151,6 +151,37 @@ async function clearMemberSession() {
   } catch (_) {}
 }
 
+// ── PIN auth helpers ──────────────────────────────────────────────────────────
+const PIN_SESSION_KEY = '@lift_pin_session';
+
+// Deterministic hash — phone + pin + salt. Sufficient for gym app PIN security.
+function hashPin(phone, pin) {
+  let h = 5381;
+  const s = `lift:${phone}:${pin}:2025`;
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) + h) + s.charCodeAt(i); h = h & h; }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+async function savePinSession(uid, phone, pin) {
+  const pinHash = hashPin(phone, pin);
+  try {
+    await AsyncStorage.setItem(PIN_SESSION_KEY, JSON.stringify({ uid, phone, pinHash, savedAt: Date.now() }));
+  } catch (_) {}
+  // Mirror hash to Firestore for new-device recovery
+  updateDoc(doc(db, 'members', uid), { pinHash }).catch(() => {});
+}
+
+async function loadPinSession() {
+  try {
+    const raw = await AsyncStorage.getItem(PIN_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) { return null; }
+}
+
+async function clearPinSession() {
+  try { await AsyncStorage.removeItem(PIN_SESSION_KEY); } catch (_) {}
+}
+
 // ── Rest complete sound player ────────────────────────────────────────────────
 const playRestCompleteSound = async () => {
   try {
@@ -225,6 +256,236 @@ const wl = StyleSheet.create({
   hint: { color: 'rgba(255,255,255,0.5)', textAlign: 'center', fontSize: 12 },
 });
 
+// ── PIN KEYPAD ────────────────────────────────────────────────────────────────
+const PIN_ROWS = [['1','2','3'],['4','5','6'],['7','8','9'],['','0','⌫']];
+function PinKeypad({ onDigit, onDelete, disabled }) {
+  return (
+    <View style={pk.grid}>
+      {PIN_ROWS.map((row, r) => (
+        <View key={r} style={pk.row}>
+          {row.map((key, k) => {
+            if (key === '') return <View key={k} style={pk.key} />;
+            const isDel = key === '⌫';
+            return (
+              <TouchableOpacity
+                key={k}
+                style={[pk.key, disabled && pk.keyDisabled]}
+                disabled={disabled}
+                onPress={() => isDel ? onDelete() : onDigit(key)}
+                activeOpacity={0.6}>
+                <Text style={isDel ? pk.delTxt : pk.keyTxt}>{key}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+const pk = StyleSheet.create({
+  grid:        { width: '100%', paddingHorizontal: 20 },
+  row:         { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  key:         { flex: 1, marginHorizontal: 8, height: 72, borderRadius: 18, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.light },
+  keyDisabled: { opacity: 0.35 },
+  keyTxt:      { fontSize: 26, fontWeight: '600', color: C.dark },
+  delTxt:      { fontSize: 22, color: C.mid },
+});
+
+// ── PIN DOTS ──────────────────────────────────────────────────────────────────
+function PinDots({ count, shakeAnim }) {
+  return (
+    <Animated.View style={[pd.row, shakeAnim && { transform: [{ translateX: shakeAnim }] }]}>
+      {[0,1,2,3].map(i => (
+        <View key={i} style={[pd.dot, i < count && pd.dotFilled]} />
+      ))}
+    </Animated.View>
+  );
+}
+const pd = StyleSheet.create({
+  row:       { flexDirection: 'row', justifyContent: 'center', marginBottom: 32 },
+  dot:       { width: 18, height: 18, borderRadius: 9, borderWidth: 2.5, borderColor: C.primary, marginHorizontal: 10 },
+  dotFilled: { backgroundColor: C.primary },
+});
+
+// ── PIN LOGIN SCREEN ──────────────────────────────────────────────────────────
+function PinLoginScreen({ session, onSuccess, onForgotPin }) {
+  const [pin, setPin]           = useState('');
+  const [error, setError]       = useState('');
+  const [attempts, setAttempts] = useState(0);
+  const [lockUntil, setLockUntil] = useState(0);
+  const [now, setNow]           = useState(Date.now());
+  const shakeAnim               = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (lockUntil <= 0) return;
+    const t = setInterval(() => {
+      const n = Date.now();
+      setNow(n);
+      if (n >= lockUntil) { setLockUntil(0); setAttempts(0); setError(''); clearInterval(t); }
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lockUntil]);
+
+  const shake = (cb) => {
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 12, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -12, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 8, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -8, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start(cb);
+  };
+
+  const onDigit = (d) => {
+    if (lockUntil > Date.now()) return;
+    if (pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) verify(next);
+  };
+
+  const onDelete = () => {
+    if (lockUntil > Date.now()) return;
+    setPin(p => p.slice(0, -1));
+    setError('');
+  };
+
+  const verify = (entered) => {
+    const hash = hashPin(session.phone, entered);
+    if (hash === session.pinHash) {
+      onSuccess(session.uid);
+    } else {
+      const na = attempts + 1;
+      setAttempts(na);
+      if (na >= 3) {
+        setLockUntil(Date.now() + 30000);
+        setError('Too many attempts. Wait 30 seconds.');
+      } else {
+        setError(`Incorrect PIN. ${3 - na} attempt${3 - na !== 1 ? 's' : ''} left.`);
+      }
+      shake(() => setPin(''));
+    }
+  };
+
+  const locked = lockUntil > now;
+  const secs   = locked ? Math.ceil((lockUntil - now) / 1000) : 0;
+  const phone10 = (session.phone || '').replace(/\D/g, '').slice(-10);
+
+  return (
+    <SafeAreaView style={pl.container}>
+      <Text style={pl.logo}>LIFT</Text>
+      <Text style={pl.heading}>Welcome back</Text>
+      <Text style={pl.sub}>+91 {phone10}</Text>
+
+      <PinDots count={pin.length} shakeAnim={shakeAnim} />
+
+      {!!error && (
+        <Text style={pl.error}>{locked ? `Too many attempts. Try again in ${secs}s.` : error}</Text>
+      )}
+
+      <PinKeypad onDigit={onDigit} onDelete={onDelete} disabled={locked} />
+
+      <TouchableOpacity style={pl.forgot} onPress={onForgotPin}>
+        <Text style={pl.forgotTxt}>Forgot PIN? Reset via OTP</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+}
+const pl = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', paddingBottom: 40 },
+  logo:      { fontSize: 32, fontWeight: '800', color: C.primary, letterSpacing: 5, marginBottom: 8 },
+  heading:   { fontSize: 26, fontWeight: '800', color: C.dark, marginBottom: 4 },
+  sub:       { fontSize: 15, color: C.mid, marginBottom: 40 },
+  error:     { color: C.red, fontSize: 13, fontWeight: '500', marginBottom: 12, textAlign: 'center' },
+  forgot:    { marginTop: 28 },
+  forgotTxt: { color: C.primary, fontSize: 14, fontWeight: '600' },
+});
+
+// ── SET PIN SCREEN ────────────────────────────────────────────────────────────
+function SetPinScreen({ uid, phone, onPinSet }) {
+  const [step, setStep]       = useState('create'); // 'create' | 'confirm'
+  const [firstPin, setFirstPin] = useState('');
+  const [pin, setPin]         = useState('');
+  const [loading, setLoading] = useState(false);
+  const shakeAnim             = useRef(new Animated.Value(0)).current;
+
+  const shake = (cb) => {
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 12, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -12, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 8, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start(cb);
+  };
+
+  const onDigit = (d) => {
+    if (loading || pin.length >= 4) return;
+    const next = pin + d;
+    setPin(next);
+    if (next.length === 4) handleFourDigits(next);
+  };
+
+  const onDelete = () => {
+    if (loading) return;
+    setPin(p => p.slice(0, -1));
+  };
+
+  const handleFourDigits = (entered) => {
+    if (step === 'create') {
+      setFirstPin(entered);
+      setStep('confirm');
+      setTimeout(() => setPin(''), 200);
+    } else {
+      if (entered === firstPin) {
+        finishSetPin(entered);
+      } else {
+        shake(() => {
+          setPin('');
+          setStep('create');
+          setFirstPin('');
+        });
+      }
+    }
+  };
+
+  const finishSetPin = async (finalPin) => {
+    setLoading(true);
+    await savePinSession(uid, phone, finalPin);
+    onPinSet(uid);
+    setLoading(false);
+  };
+
+  const phone10 = (phone || '').replace(/\D/g, '').slice(-10);
+
+  return (
+    <SafeAreaView style={ps.container}>
+      <Text style={ps.logo}>LIFT</Text>
+      <Text style={ps.heading}>
+        {step === 'create' ? 'Create your PIN' : 'Confirm your PIN'}
+      </Text>
+      <Text style={ps.sub}>
+        {step === 'create'
+          ? `+91 ${phone10} · Choose a 4-digit PIN for future logins`
+          : 'Enter your PIN again to confirm'}
+      </Text>
+
+      <PinDots count={pin.length} shakeAnim={step === 'confirm' ? shakeAnim : null} />
+
+      {loading && <ActivityIndicator color={C.primary} style={{ marginBottom: 16 }} />}
+
+      {!loading && <PinKeypad onDigit={onDigit} onDelete={onDelete} disabled={loading} />}
+    </SafeAreaView>
+  );
+}
+const ps = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', paddingBottom: 40 },
+  logo:      { fontSize: 32, fontWeight: '800', color: C.primary, letterSpacing: 5, marginBottom: 8 },
+  heading:   { fontSize: 26, fontWeight: '800', color: C.dark, marginBottom: 4 },
+  sub:       { fontSize: 13, color: C.mid, marginBottom: 40, textAlign: 'center', paddingHorizontal: 32, lineHeight: 20 },
+});
+
 // ── OTP LOGIN ─────────────────────────────────────────────────────────────────
 // ── OTP LOGIN — replace the entire OtpLoginScreen function in App.js ──────────
 // Also remove this import at the top:
@@ -254,7 +515,7 @@ function friendlyOtpError(e) {
   return 'Could not send OTP. Please try again.';
 }
 
-function OtpLoginScreen({ onSuccess }) {
+function OtpLoginScreen({ onOtpVerified }) {
   const phoneAuthRef = useRef(null);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -392,7 +653,8 @@ function OtpLoginScreen({ onSuccess }) {
           } catch (e) { console.log('gymMemberId patch error:', e.message); }
         }
       }
-      onSuccess(uid);
+      // OTP verified — hand off to parent to show SetPinScreen
+      onOtpVerified(uid, `+91${phone.replace(/\D/g, '').slice(-10)}`);
     } catch (e) {
       console.log('Verify error:', e?.code, e?.message);
       if (e?.code === 'auth/invalid-verification-code') setError('Invalid OTP. Please check and try again.');
@@ -404,10 +666,10 @@ function OtpLoginScreen({ onSuccess }) {
   return (
     <SafeAreaView style={ot.container}>
       <PhoneAuthWebView ref={phoneAuthRef} />
-      <Text style={ot.heading}>{step === 'phone' ? 'Welcome to Lift' : 'Verify OTP'}</Text>
+      <Text style={ot.heading}>{step === 'phone' ? 'Register with OTP' : 'Verify OTP'}</Text>
       <Text style={ot.sub}>
         {step === 'phone'
-          ? 'Enter your mobile number to continue'
+          ? 'One-time verification. You\'ll set a PIN after this.'
           : `OTP sent to +91 ${phone}`}
       </Text>
 
@@ -11287,10 +11549,14 @@ export default function App() {
 }
 
 function AppBody() {
-  const [screen, setScreen] = useState('splash');
-  const [tab, setTab] = useState('Home');
-  const [uid, setUid] = useState(null);
+  const [screen, setScreen]       = useState('splash');
+  const [tab, setTab]             = useState('Home');
+  const [uid, setUid]             = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // PIN auth state
+  const [pinSession, setPinSession] = useState(null);   // loaded from AsyncStorage
+  const [pendingOtp, setPendingOtp] = useState(null);   // { uid, phone } — OTP done, awaiting PIN set
+  const [forgotPin, setForgotPin]   = useState(false);  // show OTP even when pinSession exists
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
@@ -11418,10 +11684,22 @@ function AppBody() {
     let active = true;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
+        // Try PIN session first (new auth system)
+        const pinSess = await loadPinSession();
         if (!active) return;
-        const saved = raw ? JSON.parse(raw) : null;
-        if (saved?.memberId) setUid(saved.memberId);
+        if (pinSess?.uid && pinSess?.pinHash) {
+          setPinSession(pinSess);
+          // Don't set uid yet — user must verify PIN first
+        } else {
+          // Fall back to legacy member session (users upgrading from older build)
+          const raw = await AsyncStorage.getItem(MEMBER_SESSION_KEY);
+          if (!active) return;
+          const saved = raw ? JSON.parse(raw) : null;
+          if (saved?.memberId) {
+            // Legacy session: migrate to PIN flow by showing OTP screen once
+            // (don't auto-login without PIN verification)
+          }
+        }
       } catch (_) {}
       if (!active) return;
       setScreen('main');
@@ -11720,6 +11998,7 @@ function AppBody() {
 
   const handleLogout = async () => {
     await clearMemberSession();
+    await clearPinSession();
     await auth.signOut().catch(() => {});
     setMember(null);
     setAssignment(null);
@@ -11727,6 +12006,9 @@ function AppBody() {
     setPlanWeek(null);
     setFullPlan(null);
     setUid(null);
+    setPinSession(null);
+    setPendingOtp(null);
+    setForgotPin(false);
     setScreen('main');
   };
 
@@ -11776,6 +12058,47 @@ function AppBody() {
       />
     </SwipeBackScreen>
   );
+
+  // ── PIN / OTP auth screens (shown when uid is not yet set) ────────────────────
+  if (!uid) {
+    if (pendingOtp) {
+      // OTP verified — now user sets their PIN
+      return (
+        <SetPinScreen
+          uid={pendingOtp.uid}
+          phone={pendingOtp.phone}
+          onPinSet={(newUid) => {
+            setPendingOtp(null);
+            setForgotPin(false);
+            // Reload pin session from storage so PinLoginScreen has fresh hash
+            loadPinSession().then(s => { if (s) setPinSession(s); });
+            setUid(newUid);
+          }}
+        />
+      );
+    }
+    if (pinSession && !forgotPin) {
+      // Returning user on this device — verify PIN
+      return (
+        <PinLoginScreen
+          session={pinSession}
+          onSuccess={(savedUid) => {
+            setForgotPin(false);
+            setUid(savedUid);
+          }}
+          onForgotPin={() => setForgotPin(true)}
+        />
+      );
+    }
+    // New user or forgot PIN — full OTP registration
+    return (
+      <OtpLoginScreen
+        onOtpVerified={(verifiedUid, verifiedPhone) => {
+          setPendingOtp({ uid: verifiedUid, phone: verifiedPhone });
+        }}
+      />
+    );
+  }
 
   const tabs = [
     { name: 'Home',        icon: 'home',           iconOutline: 'home-outline' },
