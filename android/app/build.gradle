@@ -92,8 +92,8 @@ android {
         applicationId 'com.rpn.liftmember'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "3.3.11"
+        versionCode 9
+        versionName "3.3.12"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

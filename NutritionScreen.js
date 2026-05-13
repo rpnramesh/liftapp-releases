@@ -112,7 +112,8 @@ function getServingUnit(food) {
   const cat = (food.category || '').toLowerCase();
   if (cat === 'beverages' || /\b(glass|glasses|ml|litre|liter)\b/.test(lbl)) return 'ml';
   if (/\bfull plate\b|\bhalf plate\b|\bplate\b|\bportion\b/.test(lbl) && (food.servingGrams || 0) >= 300) return 'plate';
-  if (/\bpcs?\b|\bpieces?\b|\bballs?\b|\bstick\b|\beggs?\b/.test(lbl)) return 'pcs';
+  if (/\bpcs?\b|\bpieces?\b|\bballs?\b|\bstick\b|\beggs?\b|\bscoops?\b/.test(lbl)) return 'pcs';
+  if (/\btsp\b|\bteaspoon\b/.test(lbl)) return 'tsp';
   return 'g';
 }
 
@@ -132,6 +133,7 @@ function getPieceLabel(servingLabel) {
   if (/egg/i.test(servingLabel)) return 'egg';
   if (/ball/i.test(servingLabel)) return 'ball';
   if (/stick/i.test(servingLabel)) return 'stick';
+  if (/scoop/i.test(servingLabel)) return 'scoop';
   return 'piece';
 }
 
@@ -153,6 +155,7 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
 
   // Convert user input → grams for macro calculation
   const inputNum = parseFloat(inputVal) || 0;
+  // tsp treated same as grams numerically (1 tsp ≈ serving grams already set correctly)
   const derivedGrams = unit === 'pcs' ? inputNum * perPieceG : inputNum;
   const scale = derivedGrams / 100;
   const cal  = +(food ? food.caloriesPer100g * scale : 0).toFixed(1);
@@ -165,7 +168,9 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
     ? [1, 2, 3, 4, 5, 6, 8]
     : unit === 'ml'
       ? [100, 150, 200, 250, 300, 400, 500]
-      : [50, food?.servingGrams, 100, 150, 200, 250, 300].filter((v, i, a) => v && a.indexOf(v) === i);
+      : unit === 'tsp'
+        ? [1, 2, 3, 5, 10]
+        : [50, food?.servingGrams, 100, 150, 200, 250, 300].filter((v, i, a) => v && a.indexOf(v) === i);
 
   const defaultInput = unit === 'plate'
     ? String(food?.servingGrams || 500)
@@ -190,9 +195,11 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
       ? `How many ${pieceLabel}s?`
       : unit === 'ml'
         ? 'How many ml?'
-        : 'How many grams?';
+        : unit === 'tsp'
+          ? 'How many teaspoons?'
+          : 'How many grams?';
 
-  const unitSuffix = unit === 'pcs' ? pieceLabel : unit === 'plate' ? 'g' : unit;
+  const unitSuffix = unit === 'pcs' ? pieceLabel : unit === 'plate' ? 'g' : unit === 'tsp' ? 'tsp' : unit;
 
   const servingDisplay = unit === 'ml'
     ? `${food.servingLabel} (${food.servingGrams}ml)`
@@ -200,7 +207,9 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
       ? `${food.servingLabel} · ${perPieceG}g each`
       : unit === 'plate'
         ? `Full plate = ${food.servingGrams}g`
-        : `${food.servingLabel} (${food.servingGrams}g)`;
+        : unit === 'tsp'
+          ? `${food.servingLabel} (${food.servingGrams}g) · values per 100g`
+          : `${food.servingLabel} (${food.servingGrams}g)`;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -790,6 +799,7 @@ export default function NutritionScreen({ memberId }) {
                     <Text style={{ fontSize: 14, fontWeight: '700', color: textP }}>{food.name}</Text>
                     <Text style={{ fontSize: 11, color: textT, marginTop: 1 }}>
                       {food.servingLabel} · {food.servingGrams}{getServingUnit(food) === 'ml' ? 'ml' : 'g'}
+                      {food.category === 'Supplements' ? ' · values vary by brand' : ''}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
                       {[
