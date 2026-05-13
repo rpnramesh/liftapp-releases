@@ -111,9 +111,17 @@ function getServingUnit(food) {
   const lbl = (food.servingLabel || '').toLowerCase();
   const cat = (food.category || '').toLowerCase();
   if (cat === 'beverages' || /\b(glass|glasses|ml|litre|liter)\b/.test(lbl)) return 'ml';
+  if (/\bfull plate\b|\bhalf plate\b|\bplate\b|\bportion\b/.test(lbl) && (food.servingGrams || 0) >= 300) return 'plate';
   if (/\bpcs?\b|\bpieces?\b|\bballs?\b|\bstick\b|\beggs?\b/.test(lbl)) return 'pcs';
   return 'g';
 }
+
+const PLATE_FRACTIONS = [
+  { key: 'quarter', label: '¼ plate', factor: 0.25 },
+  { key: 'half',    label: '½ plate', factor: 0.5  },
+  { key: 'full',    label: 'Full',    factor: 1.0  },
+  { key: 'double',  label: 'Double',  factor: 2.0  },
+];
 
 function parsePieceCount(servingLabel) {
   const m = (servingLabel || '').match(/^(\d+)\s*/);
@@ -136,6 +144,7 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
   const textP = theme?.text?.primary || '#111';
   const textS = theme?.text?.secondary || '#555';
   const bord  = theme?.border?.subtle || '#e5e7eb';
+  const textT = theme?.text?.tertiary || '#888';
 
   const unit        = food ? getServingUnit(food) : 'g';
   const pieceCount  = food ? parsePieceCount(food.servingLabel) : 1;
@@ -158,9 +167,11 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
       ? [100, 150, 200, 250, 300, 400, 500]
       : [50, food?.servingGrams, 100, 150, 200, 250, 300].filter((v, i, a) => v && a.indexOf(v) === i);
 
-  const defaultInput = unit === 'pcs'
-    ? String(pieceCount)
-    : String(food?.servingGrams || 100);
+  const defaultInput = unit === 'plate'
+    ? String(food?.servingGrams || 500)
+    : unit === 'pcs'
+      ? String(pieceCount)
+      : String(food?.servingGrams || 100);
 
   useEffect(() => {
     if (visible && food) {
@@ -173,19 +184,23 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
 
   if (!food) return null;
 
-  const inputLabel = unit === 'pcs'
-    ? `How many ${pieceLabel}s?`
-    : unit === 'ml'
-      ? 'How many ml?'
-      : 'How many grams?';
+  const inputLabel = unit === 'plate'
+    ? 'How much?'
+    : unit === 'pcs'
+      ? `How many ${pieceLabel}s?`
+      : unit === 'ml'
+        ? 'How many ml?'
+        : 'How many grams?';
 
-  const unitSuffix = unit === 'pcs' ? pieceLabel : unit;
+  const unitSuffix = unit === 'pcs' ? pieceLabel : unit === 'plate' ? 'g' : unit;
 
   const servingDisplay = unit === 'ml'
     ? `${food.servingLabel} (${food.servingGrams}ml)`
     : unit === 'pcs'
       ? `${food.servingLabel} · ${perPieceG}g each`
-      : `${food.servingLabel} (${food.servingGrams}g)`;
+      : unit === 'plate'
+        ? `Full plate = ${food.servingGrams}g`
+        : `${food.servingLabel} (${food.servingGrams}g)`;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -225,26 +240,52 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
               <Text style={{ fontSize: 16, fontWeight: '600', color: textS }}>{unitSuffix}</Text>
             </View>
 
-            {/* Quick buttons */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}
-              contentContainerStyle={{ gap: 8 }}>
-              {quickBtns.map(v => {
-                const active = parseFloat(inputVal) === v;
-                const label = unit === 'pcs'
-                  ? (v === 1 ? `1 ${pieceLabel}` : `${v} ${pieceLabel}s`)
-                  : `${v}${unit}`;
-                return (
-                  <TouchableOpacity key={v} onPress={() => setInputVal(String(v))}
-                    style={{
-                      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-                      backgroundColor: active ? brand : (theme?.surface?.sunken || '#f3f4f6'),
-                      borderWidth: 1, borderColor: active ? brand : bord,
-                    }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#fff' : textS }}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            {/* Plate portion buttons — shown instead of quick buttons for plate foods */}
+            {unit === 'plate' ? (
+              <View style={{ marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {PLATE_FRACTIONS.map(({ key, label, factor }) => {
+                    const g = Math.round((food.servingGrams || 500) * factor);
+                    const active = parseFloat(inputVal) === g;
+                    return (
+                      <TouchableOpacity key={key} onPress={() => setInputVal(String(g))}
+                        style={{
+                          flex: 1, borderRadius: 14, paddingVertical: 12, alignItems: 'center',
+                          backgroundColor: active ? brand : (theme?.surface?.sunken || '#f3f4f6'),
+                          borderWidth: 1.5, borderColor: active ? brand : bord,
+                        }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: active ? '#fff' : textP }}>{label}</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: active ? 'rgba(255,255,255,0.8)' : textT, marginTop: 2 }}>{g}g</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={{ fontSize: 11, color: textT, marginTop: 8, textAlign: 'center' }}>
+                  Or enter custom grams above
+                </Text>
+              </View>
+            ) : (
+              /* Quick buttons for pcs / ml / g */
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}
+                contentContainerStyle={{ gap: 8 }}>
+                {quickBtns.map(v => {
+                  const active = parseFloat(inputVal) === v;
+                  const label = unit === 'pcs'
+                    ? (v === 1 ? `1 ${pieceLabel}` : `${v} ${pieceLabel}s`)
+                    : `${v}${unit}`;
+                  return (
+                    <TouchableOpacity key={v} onPress={() => setInputVal(String(v))}
+                      style={{
+                        paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
+                        backgroundColor: active ? brand : (theme?.surface?.sunken || '#f3f4f6'),
+                        borderWidth: 1, borderColor: active ? brand : bord,
+                      }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: active ? '#fff' : textS }}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
 
             {/* Live macro preview */}
             {derivedGrams > 0 && (
