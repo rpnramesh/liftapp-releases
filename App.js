@@ -57,6 +57,7 @@ import {
   subscribeToWeightLog
 } from './shared/services/progress.service';
 import STORAGE_KEYS from './LIFT_PROJECT/constants/storageKeys';
+import NutritionScreen from './NutritionScreen';
 
 // ── Design system (matches web admin dashboard — Indigo-Blue) ─────────────────
 import theme from './LIFT_PROJECT/constants/theme';
@@ -5729,77 +5730,73 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </View>
 
                     {/* Exercise input rows for the current set */}
-                    {!allSSDone && (
-                      <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
-                        {item.exercises.map((ex, ei) => {
-                          const sk = ex.id + '_' + curSet;
-                          const isTimeBased = ex.trackingType === 'time';
-                          const defaultVal = isTimeBased ? (ex.durationSeconds || 30) : (ex.reps || 10);
-                          return (
-                            <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12,
-                              borderBottomWidth: ei < item.exercises.length - 1 ? 1 : 0,
-                              borderBottomColor: ssBg + '18' }}>
-                              {/* Name + type hint */}
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{ex.name}</Text>
-                                <Text style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
-                                  {'Target: ' + defaultVal + (isTimeBased ? 's' : ' reps')}
-                                </Text>
-                              </View>
-                              {/* REPS or SEC */}
-                              <View style={{ alignItems: 'center' }}>
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: ssBg, marginBottom: 4 }}>
-                                  {isTimeBased ? 'SEC' : 'REPS'}
-                                </Text>
+                    {!allSSDone && item.exercises.map((ex, ei) => {
+                        const sk = ex.id + '_' + curSet;
+                        const isTimeBased = ex.trackingType === 'time';
+                        const defaultVal = isTimeBased ? (ex.durationSeconds || 30) : (ex.reps || 10);
+                        return (
+                          <View key={ex.id} style={[lv.setRow,
+                            ei < item.exercises.length - 1 && { borderBottomWidth: 1, borderBottomColor: ssBg + '18' }]}>
+                            {/* Exercise name badge instead of set number */}
+                            <View style={{ width: 40, alignItems: 'center' }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: ssBg, letterSpacing: 0.5, textTransform: 'uppercase' }} numberOfLines={2}>
+                                {ex.name.split(' ').slice(0, 2).join('\n')}
+                              </Text>
+                            </View>
+                            {/* REPS or SEC — same as lv.repsCol */}
+                            <View style={lv.repsCol}>
+                              <Text style={lv.fieldLabel}>{isTimeBased ? 'SEC' : 'REPS'}</Text>
+                              <TextInput
+                                style={[lv.fieldInput]}
+                                keyboardType="number-pad" returnKeyType="next" blurOnSubmit={false} maxLength={4}
+                                value={String(customReps[sk] ?? defaultVal)}
+                                onChangeText={val => setCustomReps(prev => Object.assign({}, prev, { [sk]: val.replace(/[^0-9]/g, '') }))}
+                                selectTextOnFocus autoCorrect={false} autoCapitalize="none"
+                              />
+                            </View>
+                            {/* KG — hidden for time-based, same as lv.weightCol */}
+                            {!isTimeBased && (
+                              <View style={lv.weightCol}>
+                                <Text style={lv.fieldLabel}>KG</Text>
                                 <TextInput
-                                  style={{ width: 58, height: 40, borderRadius: 10, borderWidth: 1.5,
-                                    borderColor: ssBg + '70', backgroundColor: ssBg + '0D',
-                                    textAlign: 'center', fontSize: 18, fontWeight: '800', color: C.dark }}
-                                  keyboardType="number-pad" maxLength={4}
-                                  value={String(customReps[sk] ?? defaultVal)}
-                                  onChangeText={val => setCustomReps(prev => Object.assign({}, prev, { [sk]: val.replace(/[^0-9]/g, '') }))}
-                                  selectTextOnFocus
+                                  style={[lv.fieldInput, lv.fieldInputWide]}
+                                  keyboardType="decimal-pad" returnKeyType="done" blurOnSubmit={false}
+                                  placeholder={lastWeights[sk] || '0'} placeholderTextColor={C.muted}
+                                  value={localSetWeights[sk] || ''}
+                                  onChangeText={val => { const u = Object.assign({}, localSetWeights, { [sk]: val }); setLocalSetWeights(u); setWorkoutSetWeights(u); }}
+                                  selectTextOnFocus autoCorrect={false} autoCapitalize="none"
                                 />
                               </View>
-                              {/* KG — hidden for time-based */}
-                              {!isTimeBased && (
-                                <View style={{ alignItems: 'center' }}>
-                                  <Text style={{ fontSize: 10, fontWeight: '700', color: C.mid, marginBottom: 4 }}>KG</Text>
-                                  <TextInput
-                                    style={{ width: 58, height: 40, borderRadius: 10, borderWidth: 1.5,
-                                      borderColor: C.border, backgroundColor: C.card,
-                                      textAlign: 'center', fontSize: 18, fontWeight: '800', color: C.dark }}
-                                    keyboardType="decimal-pad" maxLength={5}
-                                    placeholder={lastWeights[sk] || '0'}
-                                    placeholderTextColor={C.muted}
-                                    value={localSetWeights[sk] || ''}
-                                    onChangeText={val => { const u = Object.assign({}, localSetWeights, { [sk]: val }); setLocalSetWeights(u); setWorkoutSetWeights(u); }}
-                                    selectTextOnFocus
-                                  />
-                                </View>
-                              )}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    )}
+                            )}
+                          </View>
+                        );
+                      })}
 
                     {/* Done Set N button */}
                     {!allSSDone && (
                       <TouchableOpacity
                         style={{ backgroundColor: ssBg, borderRadius: 12, paddingVertical: 14,
-                          alignItems: 'center', marginHorizontal: 14, marginBottom: 14 }}
+                          alignItems: 'center', marginHorizontal: 14, marginBottom: 8 }}
                         activeOpacity={0.8}
                         onPress={() => {
-                          // Mark all exercises' current set as done
+                          const doneSetNo = curSet;
+                          const rk = 'ss_' + ssId + '_set' + doneSetNo;
+                          // 1. Mark all exercises' current set as done
                           const nd = Object.assign({}, workoutDoneSets);
-                          item.exercises.forEach(ex => { nd[ex.id + '_' + curSet] = true; });
+                          item.exercises.forEach(ex => { nd[ex.id + '_' + doneSetNo] = true; });
                           setWorkoutDoneSets(nd);
-                          // Fire rest timer
-                          const rk = 'ss_' + ssId + '_set' + curSet;
-                          setRestEndTimes(prev => Object.assign({}, prev, { [rk]: Date.now() + restSecs * 1000 }));
-                          // Advance to next set
-                          setSupersetCurrentSet(prev => Object.assign({}, prev, { [ssId]: curSet + 1 }));
+                          // 2. Advance to next set FIRST so curSet is updated
+                          setSupersetCurrentSet(prev => Object.assign({}, prev, { [ssId]: doneSetNo + 1 }));
+                          // 3. startRestTimer triggers bottom-sheet popup automatically
+                          startRestTimer(rk, restSecs);
+                          // 4. RPE picker — same pattern as markSetDone
+                          if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                          rpeTimerRef.current = null;
+                          setPendingRpeKey(null);
+                          setTimeout(() => {
+                            setPendingRpeKey(rk);
+                            rpeTimerRef.current = setTimeout(() => setPendingRpeKey(null), 60000);
+                          }, 350);
                         }}>
                         <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
                           {curSet >= maxSets ? '✓ Superset Complete' : 'Done — Set ' + curSet + ' of ' + maxSets}
@@ -5807,16 +5804,31 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       </TouchableOpacity>
                     )}
 
-                    {/* Rest timer between sets */}
+                    {/* RPE picker after each set */}
+                    {(() => {
+                      const prevSetRk = 'ss_' + ssId + '_set' + (curSet - 1);
+                      return pendingRpeKey === prevSetRk ? (
+                        <RPEPickerRow C={C} t={theme}
+                          onSelect={rating => {
+                            if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                            setRpeLog(prev => Object.assign({}, prev, { [prevSetRk]: rating }));
+                            setPendingRpeKey(null);
+                          }}
+                          onSkip={() => { if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current); setPendingRpeKey(null); }}
+                        />
+                      ) : null;
+                    })()}
+
+                    {/* Rest timer strip (in-card, supplements the bottom sheet) */}
                     {ssRestLeft != null && ssRestLeft > 0 && (
-                      <View style={[lv.restStrip, { marginHorizontal: 14, marginBottom: 14 }]}>
-                        <Ionicons name="hourglass-outline" size={14} color={ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg} />
-                        <Text style={[lv.restStripTime, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg }]}>
+                      <View style={[lv.restStrip, { marginBottom: 0 }]}>
+                        <Ionicons name="hourglass-outline" size={14} color={ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : C.green} />
+                        <Text style={[lv.restStripTime, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : C.green }]}>
                           {Math.floor(ssRestLeft / 60) + ':' + String(ssRestLeft % 60).padStart(2, '0')}
                         </Text>
-                        <Text style={[lv.restStripLabel, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : ssBg }]}>rest</Text>
+                        <Text style={[lv.restStripLabel, { color: ssRestLeft < 20 ? C.red : ssRestLeft < 40 ? C.amber : C.green }]}>rest</Text>
                         <View style={{ flex: 1 }} />
-                        <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(ssRestKey, -15)}><Text style={lv.restAdjTxt}>-15s</Text></TouchableOpacity>
+                        <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(ssRestKey, -15)}><Text style={lv.restAdjTxt}>−15s</Text></TouchableOpacity>
                         <TouchableOpacity style={lv.restAdjBtn} onPress={() => adjustRest(ssRestKey, 30)}><Text style={lv.restAdjTxt}>+30s</Text></TouchableOpacity>
                       </View>
                     )}
@@ -5842,11 +5854,20 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   const nd = Object.assign({}, workoutDoneSets);
                   item.exercises.forEach(ex => { nd[ex.id + '_' + curRound] = true; });
                   setWorkoutDoneSets(nd);
-                  // Fire rest timer between rounds
+                  // Fire rest timer between rounds (startRestTimer also opens bottom-sheet modal)
                   const restKey = curRound >= totalRounds
                     ? 'circuit_' + cId + '_done'
                     : 'circuit_' + cId + '_r' + curRound;
-                  setRestEndTimes(prev => Object.assign({}, prev, { [restKey]: Date.now() + item.restSeconds * 1000 }));
+                  startRestTimer(restKey, item.restSeconds);
+                  // Trigger RPE picker after 350ms
+                  const rpeKey = 'circuit_' + cId + '_r' + curRound;
+                  if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                  rpeTimerRef.current = null;
+                  setPendingRpeKey(null);
+                  setTimeout(() => {
+                    setPendingRpeKey(rpeKey);
+                    rpeTimerRef.current = setTimeout(() => setPendingRpeKey(null), 60000);
+                  }, 350);
                   if (curRound >= totalRounds) {
                     setCircuitCompleted(prev => Object.assign({}, prev, { [cId]: true }));
                   } else {
@@ -5890,26 +5911,22 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                           const target = isTimeBased ? (ex.durationSeconds || 30) : (ex.reps || 10);
                           const actual = getActual(ex.id);
                           return (
-                            <View key={ex.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12,
-                              borderBottomWidth: ei < item.exercises.length - 1 ? 1 : 0, borderBottomColor: 'rgba(79,70,229,0.1)' }}>
+                            <View key={ex.id} style={[lv.setRow, { paddingVertical: 10,
+                              borderBottomWidth: ei < item.exercises.length - 1 ? 1 : 0, borderBottomColor: 'rgba(79,70,229,0.1)' }]}>
                               <View style={{ flex: 1 }}>
                                 <Text style={{ fontSize: 15, fontWeight: '600', color: C.dark }}>{ex.name}</Text>
                                 <Text style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
                                   {'Target: ' + target + (isTimeBased ? 's' : ' reps')}
                                 </Text>
                               </View>
-                              <View style={{ alignItems: 'center' }}>
-                                <Text style={{ fontSize: 10, fontWeight: '700', color: C.primary, marginBottom: 4 }}>
-                                  {isTimeBased ? 'SEC' : 'REPS'}
-                                </Text>
+                              <View style={lv.repsCol}>
+                                <Text style={lv.fieldLabel}>{isTimeBased ? 'SEC' : 'REPS'}</Text>
                                 <TextInput
-                                  style={{ width: 64, height: 42, borderRadius: 10, borderWidth: 1.5,
-                                    borderColor: 'rgba(79,70,229,0.5)', backgroundColor: 'rgba(79,70,229,0.06)',
-                                    textAlign: 'center', fontSize: 20, fontWeight: '800', color: C.dark }}
+                                  style={lv.fieldInput}
                                   keyboardType="number-pad" maxLength={4}
                                   value={actual != null ? String(actual) : String(target)}
                                   onChangeText={val => setActual(ex.id, val.replace(/[^0-9]/g, ''))}
-                                  selectTextOnFocus
+                                  selectTextOnFocus autoCorrect={false} autoCapitalize="none"
                                 />
                               </View>
                             </View>
@@ -5922,6 +5939,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                             {curRound >= totalRounds ? '✓ Complete Circuit' : 'Complete Round ' + curRound + ' of ' + totalRounds}
                           </Text>
                         </TouchableOpacity>
+                        {pendingRpeKey === 'circuit_' + cId + '_r' + (curRound - 1) && (
+                          <RPEPickerRow C={C} t={theme}
+                            onSelect={rating => {
+                              if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current);
+                              setRpeLog(prev => Object.assign({}, prev, { ['circuit_' + cId + '_r' + (curRound - 1)]: rating }));
+                              setPendingRpeKey(null);
+                            }}
+                            onSkip={() => { if (rpeTimerRef.current) clearTimeout(rpeTimerRef.current); setPendingRpeKey(null); }} />
+                        )}
                         {circuitRestLeft != null && circuitRestLeft > 0 && (
                           <View style={[lv.restStrip, { marginTop: 10 }]}>
                             <Ionicons name="hourglass-outline" size={14} color={circuitRestLeft < 20 ? C.red : circuitRestLeft < 40 ? C.amber : C.green} />
@@ -11752,11 +11778,12 @@ function AppBody() {
   );
 
   const tabs = [
-    { name: 'Home',        icon: 'home',          iconOutline: 'home-outline' },
-    { name: 'Workouts',    icon: 'barbell',        iconOutline: 'barbell-outline' },
-    { name: 'Progress',    icon: 'trending-up',    iconOutline: 'trending-up-outline' },
-    { name: 'Supplements', icon: 'flask',          iconOutline: 'flask-outline' },
-    { name: 'Profile',     icon: 'person-circle',  iconOutline: 'person-circle-outline' },
+    { name: 'Home',        icon: 'home',           iconOutline: 'home-outline' },
+    { name: 'Workouts',    icon: 'barbell',         iconOutline: 'barbell-outline' },
+    { name: 'Progress',    icon: 'trending-up',     iconOutline: 'trending-up-outline' },
+    { name: 'Nutrition',   icon: 'nutrition',       iconOutline: 'nutrition-outline' },
+    { name: 'Supplements', icon: 'flask',           iconOutline: 'flask-outline' },
+    { name: 'Profile',     icon: 'person-circle',   iconOutline: 'person-circle-outline' },
   ];
 
   const renderTab = () => {
@@ -11818,6 +11845,8 @@ function AppBody() {
             memberId={uid}
           />
         );
+      case 'Nutrition':
+        return <NutritionScreen />;
       case 'Supplements':
         return <SupplementsScreen memberId={uid} />;
       case 'Profile':
