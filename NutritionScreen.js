@@ -224,12 +224,9 @@ function QuantityModal({ food, visible, onClose, onAdd, theme }) {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 16 }} showsVerticalScrollIndicator={false}>
             {/* Food header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <Text style={{ fontSize: 44 }}>{food.emoji || '🍽️'}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 17, fontWeight: '800', color: textP, letterSpacing: -0.3 }}>{food.name}</Text>
-                <Text style={{ fontSize: 12, color: textS, marginTop: 2 }}>Std. serving: {servingDisplay}</Text>
-              </View>
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ fontSize: 17, fontWeight: '800', color: textP, letterSpacing: -0.3 }}>{food.name}</Text>
+              <Text style={{ fontSize: 12, color: textS, marginTop: 4 }}>Std. serving: {servingDisplay}</Text>
             </View>
 
             {/* Input label */}
@@ -794,14 +791,13 @@ export default function NutritionScreen({ memberId }) {
                 <TouchableOpacity key={food.id} onPress={() => { setSelectedFood(food); setQtyModal(true); }}
                   activeOpacity={0.75}
                   style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: cardBg, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: bord }}>
-                  <Text style={{ fontSize: 32, marginRight: 12 }}>{food.emoji || '🍽️'}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: textP }}>{food.name}</Text>
                     <Text style={{ fontSize: 11, color: textT, marginTop: 1 }}>
                       {food.servingLabel} · {food.servingGrams}{getServingUnit(food) === 'ml' ? 'ml' : 'g'}
                       {food.category === 'Supplements' ? ' · values vary by brand' : ''}
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
+                    <View style={{ flexDirection: 'row', gap: 5, marginTop: 5, flexWrap: 'wrap' }}>
                       {[
                         { label: `${food.caloriesPer100g} kcal`, bg: '#fff7ed', color: '#ea580c' },
                         { label: `P ${food.proteinPer100g}g`,    bg: '#eff6ff', color: '#2563eb' },
@@ -814,7 +810,7 @@ export default function NutritionScreen({ memberId }) {
                       ))}
                     </View>
                   </View>
-                  <View style={{ backgroundColor: brand, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ backgroundColor: brand, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
                     <Ionicons name="add" size={18} color="#fff" />
                   </View>
                 </TouchableOpacity>
@@ -847,7 +843,6 @@ export default function NutritionScreen({ memberId }) {
             logEntries.map((entry, i) => (
               <View key={`${entry.foodId}-${entry.loggedAt}-${i}`}
                 style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: cardBg, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: bord }}>
-                <Text style={{ fontSize: 28, marginRight: 12 }}>{entry.emoji}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: textP }}>{entry.name}</Text>
                   <Text style={{ fontSize: 11, color: textT }}>{entry.grams}g</Text>
