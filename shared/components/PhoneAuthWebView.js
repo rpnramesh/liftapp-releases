@@ -18,6 +18,7 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
   const readyRef = useRef(false);
   const retryRef = useRef(null);
   const failsafeRef = useRef(null);
+  const autoRetryRef = useRef(false); // true while silently retrying after first error
   // Tracks whether reCAPTCHA has been rendered at least once in this WebView
   // session. Firebase RecaptchaVerifier cannot be re-rendered into the same
   // DOM element — attempting to do so throws "reCAPTCHA has already been
@@ -50,6 +51,7 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
 
       case 'verificationId':
         cleanup();
+        autoRetryRef.current = false;
         // Mark as used — the next sendOtp must reload the WebView to reset
         // the reCAPTCHA container before Firebase can render a new verifier.
         usedOnceRef.current = true;
@@ -59,16 +61,41 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
         phoneRef.current = null;
         break;
 
-      case 'error':
+      case 'error': {
         cleanup();
-        // Also mark used on error — Firebase has still attempted to render
-        // reCAPTCHA, leaving the container in a "consumed" state.
+        const errMsg = data.error || '';
+        const isRecaptchaErr = /recaptcha|captcha|already.been.rendered|render/i.test(errMsg);
+        // On a reCAPTCHA error, silently reload and retry ONCE before surfacing to the user.
+        if (isRecaptchaErr && !autoRetryRef.current && pendingRef.current && phoneRef.current) {
+          autoRetryRef.current = true;
+          usedOnceRef.current = false;
+          readyRef.current = false;
+          webViewRef.current?.reload();
+          // Restart the ping + failsafe timers for the retry attempt.
+          retryRef.current = setTimeout(function ping() {
+            if (!pendingRef.current) return;
+            webViewRef.current?.injectJavaScript("post({type:'pong',ready:ready}); true;");
+            retryRef.current = setTimeout(ping, 3000);
+          }, 2000);
+          failsafeRef.current = setTimeout(() => {
+            if (!pendingRef.current) return;
+            cleanup();
+            setShowOverlay(false);
+            pendingRef.current?.reject(new Error('OTP request timed out. Please try again.'));
+            pendingRef.current = null;
+            phoneRef.current = null;
+          }, 25000);
+          break;
+        }
+        // Second error or non-reCAPTCHA error — surface it.
+        autoRetryRef.current = false;
         usedOnceRef.current = true;
         setShowOverlay(false);
-        pendingRef.current?.reject(new Error(data.error));
+        pendingRef.current?.reject(new Error(errMsg));
         pendingRef.current = null;
         phoneRef.current = null;
         break;
+      }
 
       case 'pong':
         if (data.ready && phoneRef.current && pendingRef.current) {
@@ -84,6 +111,7 @@ const PhoneAuthWebView = forwardRef(({ onReady }, ref) => {
   useImperativeHandle(ref, () => ({
     sendOtp: (phoneNumber) => new Promise((resolve, reject) => {
       cleanup();
+      autoRetryRef.current = false;
       if (pendingRef.current) pendingRef.current.reject(new Error('Cancelled'));
       pendingRef.current = { resolve, reject };
       phoneRef.current = phoneNumber;

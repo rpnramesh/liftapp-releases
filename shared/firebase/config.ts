@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { initializeApp, getApps } from 'firebase/app';
-import { initializeAuth, getAuth } from 'firebase/auth';
+import { initializeAuth, getAuth, initializeRecaptchaConfig } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -40,6 +40,9 @@ try {
   // Already initialized (hot reload)
   auth = getAuth(app);
 }
+
+// Required for Firebase reCAPTCHA Enterprise phone auth on newer projects.
+initializeRecaptchaConfig(auth).catch(() => {});
 
 export { auth };
 export const db      = getFirestore(app);

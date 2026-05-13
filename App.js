@@ -240,17 +240,17 @@ const wl = StyleSheet.create({
 function friendlyOtpError(e) {
   const code = e?.code || '';
   const msg  = (e?.message || '').toLowerCase();
-  if (code === 'auth/too-many-requests'    || msg.includes('too many'))       return 'Too many attempts. Please wait a few minutes and try again.';
-  if (code === 'auth/invalid-phone-number' || msg.includes('invalid phone'))  return 'Invalid phone number format. Please check and try again.';
-  if (code === 'auth/quota-exceeded')                                          return 'SMS quota exceeded. Please try again later.';
-  if (code === 'auth/network-request-failed' || msg.includes('network'))      return 'Network error. Please check your connection and try again.';
-  // reCAPTCHA internals — must never be shown to users
-  if (msg.includes('recaptcha') || msg.includes('captcha') || msg.includes('already been rendered') || msg.includes('render')) {
+  if (code === 'auth/too-many-requests'    || msg.includes('too many'))          return 'Too many attempts. Please wait a few minutes and try again.';
+  if (code === 'auth/invalid-phone-number' || msg.includes('invalid phone'))     return 'Invalid phone number format. Please check and try again.';
+  if (code === 'auth/quota-exceeded')                                             return 'SMS quota exceeded. Please try again later.';
+  if (code === 'auth/network-request-failed' || msg.includes('network'))         return 'Network error. Please check your connection and try again.';
+  if (code === 'auth/app-not-authorized')                                         return 'App not authorised for phone auth. Please contact support.';
+  if (code === 'auth/captcha-check-failed')                                       return 'Verification check failed. Please try again.';
+  if (msg.includes('timeout') || msg.includes('timed out'))                      return 'OTP request timed out. Please try again.';
+  // reCAPTCHA internals — match specifically, not the broad word "render"
+  if (msg.includes('recaptcha') || msg.includes('captcha') || msg.includes('already been rendered')) {
     return 'Verification service reset. Please tap "Receive OTP" again.';
   }
-  if (msg.includes('timeout') || msg.includes('timed out'))                  return 'OTP request timed out. Please try again.';
-  if (code === 'auth/app-not-authorized')                                     return 'App not authorised for phone auth. Please contact support.';
-  // Fallback — show something generic, not the raw Firebase message
   return 'Could not send OTP. Please try again.';
 }
 
