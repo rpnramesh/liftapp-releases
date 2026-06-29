@@ -4741,9 +4741,15 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
       }
       setLastWeights(storedW);
       setLastReps(storedR);
+      // Pre-fill the editable inputs with previously entered values so a redo /
+      // edit loads the prior data. Any current in-memory edits take precedence.
+      const current = workoutSetWeights || {};
+      setLocalSetWeights({ ...storedW, ...current });
+      if (Object.keys(storedR).length) {
+        setCustomReps(prev => ({ ...storedR, ...prev }));
+      }
     };
     load();
-    setLocalSetWeights(workoutSetWeights || {});
   }, [isLogging]);
 
   // ── Create incomplete Firestore log when logging starts ──────────────────────
@@ -5067,9 +5073,18 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
             const planSnap = await gdoc(planRef).catch(() => null);
             if (planSnap?.exists()) {
               const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
+              // One workout-log per day: reuse the day's existing log doc so a
+              // redo overwrites the same record instead of creating a duplicate.
+              if (!activeLogRef.current) {
+                const existingLogId = planSnap.data().days?.[todayIdx]?.logId;
+                activeLogRef.current = existingLogId
+                  ? docFn(fdb, 'gyms', gymOrTrainer, 'workoutLogs', existingLogId)
+                  : docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+              }
+              const dayLogId = activeLogRef.current.id;
               const days = (planSnap.data().days ?? []).map((d, i) =>
                 i === todayIdx
-                  ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: curElapsed }
+                  ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: curElapsed, logId: dayLogId }
                   : d
               );
               await upDoc(planRef, { days }).catch(() => {});
@@ -5113,8 +5128,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
           };
           if (activeLogRef.current) {
             await upDoc(activeLogRef.current, completionData).catch(async () => {
-              const fb = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
-              await sdoc(fb, { id: fb.id, ...completionData });
+              // Doc doesn't exist yet (reused id / first save) — create it with the
+              // SAME id so the day's logId stays in sync (one record per day).
+              await sdoc(activeLogRef.current, { id: activeLogRef.current.id, ...completionData }).catch(() => {});
             });
           } else {
             const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
@@ -5730,9 +5746,10 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     </>
                   );
                 })()}
-                {/* Start / Mark Complete buttons — only shown for incomplete days.
-                    The "Completed" status is now shown as a badge in the header. */}
-                {!selectedDay.completedAt && (
+                {/* Start / Mark Complete buttons — always available (no completion
+                    lock) so the member can redo or edit any day. The "Completed"
+                    status still shows as a badge in the header. */}
+                {(
                   <View style={wk.btnRow}>
                     <TouchableOpacity
                       style={[wk.startBtn, { flex: 1 }]}
@@ -5896,24 +5913,35 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                   );
                 })}
 
-                {/* Start button — only shown before workout is running.
-                    Once running, Continue + Complete are in the hero header
-                    as icon buttons, so we don't duplicate them here.       */}
-                {!workoutTimer?.running && !workoutTimer?.completed && (
-                  <TouchableOpacity
-                    style={[wk.startBtn, { alignSelf: 'stretch' }]}
-                    onPress={() => {
-                      // Immediately collapse day chips + workout name — no useEffect delay
-                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                      setMetaCollapsed(true);
-                      startWorkoutTimer();
-                      setIsLogging(true);
-                    }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="play" size={16} color="#fff" />
-                      <Text style={wk.startBtnTxt}>Start Workout</Text>
-                    </View>
-                  </TouchableOpacity>
+                {/* Start / Complete — available whenever the workout isn't
+                    actively running, INCLUDING after completion, so the member
+                    can redo or edit the day's entry. Re-completing overwrites
+                    the same day record (one record per day). */}
+                {!workoutTimer?.running && (
+                  <View style={wk.btnRow}>
+                    <TouchableOpacity
+                      style={[wk.startBtn, { flex: 1 }]}
+                      onPress={() => {
+                        // Immediately collapse day chips + workout name — no useEffect delay
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setMetaCollapsed(true);
+                        startWorkoutTimer();
+                        setIsLogging(true);
+                      }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="play" size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>{workoutTimer?.completed ? 'Start Again' : 'Start Workout'}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[wk.startBtn, { flex: 1, backgroundColor: C.green }]}
+                      onPress={() => { setCompleteMinutes(''); setShowCompleteModal(true); }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="checkmark-done" size={16} color="#fff" />
+                        <Text style={wk.startBtnTxt}>Complete</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </>
             ) : (todayWorkout?.isRestDay || restDays?.[todayPlanIdx]) ? (
@@ -6353,9 +6381,18 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                       const planSnap = await gdoc(planRef).catch(() => null);
                       if (planSnap?.exists()) {
                         const todayIdx = loggingDayIdxRef.current ?? (new Date().getDay() + 6) % 7;
+                        // One workout-log per day: reuse the day's existing log doc so a
+                        // redo overwrites the same record instead of creating a duplicate.
+                        if (!activeLogRef.current) {
+                          const existingLogId = planSnap.data().days?.[todayIdx]?.logId;
+                          activeLogRef.current = existingLogId
+                            ? docFn(fdb, 'gyms', gymOrTrainer, 'workoutLogs', existingLogId)
+                            : docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+                        }
+                        const dayLogId = activeLogRef.current.id;
                         const days = (planSnap.data().days ?? []).map((d, i) =>
                           i === todayIdx
-                            ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: overrideSeconds }
+                            ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: overrideSeconds, logId: dayLogId }
                             : d
                         );
                         await upDoc(planRef, { days }).catch(() => {});
@@ -6402,8 +6439,9 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     };
                     if (activeLogRef.current) {
                       await upDoc(activeLogRef.current, completionData).catch(async () => {
-                        const fb = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
-                        await sdoc(fb, { id: fb.id, ...completionData });
+                        // Doc doesn't exist yet (reused id / first save) — create it with
+                        // the SAME id so the day's logId stays in sync (one record per day).
+                        await sdoc(activeLogRef.current, { id: activeLogRef.current.id, ...completionData }).catch(() => {});
                       });
                     } else {
                       const logRef = docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
@@ -6442,6 +6480,127 @@ function WorkoutsScreen({ member, assignment, planWeek, fullPlan, todayWorkout, 
                     }
                     return { actualSets: n, actualReps: bestReps, weight: bestW };
                   },
+                }));
+              }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Complete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* ── Past / Missed Day Complete Modal ─────────────────────────────────
+          Lets the member mark ANY day complete (e.g. a missed day) with the
+          time it took, writing to that specific day. One record per day —
+          reuses the day's logId so a redo overwrites instead of duplicating. */}
+      <Modal visible={showPastCompleteModal} transparent animationType="fade" onRequestClose={() => setShowPastCompleteModal(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '80%', maxWidth: 320 }}>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: C.dark, marginBottom: 4 }}>Mark Workout Complete</Text>
+            <Text style={{ fontSize: 13, color: C.mid, marginBottom: 16 }}>
+              {pastCompleteDay?.dayLabel ? `${pastCompleteDay.dayLabel} · ` : ''}How many minutes did this workout take? (Optional)
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, textAlign: 'center', marginBottom: 16 }}
+              keyboardType="number-pad"
+              placeholder="e.g. 45"
+              value={pastCompleteMinutes}
+              onChangeText={setPastCompleteMinutes}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#F0F0F0', alignItems: 'center' }} onPress={() => setShowPastCompleteModal(false)}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: C.mid }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: C.green, alignItems: 'center' }} onPress={async () => {
+                const day = pastCompleteDay;
+                const dayIdx = pastCompleteDayIdx;
+                setShowPastCompleteModal(false);
+                if (!day || dayIdx == null) return;
+                const exs = (day.exercises || []).map(ex => ({
+                  id:           ex.id || ex.name,
+                  name:         ex.name,
+                  sets:         ex.mainSets || 3,
+                  reps:         ex.mainReps || 10,
+                  trackingType: ex.trackingType || 'reps',
+                  rest:         ex.mainRestSeconds || 60,
+                  muscleGroup:  ex.muscleGroup || '',
+                  note:         ex.notes || '',
+                }));
+                const mins = parseInt(pastCompleteMinutes, 10);
+                const estSecs = exs.reduce((acc, ex) => acc + ex.sets * (45 + ex.rest), 0);
+                const overrideSeconds = (Number.isFinite(mins) && mins > 0) ? mins * 60 : estSecs;
+                const dayLabel = day.dayLabel || '';
+                if (gymOrTrainer && memberId) {
+                  try {
+                    const { doc: docFn, updateDoc: upDoc, getDoc: gdoc, collection: col, setDoc: sdoc } = require('firebase/firestore');
+                    const { db: fdb } = require('./shared/firebase/config');
+                    const assignRef = docFn(fdb, 'gyms', gymOrTrainer, 'assignments', memberId);
+                    const assignSnap = await gdoc(assignRef).catch(() => null);
+                    if (assignSnap?.exists() && assignSnap.data()?.planId) {
+                      const planRef = docFn(fdb, 'gyms', gymOrTrainer, 'clientPlans', assignSnap.data().planId);
+                      const planSnap = await gdoc(planRef).catch(() => null);
+                      if (planSnap?.exists()) {
+                        // One workout-log per day: reuse the day's existing log doc.
+                        const existingLogId = planSnap.data().days?.[dayIdx]?.logId;
+                        const logRef = existingLogId
+                          ? docFn(fdb, 'gyms', gymOrTrainer, 'workoutLogs', existingLogId)
+                          : docFn(col(fdb, 'gyms', gymOrTrainer, 'workoutLogs'));
+                        const dayLogId = logRef.id;
+                        const days = (planSnap.data().days ?? []).map((d, i) =>
+                          i === dayIdx
+                            ? { ...d, completedAt: Date.now(), startedAt: d.startedAt ?? Date.now(), durationSeconds: overrideSeconds, logId: dayLogId }
+                            : d
+                        );
+                        await upDoc(planRef, { days }).catch(() => {});
+                        const completionData = {
+                          memberId, memberName,
+                          gymId: member?.gymId || null,
+                          planId: fullPlan?.id || '',
+                          planName: fullPlan?.name || '',
+                          dayLabel,
+                          status: 'completed',
+                          completedExercises: exs.map(ex => ({
+                            exerciseId: ex.id, exerciseName: ex.name,
+                            muscleGroup: ex.muscleGroup || 'Other',
+                            targetSets: ex.sets, targetReps: ex.reps,
+                            actualSets: ex.sets, actualReps: String(ex.reps),
+                            weight: 0,
+                            restSeconds: ex.rest || 60,
+                            completed: true, skipped: false,
+                            notes: ex.note || '',
+                            setDetails: Array.from({ length: ex.sets }, (_, i) => ({
+                              setNo: i + 1, reps: parseInt(ex.reps, 10) || 0, weight: 0,
+                            })),
+                          })),
+                          exerciseLogs: exs.map(ex => ({
+                            exerciseId: ex.id, exerciseName: ex.name,
+                            skipped: false,
+                            sets: Array.from({ length: ex.sets }, (_, i) => ({
+                              setNo: i + 1, reps: parseInt(ex.reps, 10) || 0, weight: 0, done: true,
+                            })),
+                          })),
+                          durationSeconds: overrideSeconds,
+                          startedAt: Date.now() - (overrideSeconds * 1000),
+                          completedAt: Date.now(),
+                          loggedAt: new Date().toISOString(),
+                          updatedAt: Date.now(),
+                          manualComplete: true,
+                        };
+                        await sdoc(logRef, { id: dayLogId, ...completionData }).catch(() => {});
+                        await upDoc(docFn(fdb, 'members', memberId), { lastWorkoutAt: Date.now() }).catch(() => {});
+                      }
+                    }
+                  } catch (e) { console.log('Past complete write error:', e); }
+                }
+                setSelectedDayIdx(null);
+                setPastCompleteDay(null);
+                setPastCompleteDayIdx(null);
+                setPastCompleteMinutes('');
+                onWorkoutFinish?.(buildWorkoutFinishData({
+                  dayLabel,
+                  planName: fullPlan?.name || dayLabel || 'Workout',
+                  durationSeconds: overrideSeconds,
+                  exercises: exs,
                 }));
               }}>
                 <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Complete</Text>
